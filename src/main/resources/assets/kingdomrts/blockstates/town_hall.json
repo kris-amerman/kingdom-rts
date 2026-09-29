@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "kingdomrts:block/town_hall" }
+  }
+}

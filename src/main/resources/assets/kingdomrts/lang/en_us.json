@@ -1,0 +1,14 @@
+{
+  "itemGroup.kingdomrts": "Kingdom RTS Tab",
+  "block.kingdomrts.example_block": "Example Block",
+  "block.kingdomrts.town_hall": "Town Hall",
+  "item.kingdomrts.example_item": "Example Item",
+
+  "kingdomrts.configuration.title": "Kingdom RTS Configs",
+  "kingdomrts.configuration.section.kingdomrts.common.toml": "Kingdom RTS Configs",
+  "kingdomrts.configuration.section.kingdomrts.common.toml.title": "Kingdom RTS Configs",
+  "kingdomrts.configuration.items": "Item List",
+  "kingdomrts.configuration.logDirtBlock": "Log Dirt Block",
+  "kingdomrts.configuration.magicNumberIntroduction": "Magic Number Text",
+  "kingdomrts.configuration.magicNumber": "Magic Number"
+}
