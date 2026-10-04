@@ -14,16 +14,18 @@ A NeoForge mod for Minecraft: a long-lived, real-time kingdom-management game. T
 The owner will name the system to work on in each session. Work only on that system.
 
 ### Capture
-- Every settlement has a capture point at its town hall, with a control meter from 0 to 100 (100 = fully held by the owner).
+- Every settlement has a capture point at its town hall, with a control meter from 1 to 100 (100 = fully held by the owner).
 - Units with a military occupation within a set radius of the point count as their faction's presence. Other units don't, even if they belong to the same faction or settlement. Mobs never take part in capture.
 - Only units of a faction hostile to the owner count as attackers. Units of a non-hostile faction count as neither attackers nor defenders. Whether allied units count as defenders is open.
-- When an attacking faction's presence exceeds the owner's by a margin, the meter drains steadily over time. Otherwise it regenerates toward 100.
+- Majority rule: each hostile faction is compared with the defenders on its own; hostile factions don't combine. When the strongest hostile faction outnumbers the defenders, the meter drains steadily over time. When defenders outnumber it, it regenerates toward 100. When both sides are present and equal, it holds. With no attackers present, it regenerates.
 - Capture is never instant. It requires sustained presence, so a quick raid-and-retreat can't flip a settlement.
-- When the meter reaches 0, the settlement changes owner (see Settlements).
+- When a drain would take the meter below 1, the settlement changes owner (see Settlements) to the strongest hostile faction present; a tie for strongest holds the meter at 1. The meter starts at 1 for the new owner, who must keep the majority to raise it.
+- A neutral settlement isn't captured. A player claims it by interacting with it, and it becomes theirs immediately. The meter and unit presence only apply to owned settlements.
 
 ### Factions
 - A faction is a side that owns settlements and units - effectively a nation. The player has a faction. Rival factions are AI-controlled.
 - Factions are not hostile to each other by default. A faction can declare war on another, which makes the two hostile. Other relationships, such as neutrality or a formal alliance, are possible.
+- A player starts without a faction. A newly placed town hall is neutral. Claiming a neutral settlement while factionless founds a faction, and the claimer becomes its owner.
 
 ### Settlements
 - A settlement is a city built around a town hall, owned by a faction, or unowned (neutral).

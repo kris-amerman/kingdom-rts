@@ -6,9 +6,9 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.mojang.serialization.MapCodec;
 
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.EntityBlock;
@@ -16,9 +16,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityTicker;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 // The block that founds a settlement. Each placed town hall gets a TownHallBlockEntity,
-// which holds its capture control meter.
+// which holds its owning faction and capture control meter. A newly placed hall is neutral
+// until a player claims it from the town hall menu.
 public class TownHallBlock extends Block implements EntityBlock {
     public static final MapCodec<TownHallBlock> CODEC = simpleCodec(TownHallBlock::new);
 
@@ -36,15 +38,14 @@ public class TownHallBlock extends Block implements EntityBlock {
         return new TownHallBlockEntity(pos, state);
     }
 
-    // The placing player's faction owns the new town hall. PLACEHOLDER until real faction data
-    // exists: a player's faction id is just their UUID.
+    // Right-click with an empty hand opens the town hall menu (see TownHallMenu).
     @Override
-    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
-        super.setPlacedBy(level, pos, state, placer, stack);
-        if (!level.isClientSide && placer instanceof Player player
-                && level.getBlockEntity(pos) instanceof TownHallBlockEntity townHall) {
-            townHall.setFaction(player.getUUID().toString());
+    protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
+        if (player instanceof ServerPlayer serverPlayer && level.getBlockEntity(pos) instanceof TownHallBlockEntity townHall) {
+            TownHallMenu.open(serverPlayer, townHall);
         }
+        // On the client, SUCCESS plays the hand-swing; the server opens the menu.
+        return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
     // Capture logic only runs on the server; the client gets no ticker.
