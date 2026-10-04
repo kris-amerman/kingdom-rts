@@ -1,14 +1,18 @@
 package com.krisamerman.kingdomrts.unit;
 
+import java.util.UUID;
+
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
+import com.krisamerman.kingdomrts.faction.FactionData;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
@@ -27,20 +31,22 @@ import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 
-// A unit with a military occupation. It belongs to a faction and holds position near a post.
-// Its combat stats come from a MilitaryStats datapack entry (see statsId), not from this class.
-// It attacks hostile mobs within its attack range without leaving its post, and never attacks
-// other units of any faction (factions aren't hostile to each other until a war mechanism exists).
+// A unit with a military occupation. It may belong to a faction (or none) and holds position
+// near a post. Its combat stats come from a MilitaryStats datapack entry (see statsId).
+// It attacks hostile mobs and units of factions at war with its own, within its attack range and
+// without leaving its post. It never attacks its own faction or any faction it isn't at war with.
 public class MilitaryUnit extends PathfinderMob {
     // How far from its post the unit may wander. Behavior tuning, not a per-unit-type stat.
     public static final int HOLD_RADIUS = 6;
 
-    private static final String FACTION_TAG = "faction";
+    private static final String FACTION_TAG = "faction_id";
     private static final String POST_TAG = "post";
     private static final String STATS_TAG = "stats";
 
-    // Faction id. Placeholder until a real faction data model exists; "" means no faction.
-    private String faction = "";
+    // The faction this unit belongs to (see FactionData), or null for a factionless unit
+    // (a mercenary, say). A factionless unit is never part of any faction's presence or wars.
+    @Nullable
+    private UUID factionId;
     @Nullable
     private BlockPos post;
     private ResourceLocation statsId = MilitaryStats.DEFAULT_ID;
@@ -86,13 +92,23 @@ public class MilitaryUnit extends PathfinderMob {
         return entity instanceof Enemy && !(entity instanceof NeutralMob);
     }
 
+    // Who this unit fights: hostile mobs, and units of factions at war with its own. A factionless
+    // unit only fights hostile mobs, since FactionData.isHostile is false whenever either side is null.
+    public boolean isValidTarget(LivingEntity target) {
+        if (isHostileMob(target)) {
+            return true;
+        }
+        return target instanceof MilitaryUnit other && level() instanceof ServerLevel serverLevel
+                && FactionData.get(serverLevel).isHostile(factionId, other.factionId);
+    }
+
     public boolean isInAttackRange(LivingEntity target) {
         return distanceToSqr(target) <= attackRange * attackRange;
     }
 
     // Called once when the unit is created (e.g. by the spawn command), before it's added to the world.
-    public void setup(String faction, BlockPos post, ResourceLocation statsId) {
-        this.faction = faction;
+    public void setup(@Nullable UUID factionId, BlockPos post, ResourceLocation statsId) {
+        this.factionId = factionId;
         this.post = post.immutable();
         this.statsId = statsId;
         restrictTo(this.post, HOLD_RADIUS);
@@ -117,8 +133,9 @@ public class MilitaryUnit extends PathfinderMob {
         }
     }
 
-    public String getFaction() {
-        return faction;
+    @Nullable
+    public UUID getFactionId() {
+        return factionId;
     }
 
     @Nullable
@@ -153,7 +170,9 @@ public class MilitaryUnit extends PathfinderMob {
     @Override
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
-        tag.putString(FACTION_TAG, faction);
+        if (factionId != null) {
+            tag.putUUID(FACTION_TAG, factionId);
+        }
         tag.putString(STATS_TAG, statsId.toString());
         if (post != null) {
             tag.put(POST_TAG, NbtUtils.writeBlockPos(post));
@@ -163,7 +182,8 @@ public class MilitaryUnit extends PathfinderMob {
     @Override
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
-        faction = tag.getString(FACTION_TAG);
+        // Units saved before factions were real stored a string under "faction"; they load factionless.
+        factionId = tag.hasUUID(FACTION_TAG) ? tag.getUUID(FACTION_TAG) : null;
         ResourceLocation savedStats = ResourceLocation.tryParse(tag.getString(STATS_TAG));
         statsId = savedStats != null ? savedStats : MilitaryStats.DEFAULT_ID;
         post = NbtUtils.readBlockPos(tag, POST_TAG).orElse(null);

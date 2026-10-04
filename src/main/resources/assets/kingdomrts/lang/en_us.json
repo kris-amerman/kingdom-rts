@@ -4,6 +4,8 @@
   "block.kingdomrts.town_hall": "Town Hall",
   "item.kingdomrts.example_item": "Example Item",
   "entity.kingdomrts.military_unit": "Military Unit",
+  "container.kingdomrts.town_hall": "Town Hall",
+  "button.kingdomrts.claim": "Claim",
 
   "kingdomrts.configuration.title": "Kingdom RTS Configs",
   "kingdomrts.configuration.section.kingdomrts.common.toml": "Kingdom RTS Configs",

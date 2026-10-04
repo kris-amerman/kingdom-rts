@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
+import com.krisamerman.kingdomrts.settlement.TownHallMenu;
 import com.krisamerman.kingdomrts.unit.MilitaryStats;
 import com.krisamerman.kingdomrts.unit.MilitaryUnit;
 import com.mojang.logging.LogUtils;
@@ -14,6 +15,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.CreativeModeTabs;
@@ -31,6 +33,7 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
@@ -57,6 +60,8 @@ public class KingdomRts {
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, MODID);
     // Create a Deferred Register to hold EntityTypes which will all be registered under the "kingdomrts" namespace
     public static final DeferredRegister<EntityType<?>> ENTITY_TYPES = DeferredRegister.create(Registries.ENTITY_TYPE, MODID);
+    // Create a Deferred Register to hold MenuTypes (screens backed by a server-side menu)
+    public static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(Registries.MENU, MODID);
 
     // Creates a new Block with the id "kingdomrts:example_block", combining the namespace and path
     public static final DeferredBlock<Block> EXAMPLE_BLOCK = BLOCKS.registerSimpleBlock("example_block", BlockBehaviour.Properties.of().mapColor(MapColor.STONE));
@@ -70,6 +75,11 @@ public class KingdomRts {
     // Per-town-hall data (the capture control meter), id "kingdomrts:town_hall"
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TownHallBlockEntity>> TOWN_HALL_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("town_hall", () -> BlockEntityType.Builder.of(TownHallBlockEntity::new, TOWN_HALL.get()).build(null));
+
+    // The town hall menu, id "kingdomrts:town_hall". IMenuTypeExtension.create lets the server send
+    // extra data (the hall's position and owner name) when the menu opens.
+    public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
+            MENU_TYPES.register("town_hall", () -> IMenuTypeExtension.create(TownHallMenu::new));
 
     // A unit with a military occupation, id "kingdomrts:military_unit". Player-sized hitbox.
     public static final DeferredHolder<EntityType<?>, EntityType<MilitaryUnit>> MILITARY_UNIT =
@@ -107,6 +117,7 @@ public class KingdomRts {
         BLOCK_ENTITY_TYPES.register(modEventBus);
         // Register the Deferred Register to the mod event bus so entity types get registered
         ENTITY_TYPES.register(modEventBus);
+        MENU_TYPES.register(modEventBus);
         modEventBus.addListener(this::registerEntityAttributes);
         modEventBus.addListener(this::registerDataPackRegistries);
 
