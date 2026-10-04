@@ -97,7 +97,7 @@ public class TownHallBlockEntity extends BlockEntity {
         // Neutral halls are claimed by a player (the Claim button, see claim()), not captured:
         // unit presence has no effect and the meter never drains.
         if (owner == null) {
-            KingdomRts.LOGGER.info("Town hall at {}: owner=none (neutral), control={}", pos.toShortString(), townHall.control);
+            KingdomRts.LOGGER.debug("Town hall at {}: owner=none (neutral), control={}", pos.toShortString(), townHall.control);
             return;
         }
 
@@ -157,7 +157,7 @@ public class TownHallBlockEntity extends BlockEntity {
         }
 
         // Counts are relative to the owner at the start of this check.
-        KingdomRts.LOGGER.info("Town hall at {}: owner={}, attackers={} strongest={}, defenders={}, control={}{}",
+        KingdomRts.LOGGER.debug("Town hall at {}: owner={}, attackers={} strongest={}, defenders={}, control={}{}",
                 pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), strongestAttackers,
                 defenders, newControl, outcome);
 
