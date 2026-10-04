@@ -3,6 +3,7 @@
   "block.kingdomrts.example_block": "Example Block",
   "block.kingdomrts.town_hall": "Town Hall",
   "item.kingdomrts.example_item": "Example Item",
+  "entity.kingdomrts.military_unit": "Military Unit",
 
   "kingdomrts.configuration.title": "Kingdom RTS Configs",
   "kingdomrts.configuration.section.kingdomrts.common.toml": "Kingdom RTS Configs",

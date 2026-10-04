@@ -1,5 +1,7 @@
 package com.krisamerman.kingdomrts;
 
+import com.krisamerman.kingdomrts.unit.MilitaryUnitRenderer;
+
 import net.minecraft.client.Minecraft;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -7,6 +9,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
@@ -27,5 +30,10 @@ public class KingdomRtsClient {
         // Some client setup code
         KingdomRts.LOGGER.info("HELLO FROM CLIENT SETUP");
         KingdomRts.LOGGER.info("MINECRAFT NAME >> {}", Minecraft.getInstance().getUser().getName());
+    }
+
+    @SubscribeEvent
+    static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        event.registerEntityRenderer(KingdomRts.MILITARY_UNIT.get(), MilitaryUnitRenderer::new);
     }
 }
