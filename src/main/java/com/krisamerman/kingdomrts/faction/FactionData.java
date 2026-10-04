@@ -94,7 +94,7 @@ public class FactionData extends SavedData {
     // Founds a new faction for a factionless player, named after them (Steve, Steve_2, ...),
     // with the player as its leader and first member.
     public Faction foundFactionFor(ServerPlayer player) {
-        String base = player.getGameProfile().getName();
+        String base = factionNameFrom(player.getGameProfile().getName());
         String name = base;
         for (int i = 2; nameProblem(name) != null; i++) {
             name = base + "_" + i;
@@ -102,6 +102,17 @@ public class FactionData extends SavedData {
         Faction faction = create(name, player.getUUID());
         join(player.getUUID(), faction);
         return faction;
+    }
+
+    // Turns a player name into a usable faction name. Vanilla allows symbols in player names
+    // (offline mode, Bedrock proxy prefixes like "*") that faction names don't, and no "_2" suffix
+    // would fix those, so they're replaced with "_". This guarantees foundFactionFor's loop ends.
+    private static String factionNameFrom(String playerName) {
+        StringBuilder name = new StringBuilder();
+        for (char c : playerName.toCharArray()) {
+            name.append(StringReader.isAllowedInUnquotedString(c) ? c : '_');
+        }
+        return name.isEmpty() ? "Faction" : name.toString();
     }
 
     public void rename(Faction faction, String newName) {
