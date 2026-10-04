@@ -15,13 +15,15 @@ The owner will name the system to work on in each session. Work only on that sys
 
 ### Capture
 - Every settlement has a capture point at its town hall, with a control meter from 0 to 100 (100 = fully held by the owner).
-- Units with a military occupation within a set radius of the point count as their faction's presence. Other units don't, even if they belong to the same faction or settlement.
+- Units with a military occupation within a set radius of the point count as their faction's presence. Other units don't, even if they belong to the same faction or settlement. Mobs never take part in capture.
+- Only units of a faction hostile to the owner count as attackers. Units of a non-hostile faction count as neither attackers nor defenders. Whether allied units count as defenders is open.
 - When an attacking faction's presence exceeds the owner's by a margin, the meter drains steadily over time. Otherwise it regenerates toward 100.
 - Capture is never instant. It requires sustained presence, so a quick raid-and-retreat can't flip a settlement.
 - When the meter reaches 0, the settlement changes owner (see Settlements).
 
 ### Factions
 - A faction is a side that owns settlements and units - effectively a nation. The player has a faction. Rival factions are AI-controlled.
+- Factions are not hostile to each other by default. A faction can declare war on another, which makes the two hostile. Other relationships, such as neutrality or a formal alliance, are possible.
 
 ### Settlements
 - A settlement is a city built around a town hall, owned by a faction, or unowned (neutral).
@@ -37,7 +39,7 @@ The owner will name the system to work on in each session. Work only on that sys
 - Adding a new kind of unit should be possible as new data, not new code for every variant.
 
 MVP occupations:
-- A unit with a military occupation has combat stats (movement speed, attack damage, attack range; health comes from the underlying entity system). MVP behavior: holds position near a set point, attacking hostile-faction units that come within range and returning to post afterward. Never attacks units of its own faction. Counts as its faction's presence at a capture point.
+- A unit with a military occupation has combat stats (movement speed, attack damage, attack range; health comes from the underlying entity system). MVP behavior: holds position near a set point, attacking hostile mobs and units of hostile factions that come within range, and returning to post afterward. Never attacks units of its own faction, or of any faction that isn't hostile to its own. Counts as its faction's presence at a capture point.
 - A unit with a non-military occupation (a job) may work for a settlement. The MVP jobs below are settlement jobs, but a unit having a job shouldn't be assumed to always require one - unattached working units (a mercenary, a traveling merchant, and the like) should stay possible later. MVP jobs:
   - **Lumberjack**: finds a tree within the settlement's claimed chunks, walks to it, chops down the whole tree, picks up the logs, carries them back and puts them in a settlement storage container, then repeats.
   - **Builder**: is assigned a structure to build at a site. It takes the required materials from settlement storage, walks to the site, and places blocks until the structure matches its predefined layout. Materials are used up as blocks are placed. Several builders can work on one structure at once.
