@@ -1,6 +1,7 @@
 package com.krisamerman.kingdomrts.settlement;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -12,12 +13,15 @@ import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.unit.MilitaryUnit;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
@@ -38,6 +42,9 @@ public class TownHallBlockEntity extends BlockEntity {
     public static final int CONTROL_CHANGE_PER_CHECK = 5;
     public static final int MIN_CONTROL = 1;             // also the new owner's control right after a capture
     public static final int MAX_CONTROL = 100;
+    // After an "under attack" alert, a hall won't alert again for this long (1200 ticks = 60 seconds),
+    // so units stepping in and out of the capture radius don't spam the owner.
+    public static final int ALERT_COOLDOWN_TICKS = 1200;
 
     private static final String CONTROL_TAG = "control";
     private static final String OWNER_TAG = "owner";
@@ -46,6 +53,12 @@ public class TownHallBlockEntity extends BlockEntity {
     // Owning faction id (see FactionData), or null for a neutral hall.
     @Nullable
     private UUID owner;
+
+    // Capture meter UI state, server only. Not saved: after a reload the bar and alerts start fresh.
+    @Nullable
+    private CaptureBossBar bossBar; // created on first use, so client-side copies never make one
+    private boolean wasDraining;
+    private long lastAlertTick = -ALERT_COOLDOWN_TICKS;
 
     public TownHallBlockEntity(BlockPos pos, BlockState state) {
         super(KingdomRts.TOWN_HALL_BLOCK_ENTITY.get(), pos, state);
@@ -64,6 +77,9 @@ public class TownHallBlockEntity extends BlockEntity {
     public void setOwner(@Nullable UUID owner, int control) {
         this.owner = owner;
         this.control = Mth.clamp(control, MIN_CONTROL, MAX_CONTROL);
+        // A new owner gets their own "under attack" alert, even if the old owner was just alerted.
+        this.wasDraining = false;
+        this.lastAlertTick = -ALERT_COOLDOWN_TICKS;
         setChanged(); // marks the chunk as needing to be saved
     }
 
@@ -97,6 +113,9 @@ public class TownHallBlockEntity extends BlockEntity {
         // Neutral halls are claimed by a player (the Claim button, see claim()), not captured:
         // unit presence has no effect and the meter never drains.
         if (owner == null) {
+            if (townHall.bossBar != null) {
+                townHall.bossBar.hide();
+            }
             KingdomRts.LOGGER.debug("Town hall at {}: owner=none (neutral), control={}", pos.toShortString(), townHall.control);
             return;
         }
@@ -161,10 +180,69 @@ public class TownHallBlockEntity extends BlockEntity {
                 pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), strongestAttackers,
                 defenders, newControl, outcome);
 
+        // Hostile faction names, strongest first (ties in alphabetical order), for the bar and alerts.
+        List<String> attackerNames = attackersByFaction.entrySet().stream()
+                .sorted(Map.Entry.<UUID, Integer>comparingByValue().reversed()
+                        .thenComparing(e -> factions.nameOf(e.getKey())))
+                .map(e -> factions.nameOf(e.getKey()))
+                .toList();
+        boolean draining = strongestAttackers > defenders;
+
         if (capturedBy != null) {
             String message = "Town hall at " + pos.toShortString() + " captured by "
                     + factions.nameOf(capturedBy) + " (from " + factions.nameOf(owner) + ")";
             serverLevel.getServer().getPlayerList().broadcastSystemMessage(Component.literal(message), false);
+            // Show the new owner at 1 right away; the next check works out the attackers relative to them.
+            townHall.bossBar().update(serverLevel, pos, factions.nameOf(capturedBy), MIN_CONTROL,
+                    CaptureBossBar.Trend.HOLDING, List.of());
+            return;
+        }
+
+        CaptureBossBar.Trend trend = draining ? CaptureBossBar.Trend.DRAINING
+                : strongestAttackers == defenders && strongestAttackers > 0 ? CaptureBossBar.Trend.HOLDING
+                : CaptureBossBar.Trend.RISING;
+        townHall.bossBar().update(serverLevel, pos, factions.nameOf(owner), newControl, trend, attackerNames);
+
+        // Alert the owner's members the moment the hall starts draining (not on every draining check).
+        if (draining && !townHall.wasDraining && level.getGameTime() - townHall.lastAlertTick >= ALERT_COOLDOWN_TICKS) {
+            townHall.lastAlertTick = level.getGameTime();
+            townHall.alertUnderAttack(serverLevel, factions, attackerNames.get(0));
+        }
+        townHall.wasDraining = draining;
+    }
+
+    private CaptureBossBar bossBar() {
+        if (bossBar == null) {
+            bossBar = new CaptureBossBar();
+        }
+        return bossBar;
+    }
+
+    // Tells every online member of the owning faction, wherever they are, with a chat line and a bell.
+    private void alertUnderAttack(ServerLevel level, FactionData factions, String attackerName) {
+        Faction ownerFaction = factions.byId(owner);
+        if (ownerFaction == null) {
+            return;
+        }
+        Component message = Component.literal("Your town hall at " + worldPosition.toShortString()
+                + " is under attack by " + attackerName + "!").withStyle(ChatFormatting.RED);
+        for (UUID member : factions.members(ownerFaction)) {
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(member);
+            if (player != null) {
+                player.sendSystemMessage(message);
+                // Played to this player only, at their own position, so they hear it anywhere.
+                // MASTER so it isn't silenced by the block-sounds volume slider.
+                player.playNotifySound(SoundEvents.BELL_BLOCK, SoundSource.MASTER, 1.0f, 1.0f);
+            }
+        }
+    }
+
+    // Called when the hall is broken or its chunk unloads: take the bar off everyone's screen.
+    @Override
+    public void setRemoved() {
+        super.setRemoved();
+        if (bossBar != null) {
+            bossBar.hide();
         }
     }
 
