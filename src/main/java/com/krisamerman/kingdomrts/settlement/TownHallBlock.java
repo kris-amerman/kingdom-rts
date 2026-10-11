@@ -6,6 +6,8 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.mojang.serialization.MapCodec;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
@@ -18,9 +20,10 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 
-// The block that founds a settlement. Each placed town hall gets a TownHallBlockEntity,
-// which holds its owning faction and capture control meter. A newly placed hall is neutral
-// until a player claims it from the town hall menu.
+// The block a settlement is founded around. Each placed town hall gets a TownHallBlockEntity,
+// which holds its settlement id and capture control meter. A newly placed hall is unclaimed until
+// a player claims it from the town hall menu, which founds the settlement. (Placing the hall as a
+// block is a stand-in until the build tool exists.)
 public class TownHallBlock extends Block implements EntityBlock {
     public static final MapCodec<TownHallBlock> CODEC = simpleCodec(TownHallBlock::new);
 
@@ -46,6 +49,22 @@ public class TownHallBlock extends Block implements EntityBlock {
         }
         // On the client, SUCCESS plays the hand-swing; the server opens the menu.
         return InteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    // Runs when this block is really replaced (broken, /setblock, an explosion), not when its chunk
+    // unloads. A settlement can't outlive its town hall, so it's dissolved and its claim released.
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
+        if (!state.is(newState.getBlock()) && level instanceof ServerLevel serverLevel
+                && level.getBlockEntity(pos) instanceof TownHallBlockEntity townHall) {
+            Settlement settlement = townHall.getSettlement();
+            if (settlement != null) {
+                SettlementOps.dissolve(serverLevel, settlement);
+                serverLevel.getServer().getPlayerList().broadcastSystemMessage(
+                        Component.literal(settlement.name() + " was dissolved: its town hall is gone"), false);
+            }
+        }
+        super.onRemove(state, level, pos, newState, movedByPiston); // removes the block entity
     }
 
     // Capture logic only runs on the server; the client gets no ticker.
