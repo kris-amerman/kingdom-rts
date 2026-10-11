@@ -1,0 +1,94 @@
+# Backlog
+
+Planned work, one story per PR. CLAUDE.md says what the game should do and docs/design.md says why; this file tracks what we're building next and what was decided along the way, so details aren't lost between sessions.
+
+## How to use this
+- **One story = one atomic PR.** Keep stories small enough to review in one sitting.
+- **Status:** `planned` → `in progress` → `in review` → `done`. Done stories move to the Done section with their PR number.
+- **Update the story as you go:** when work starts (status, branch), when scope changes (say what moved and why), and when it ships (PR number, anything left over).
+- **Decisions** worth remembering go in the story's Notes, and anything that changes the game's rules goes into CLAUDE.md as well.
+- **New ideas** that aren't ready to be stories go under Later.
+
+Story template:
+```
+### S-000 Title
+- **Status:** planned | **Branch:** feature/... | **PR:** - | **Depends on:** -
+- **Goal:** one sentence: what's true when this is done.
+- **Scope:** what's in.
+- **Out of scope:** what's deliberately not in.
+- **Test:** how to check it in runClient.
+- **Notes:** decisions, open questions.
+```
+
+## Current: Settlements MVP
+
+### S-002 Town hall protection
+- **Status:** planned | **Branch:** feature/town-hall-protection | **PR:** - | **Depends on:** S-001
+- **Goal:** a claimed town hall can't be destroyed in survival.
+- **Scope:**
+  - A claimed hall can't be mined by anyone in survival; creative-mode operators still can (testing).
+  - Claimed halls are explosion-proof (bedrock-level resistance).
+  - Protection lives on the block itself (break progress, explosion resistance) rather than in event cancelling, which leaks.
+  - Unclaimed halls stay breakable, so a bare hall block can't be used as an unbreakable wall (design.md names this exploit).
+- **Out of scope:** general block protection (CLAUDE.md: anyone can place and break other blocks), damage done at peace.
+- **Test:**
+  - In survival, a claimed hall can't be mined and survives TNT next to it.
+  - An unclaimed hall breaks normally.
+  - In creative, breaking a hall still dissolves its settlement.
+- **Notes:** pistons already can't push the hall, because vanilla refuses to push blocks with block entities.
+
+### S-003 Settlement Storage block
+- **Status:** planned | **Branch:** feature/settlement-storage | **PR:** - | **Depends on:** S-001
+- **Goal:** a settlement has storage that other factions can't open, break or drain until they capture it.
+- **Scope:**
+  - **Block:** a chest-like block with a single-chest inventory.
+  - **Placement:** only inside your own faction's claim. It then belongs to that settlement and is recorded in the settlement's storage list. Placement anywhere else is refused, with a reason.
+  - **Opening:** only the owner faction's members (later also its units). Others get "This storage belongs to <settlement>".
+  - **Breaking:** the owner's members can break it (it drops its contents). It's unbreakable for everyone else, explosion-proof, and pistons can't move it.
+  - **Automation:** no item access from hoppers or pipes for now.
+  - **Capture:** access follows the settlement's current owner.
+- **Out of scope:** same-faction automation, allied access, units using storage (comes with jobs).
+- **Test:**
+  - Placing it inside vs. outside your claim.
+  - Another faction can't open, break, blow up or hopper-drain it.
+  - After a capture, the new owner can open it and the old one can't.
+  - It survives save and reload.
+- **Notes:**
+  - Custom block chosen over registering vanilla chests, because hoppers and pipes would leak from vanilla ones.
+  - CLAUDE.md says storage "can't be broken" in one place, but the owner decided the owning faction can break its own. Reword that line when this ships.
+
+### S-004 Territory messages
+- **Status:** planned | **Branch:** feature/territory-messages | **PR:** - | **Depends on:** S-001
+- **Goal:** players can tell when they cross into or out of a settlement's claim.
+- **Scope:** "Entering Oakhaven (Dev)" / "Leaving Oakhaven" in the action bar, checked only when a player changes chunk (no scanning).
+- **Out of scope:** drawing claim borders in the world.
+- **Test:** walk in and out of a claim; the messages appear once per crossing, not every tick.
+- **Notes:** -
+
+## Later (not yet stories)
+- **Unit/occupation refactor:** a generic `Unit` entity with occupation as data, before a second occupation exists. Also adds units belonging to a settlement and the civilian transfer on capture.
+- **Lumberjack job:** needs claims (S-001) and storage (S-003).
+- **Builder job:** needs storage and a structure layout format. Decide whether the MVP builder takes from storage or uses the on-site builder + courier model (open in design.md).
+- **Cleanup:** remove the NeoForge template leftovers (`example_block`, `example_item`, the example `Config` options and the example creative tab).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
+### S-001 Settlement record
+- **Status:** done | **Branch:** feature/settlement-record | **PR:** #5 | **Depends on:** -
+- **Goal:** claiming a town hall founds a named settlement with a 3×3 chunk claim, which passes to the new owner on capture.
+- **Scope:**
+  - `Settlement` + `SettlementData` (saved data with a chunk → settlement index), with ownership moved off the town hall.
+  - `SettlementOps.found` (a faction operation, used by both Claim and the command), refused when the claim overlaps another settlement.
+  - Names from `data/kingdomrts/settlement_names/`, with the shared `util/NameRules`.
+  - Capture transfers the settlement; the boss bar, alerts and panel show the settlement name.
+  - `/kingdomrts settlement list|here|rename|found`.
+  - Removing a hall dissolves its settlement.
+- **Out of scope:** hall protection (S-002), storage (S-003), territory messages (S-004), units belonging to a settlement.
+- **Test:** see PR #5.
+- **Notes:**
+  - "Removing a hall dissolves its settlement" moved here from S-002, because halls are still breakable in this PR.
+  - Old saves: halls load unclaimed.
+
+- Unit prototype, factions, capture meter UI: PRs #1-#4 (before this backlog existed).
