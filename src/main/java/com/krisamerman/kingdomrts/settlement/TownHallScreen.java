@@ -7,7 +7,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 // Client only. Draws the town hall menu: a plain panel (no texture yet) with the owner, the live
-// control meter, and a Claim button that's only shown for a neutral hall.
+// control meter, and a Claim button that's only shown for an unclaimed hall.
 public class TownHallScreen extends AbstractContainerScreen<TownHallMenu> {
     private static final int PANEL_COLOR = 0xFFC6C6C6;   // vanilla GUI grey (ARGB)
     private static final int BORDER_COLOR = 0xFF555555;
@@ -18,7 +18,7 @@ public class TownHallScreen extends AbstractContainerScreen<TownHallMenu> {
     public TownHallScreen(TownHallMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
         imageWidth = 176;
-        imageHeight = 84;
+        imageHeight = 96;
     }
 
     @Override
@@ -26,9 +26,9 @@ public class TownHallScreen extends AbstractContainerScreen<TownHallMenu> {
         super.init(); // centers the panel: sets leftPos/topPos from imageWidth/imageHeight
         claimButton = addRenderableWidget(Button.builder(Component.translatable("button.kingdomrts.claim"),
                         button -> minecraft.gameMode.handleInventoryButtonClick(menu.containerId, TownHallMenu.CLAIM_BUTTON))
-                .bounds(leftPos + 8, topPos + 56, imageWidth - 16, 20)
+                .bounds(leftPos + 8, topPos + 68, imageWidth - 16, 20)
                 .build());
-        claimButton.visible = menu.isNeutral();
+        claimButton.visible = menu.isUnclaimed();
     }
 
     @Override
@@ -48,8 +48,13 @@ public class TownHallScreen extends AbstractContainerScreen<TownHallMenu> {
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, title, 8, 6, TEXT_COLOR, false);
-        String owner = menu.isNeutral() ? "none (neutral)" : menu.getOwnerName();
-        graphics.drawString(font, "Owner: " + owner, 8, 22, TEXT_COLOR, false);
-        graphics.drawString(font, "Control: " + menu.getControl() + "/" + TownHallBlockEntity.MAX_CONTROL, 8, 34, TEXT_COLOR, false);
+        if (menu.isUnclaimed()) {
+            graphics.drawString(font, "Unclaimed town hall", 8, 22, TEXT_COLOR, false);
+            return;
+        }
+        graphics.drawString(font, "Settlement: " + menu.getSettlementName(), 8, 22, TEXT_COLOR, false);
+        graphics.drawString(font, "Owner: " + menu.getOwnerName(), 8, 34, TEXT_COLOR, false);
+        graphics.drawString(font, "Control: " + menu.getControl() + "/" + TownHallBlockEntity.MAX_CONTROL, 8, 46, TEXT_COLOR, false);
+        graphics.drawString(font, "Claim: " + menu.getClaimedChunks() + " chunks", 8, 58, TEXT_COLOR, false);
     }
 }

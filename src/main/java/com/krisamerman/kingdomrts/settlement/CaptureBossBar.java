@@ -22,8 +22,6 @@ public class CaptureBossBar {
     public static final int HIDE_DELAY_TICKS = 100;
     // At most this many attacking faction names in the title; the rest show as "+N".
     private static final int MAX_NAMED_ATTACKERS = 2;
-    // PLACEHOLDER until settlements exist and have names.
-    private static final String SETTLEMENT_NAME_PLACEHOLDER = "Town Hall";
 
     // Which way control is moving this check, shown as the bar's color.
     public enum Trend {
@@ -47,7 +45,7 @@ public class CaptureBossBar {
 
     // Called once per capture check for an owned hall. attackersStrongestFirst = names of the hostile
     // factions with units in the capture radius, strongest first (empty when nobody is attacking).
-    public void update(ServerLevel level, BlockPos pos, String ownerName, int control, Trend trend,
+    public void update(ServerLevel level, BlockPos pos, String ownerName, String settlementName, int control, Trend trend,
             List<String> attackersStrongestFirst) {
         long now = level.getGameTime();
         if (!attackersStrongestFirst.isEmpty()) {
@@ -58,7 +56,7 @@ public class CaptureBossBar {
             return;
         }
 
-        event.setName(title(ownerName, attackersStrongestFirst));
+        event.setName(title(ownerName, settlementName, attackersStrongestFirst));
         event.setColor(trend.color);
         event.setProgress(control / (float) TownHallBlockEntity.MAX_CONTROL);
         updateViewers(level, pos);
@@ -69,10 +67,10 @@ public class CaptureBossBar {
         event.removeAllPlayers();
     }
 
-    // One centered line, e.g. "[Dev] Town Hall  ⚔  [Red] [Green] +1" (no ⚔ part when nobody's
+    // One centered line, e.g. "[Dev] Oakhaven  ⚔  [Red] [Green] +1" (no ⚔ part when nobody's
     // attacking). Two spaces on each side of the ⚔ separate the owner's half from the attackers'.
-    private static Component title(String ownerName, List<String> attackers) {
-        StringBuilder title = new StringBuilder("[").append(ownerName).append("] ").append(SETTLEMENT_NAME_PLACEHOLDER);
+    private static Component title(String ownerName, String settlementName, List<String> attackers) {
+        StringBuilder title = new StringBuilder("[").append(ownerName).append("] ").append(settlementName);
         if (!attackers.isEmpty()) {
             title.append("  ⚔ ");
             for (String name : attackers.subList(0, Math.min(MAX_NAMED_ATTACKERS, attackers.size()))) {

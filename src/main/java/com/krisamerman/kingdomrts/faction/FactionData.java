@@ -14,7 +14,7 @@ import java.util.UUID;
 
 import javax.annotation.Nullable;
 
-import com.mojang.brigadier.StringReader;
+import com.krisamerman.kingdomrts.util.NameRules;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
@@ -35,7 +35,6 @@ public class FactionData extends SavedData {
     private static final String FACTIONS_TAG = "factions";
     private static final String MEMBERS_TAG = "members";
     private static final String WARS_TAG = "wars";
-    private static final int MAX_NAME_LENGTH = 32;
 
     private static final SavedData.Factory<FactionData> FACTORY = new SavedData.Factory<>(FactionData::new, FactionData::load);
 
@@ -66,13 +65,9 @@ public class FactionData extends SavedData {
     // Returns why a name can't be used for a new faction, or null if it's fine.
     @Nullable
     public String nameProblem(String name) {
-        if (name.isEmpty() || name.length() > MAX_NAME_LENGTH) {
-            return "Faction names must be 1-" + MAX_NAME_LENGTH + " characters";
-        }
-        for (char c : name.toCharArray()) {
-            if (!StringReader.isAllowedInUnquotedString(c)) {
-                return "Faction names may only use letters, digits, _ - . +";
-            }
+        String formatProblem = NameRules.formatProblem("Faction", name);
+        if (formatProblem != null) {
+            return formatProblem;
         }
         if (name.equalsIgnoreCase("none")) {
             return "'none' is reserved";
@@ -94,7 +89,9 @@ public class FactionData extends SavedData {
     // Founds a new faction for a factionless player, named after them (Steve, Steve_2, ...),
     // with the player as its leader and first member.
     public Faction foundFactionFor(ServerPlayer player) {
-        String base = factionNameFrom(player.getGameProfile().getName());
+        // Vanilla allows symbols in player names (offline mode, Bedrock proxy prefixes like "*")
+        // that faction names don't; sanitize replaces them, so the suffix loop below always ends.
+        String base = NameRules.sanitize(player.getGameProfile().getName(), "Faction");
         String name = base;
         for (int i = 2; nameProblem(name) != null; i++) {
             name = base + "_" + i;
@@ -102,17 +99,6 @@ public class FactionData extends SavedData {
         Faction faction = create(name, player.getUUID());
         join(player.getUUID(), faction);
         return faction;
-    }
-
-    // Turns a player name into a usable faction name. Vanilla allows symbols in player names
-    // (offline mode, Bedrock proxy prefixes like "*") that faction names don't, and no "_2" suffix
-    // would fix those, so they're replaced with "_". This guarantees foundFactionFor's loop ends.
-    private static String factionNameFrom(String playerName) {
-        StringBuilder name = new StringBuilder();
-        for (char c : playerName.toCharArray()) {
-            name.append(StringReader.isAllowedInUnquotedString(c) ? c : '_');
-        }
-        return name.isEmpty() ? "Faction" : name.toString();
     }
 
     public void rename(Faction faction, String newName) {

@@ -30,9 +30,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
-// Per-town-hall data: the owning faction (or none = neutral) and the capture control meter
-// (1-100, 100 = fully held by the owner). Control never sits at 0: a drain that would take it
-// below 1 changes the hall's owner instead.
+// Per-town-hall data: which settlement this hall belongs to (none = an unclaimed hall) and the
+// capture control meter (1-100, 100 = fully held by the owner). The settlement itself, including
+// its owner and claim, lives in SettlementData. Control never sits at 0: a drain that would take
+// it below 1 passes the settlement to a new owner instead.
 public class TownHallBlockEntity extends BlockEntity {
     // Capture tuning. All of these will need playtesting.
     public static final int CHECK_INTERVAL_TICKS = 20;   // how often the meter updates (20 ticks = 1 second)
@@ -47,12 +48,12 @@ public class TownHallBlockEntity extends BlockEntity {
     public static final int ALERT_COOLDOWN_TICKS = 1200;
 
     private static final String CONTROL_TAG = "control";
-    private static final String OWNER_TAG = "owner";
+    private static final String SETTLEMENT_TAG = "settlement";
 
     private int control = MAX_CONTROL;
-    // Owning faction id (see FactionData), or null for a neutral hall.
+    // The settlement this hall is the town hall of (see SettlementData), or null if unclaimed.
     @Nullable
-    private UUID owner;
+    private UUID settlementId;
 
     // Capture meter UI state, server only. Not saved: after a reload the bar and alerts start fresh.
     @Nullable
@@ -69,13 +70,31 @@ public class TownHallBlockEntity extends BlockEntity {
     }
 
     @Nullable
-    public UUID getOwner() {
-        return owner;
+    public UUID getSettlementId() {
+        return settlementId;
     }
 
-    // Gives the hall to a faction (placing, claiming, or capturing it) with the given control.
-    public void setOwner(@Nullable UUID owner, int control) {
-        this.owner = owner;
+    // Server only: this hall's settlement, or null if the hall is unclaimed.
+    @Nullable
+    public Settlement getSettlement() {
+        return level instanceof ServerLevel serverLevel ? SettlementData.get(serverLevel).byId(settlementId) : null;
+    }
+
+    // Server only: the faction that owns this hall's settlement, or null if the hall is unclaimed.
+    @Nullable
+    public UUID getOwner() {
+        Settlement settlement = getSettlement();
+        return settlement != null ? settlement.owner() : null;
+    }
+
+    // Called by SettlementOps.found once a settlement exists for this hall: full control.
+    void settlementFounded(UUID settlementId) {
+        this.settlementId = settlementId;
+        ownerChanged(MAX_CONTROL);
+    }
+
+    // The settlement has a new owner (founded or captured): reset the meter to the given control.
+    private void ownerChanged(int control) {
         this.control = Mth.clamp(control, MIN_CONTROL, MAX_CONTROL);
         // A new owner gets their own "under attack" alert, even if the old owner was just alerted.
         this.wasDraining = false;
@@ -83,23 +102,23 @@ public class TownHallBlockEntity extends BlockEntity {
         setChanged(); // marks the chunk as needing to be saved
     }
 
-    // Claims a neutral hall for the player's faction, founding a faction named after the player if
-    // they're factionless. The hall starts at full control. Returns the claiming faction, or null
-    // if the hall already has an owner (owned halls change hands only by capture).
-    @Nullable
-    public Faction claim(ServerPlayer player) {
-        if (owner != null) {
-            return null;
+    // A player claiming this unclaimed hall founds a settlement for their faction. A factionless
+    // player founds a faction named after them first, but only once the settlement is sure to fit,
+    // so a failed claim never leaves a stray faction behind.
+    public SettlementOps.FoundResult claim(ServerPlayer player) {
+        ServerLevel serverLevel = player.serverLevel();
+        String problem = SettlementOps.foundingProblem(serverLevel, worldPosition);
+        if (problem != null) {
+            return SettlementOps.FoundResult.failed(problem);
         }
-        FactionData factions = FactionData.get(player.serverLevel());
+        FactionData factions = FactionData.get(serverLevel);
         Faction faction = factions.factionOf(player.getUUID());
         if (faction == null) {
             faction = factions.foundFactionFor(player);
             player.sendSystemMessage(Component.literal("You founded the faction " + faction.name()
                     + ". Rename it with /kingdomrts faction rename."));
         }
-        setOwner(faction.id(), MAX_CONTROL);
-        return faction;
+        return SettlementOps.found(serverLevel, worldPosition, faction);
     }
 
     // Called every server tick by the ticker from TownHallBlock#getTicker.
@@ -108,17 +127,22 @@ public class TownHallBlockEntity extends BlockEntity {
             return;
         }
         FactionData factions = FactionData.get(serverLevel);
-        UUID owner = townHall.owner;
+        Settlement settlement = townHall.getSettlement();
 
-        // Neutral halls are claimed by a player (the Claim button, see claim()), not captured:
-        // unit presence has no effect and the meter never drains.
-        if (owner == null) {
+        // Unclaimed halls are claimed (the Claim button, see claim()), not captured: unit presence
+        // has no effect and the meter never drains.
+        if (settlement == null) {
+            if (townHall.settlementId != null) {
+                townHall.settlementId = null; // its settlement no longer exists
+                townHall.setChanged();
+            }
             if (townHall.bossBar != null) {
                 townHall.bossBar.hide();
             }
-            KingdomRts.LOGGER.debug("Town hall at {}: owner=none (neutral), control={}", pos.toShortString(), townHall.control);
+            KingdomRts.LOGGER.debug("Town hall at {}: unclaimed", pos.toShortString());
             return;
         }
+        UUID owner = settlement.owner();
 
         // Presence: only military units that belong to a faction. Mobs never count, factionless
         // units never count, and units of factions not at war with the owner count as neither side.
@@ -165,7 +189,8 @@ public class TownHallBlockEntity extends BlockEntity {
 
         String outcome = "";
         if (capturedBy != null) {
-            townHall.setOwner(capturedBy, MIN_CONTROL);
+            SettlementOps.transfer(serverLevel, settlement, capturedBy); // its claim goes with it
+            townHall.ownerChanged(MIN_CONTROL);
             outcome = ", captured by " + factions.nameOf(capturedBy);
         } else if (newControl != oldControl) {
             townHall.control = newControl;
@@ -176,8 +201,8 @@ public class TownHallBlockEntity extends BlockEntity {
         }
 
         // Counts are relative to the owner at the start of this check.
-        KingdomRts.LOGGER.debug("Town hall at {}: owner={}, attackers={} strongest={}, defenders={}, control={}{}",
-                pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), strongestAttackers,
+        KingdomRts.LOGGER.debug("{} (town hall at {}): owner={}, attackers={} strongest={}, defenders={}, control={}{}",
+                settlement.name(), pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), strongestAttackers,
                 defenders, newControl, outcome);
 
         // Hostile faction names, strongest first (ties in alphabetical order), for the bar and alerts.
@@ -189,11 +214,11 @@ public class TownHallBlockEntity extends BlockEntity {
         boolean draining = strongestAttackers > defenders;
 
         if (capturedBy != null) {
-            String message = "Town hall at " + pos.toShortString() + " captured by "
-                    + factions.nameOf(capturedBy) + " (from " + factions.nameOf(owner) + ")";
+            String message = settlement.name() + " was captured by " + factions.nameOf(capturedBy)
+                    + " (from " + factions.nameOf(owner) + ")";
             serverLevel.getServer().getPlayerList().broadcastSystemMessage(Component.literal(message), false);
             // Show the new owner at 1 right away; the next check works out the attackers relative to them.
-            townHall.bossBar().update(serverLevel, pos, factions.nameOf(capturedBy), MIN_CONTROL,
+            townHall.bossBar().update(serverLevel, pos, factions.nameOf(capturedBy), settlement.name(), MIN_CONTROL,
                     CaptureBossBar.Trend.HOLDING, List.of());
             return;
         }
@@ -201,12 +226,12 @@ public class TownHallBlockEntity extends BlockEntity {
         CaptureBossBar.Trend trend = draining ? CaptureBossBar.Trend.DRAINING
                 : strongestAttackers == defenders && strongestAttackers > 0 ? CaptureBossBar.Trend.HOLDING
                 : CaptureBossBar.Trend.RISING;
-        townHall.bossBar().update(serverLevel, pos, factions.nameOf(owner), newControl, trend, attackerNames);
+        townHall.bossBar().update(serverLevel, pos, factions.nameOf(owner), settlement.name(), newControl, trend, attackerNames);
 
         // Alert the owner's members the moment the hall starts draining (not on every draining check).
         if (draining && !townHall.wasDraining && level.getGameTime() - townHall.lastAlertTick >= ALERT_COOLDOWN_TICKS) {
             townHall.lastAlertTick = level.getGameTime();
-            townHall.alertUnderAttack(serverLevel, factions, attackerNames.get(0));
+            alertUnderAttack(serverLevel, factions, settlement, attackerNames.get(0));
         }
         townHall.wasDraining = draining;
     }
@@ -219,13 +244,13 @@ public class TownHallBlockEntity extends BlockEntity {
     }
 
     // Tells every online member of the owning faction, wherever they are, with a chat line and a bell.
-    private void alertUnderAttack(ServerLevel level, FactionData factions, String attackerName) {
-        Faction ownerFaction = factions.byId(owner);
+    private static void alertUnderAttack(ServerLevel level, FactionData factions, Settlement settlement, String attackerName) {
+        Faction ownerFaction = factions.byId(settlement.owner());
         if (ownerFaction == null) {
             return;
         }
-        Component message = Component.literal("Your town hall at " + worldPosition.toShortString()
-                + " is under attack by " + attackerName + "!").withStyle(ChatFormatting.RED);
+        Component message = Component.literal(settlement.name() + " is under attack by " + attackerName + "!")
+                .withStyle(ChatFormatting.RED);
         for (UUID member : factions.members(ownerFaction)) {
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(member);
             if (player != null) {
@@ -279,8 +304,8 @@ public class TownHallBlockEntity extends BlockEntity {
     protected void saveAdditional(CompoundTag tag, HolderLookup.Provider registries) {
         super.saveAdditional(tag, registries);
         tag.putInt(CONTROL_TAG, control);
-        if (owner != null) {
-            tag.putUUID(OWNER_TAG, owner);
+        if (settlementId != null) {
+            tag.putUUID(SETTLEMENT_TAG, settlementId);
         }
     }
 
@@ -290,8 +315,8 @@ public class TownHallBlockEntity extends BlockEntity {
         if (tag.contains(CONTROL_TAG)) {
             control = Mth.clamp(tag.getInt(CONTROL_TAG), MIN_CONTROL, MAX_CONTROL);
         }
-        // Halls saved before factions were real stored a player UUID string under "faction";
-        // they load as neutral and can be claimed.
-        owner = tag.hasUUID(OWNER_TAG) ? tag.getUUID(OWNER_TAG) : null;
+        // Halls saved before settlements existed stored an "owner" instead; they load unclaimed
+        // and can be claimed again.
+        settlementId = tag.hasUUID(SETTLEMENT_TAG) ? tag.getUUID(SETTLEMENT_TAG) : null;
     }
 }

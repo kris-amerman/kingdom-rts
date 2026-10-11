@@ -4,6 +4,7 @@ import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionCommands;
+import com.krisamerman.kingdomrts.settlement.SettlementCommands;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.MilitaryStats;
 import com.krisamerman.kingdomrts.unit.MilitaryUnit;
@@ -33,6 +34,8 @@ public class KingdomRtsCommands {
                 .requires(source -> source.hasPermission(2)) // ops / cheats enabled
                 // /kingdomrts faction create|join|leave|rename|list|war|peace ...
                 .then(FactionCommands.build())
+                // /kingdomrts settlement list|here|rename|found ...
+                .then(SettlementCommands.build())
                 // /kingdomrts spawnunit [townhall <pos>] [faction <name>]
                 .then(Commands.literal("spawnunit")
                         .executes(ctx -> spawnUnit(ctx, null, null))

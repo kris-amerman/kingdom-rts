@@ -6,11 +6,11 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
-import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
 
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Inventory;
@@ -21,7 +21,8 @@ import net.minecraft.world.inventory.ContainerLevelAccess;
 import net.minecraft.world.inventory.SimpleContainerData;
 import net.minecraft.world.item.ItemStack;
 
-// The town hall menu: shows the owner and control meter, and has a Claim button for neutral halls.
+// The town hall menu: shows the settlement, owner, control meter and claim, and has a Claim button
+// for unclaimed halls (claiming founds a settlement).
 //
 // A "menu" is the server-side half of a screen (like a chest's). Each open screen has one copy on
 // the server and one on the client. Here the server copy reads the real town hall; the client copy
@@ -42,17 +43,38 @@ public class TownHallMenu extends AbstractContainerMenu {
     // Used to check the player is still at the hall (and it still exists).
     private final ContainerLevelAccess access;
     private final ContainerData data;
-    // The owning faction's name, or "" for a neutral hall. Fixed for as long as the menu is open.
-    private final String ownerName;
+    // What the panel shows besides control. Fixed for as long as the menu is open.
+    private final HallInfo info;
+
+    // The hall's settlement as the panel shows it: names are "" for an unclaimed hall.
+    private record HallInfo(String settlementName, String ownerName, int claimedChunks) {
+        static HallInfo of(ServerLevel level, TownHallBlockEntity townHall) {
+            Settlement settlement = townHall.getSettlement();
+            if (settlement == null) {
+                return new HallInfo("", "", 0);
+            }
+            return new HallInfo(settlement.name(), FactionData.get(level).nameOf(settlement.owner()), settlement.chunks().size());
+        }
+
+        void write(RegistryFriendlyByteBuf buf) {
+            buf.writeUtf(settlementName);
+            buf.writeUtf(ownerName);
+            buf.writeVarInt(claimedChunks);
+        }
+
+        static HallInfo read(RegistryFriendlyByteBuf buf) {
+            return new HallInfo(buf.readUtf(), buf.readUtf(), buf.readVarInt());
+        }
+    }
 
     // Server side: opened by a player right-clicking the hall.
-    private TownHallMenu(int containerId, Inventory inventory, TownHallBlockEntity townHall, String ownerName) {
+    private TownHallMenu(int containerId, Inventory inventory, TownHallBlockEntity townHall, HallInfo info) {
         super(KingdomRts.TOWN_HALL_MENU.get(), containerId);
         this.townHall = townHall;
         this.openedOwner = townHall.getOwner();
         this.viewer = (ServerPlayer) inventory.player;
         this.access = ContainerLevelAccess.create(townHall.getLevel(), townHall.getBlockPos());
-        this.ownerName = ownerName;
+        this.info = info;
         this.data = new ContainerData() {
             @Override
             public int get(int index) {
@@ -79,27 +101,35 @@ public class TownHallMenu extends AbstractContainerMenu {
         this.viewer = null;
         this.access = ContainerLevelAccess.NULL;
         extraData.readBlockPos();
-        this.ownerName = extraData.readUtf();
+        this.info = HallInfo.read(extraData);
         this.data = new SimpleContainerData(1);
         addDataSlots(data);
     }
 
     // Opens (or re-opens) the menu for a player.
     public static void open(ServerPlayer player, TownHallBlockEntity townHall) {
-        String ownerName = townHall.getOwner() == null ? "" : FactionData.get(player.serverLevel()).nameOf(townHall.getOwner());
-        player.openMenu(new SimpleMenuProvider((id, inventory, p) -> new TownHallMenu(id, inventory, townHall, ownerName), TITLE),
+        HallInfo info = HallInfo.of(player.serverLevel(), townHall);
+        player.openMenu(new SimpleMenuProvider((id, inventory, p) -> new TownHallMenu(id, inventory, townHall, info), TITLE),
                 buf -> {
                     buf.writeBlockPos(townHall.getBlockPos());
-                    buf.writeUtf(ownerName);
+                    info.write(buf);
                 });
     }
 
-    public boolean isNeutral() {
-        return ownerName.isEmpty();
+    public boolean isUnclaimed() {
+        return info.settlementName().isEmpty();
+    }
+
+    public String getSettlementName() {
+        return info.settlementName();
     }
 
     public String getOwnerName() {
-        return ownerName;
+        return info.ownerName();
+    }
+
+    public int getClaimedChunks() {
+        return info.claimedChunks();
     }
 
     public int getControl() {
@@ -125,12 +155,14 @@ public class TownHallMenu extends AbstractContainerMenu {
         if (id != CLAIM_BUTTON || townHall == null || !(player instanceof ServerPlayer serverPlayer)) {
             return false;
         }
-        Faction faction = townHall.claim(serverPlayer);
-        if (faction == null) {
-            player.sendSystemMessage(Component.literal("This town hall is already owned"));
+        SettlementOps.FoundResult result = townHall.claim(serverPlayer);
+        if (result.settlement() == null) {
+            player.sendSystemMessage(Component.literal("Can't claim: " + result.problem()));
             return false;
         }
-        player.sendSystemMessage(Component.literal("You claimed this town hall for " + faction.name()));
+        Settlement settlement = result.settlement();
+        player.sendSystemMessage(Component.literal("You founded " + settlement.name() + " for "
+                + FactionData.get(serverPlayer.serverLevel()).nameOf(settlement.owner())));
         // The owner changed, so broadcastChanges re-opens the menu to show it.
         return true;
     }
