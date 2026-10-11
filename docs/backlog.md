@@ -23,7 +23,7 @@ Story template:
 ## Current: Settlements MVP
 
 ### S-003 Settlement Storage block
-- **Status:** in review | **Branch:** feature/settlement-storage | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/settlement-storage | **PR:** #8 | **Depends on:** S-001
 - **Goal:** a settlement has storage that other factions can't open, break or drain until they capture it.
 - **Scope:**
   - **Block:** a chest-like block with a single-chest inventory.
