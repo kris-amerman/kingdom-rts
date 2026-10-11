@@ -127,6 +127,18 @@ public class SettlementData extends SavedData {
         setDirty();
     }
 
+    void addStorage(Settlement settlement, BlockPos pos) {
+        if (settlement.addStorage(pos)) {
+            setDirty();
+        }
+    }
+
+    void removeStorage(Settlement settlement, BlockPos pos) {
+        if (settlement.removeStorage(pos)) {
+            setDirty();
+        }
+    }
+
     void rename(Settlement settlement, String name) {
         settlement.setName(name);
         setDirty();

@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "kingdomrts:block/settlement_storage" }
+  }
+}

@@ -2,6 +2,8 @@
   "itemGroup.kingdomrts": "Kingdom RTS Tab",
   "block.kingdomrts.example_block": "Example Block",
   "block.kingdomrts.town_hall": "Town Hall",
+  "block.kingdomrts.settlement_storage": "Settlement Storage",
+  "container.kingdomrts.settlement_storage": "Settlement Storage",
   "item.kingdomrts.example_item": "Example Item",
   "entity.kingdomrts.military_unit": "Military Unit",
   "container.kingdomrts.town_hall": "Town Hall",
