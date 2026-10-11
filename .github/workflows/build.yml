@@ -23,3 +23,7 @@ jobs:
 
       - name: Build with Gradle
         run: ./gradlew build
+
+      # Runs every GameTest in a headless server; fails the check if any test fails.
+      - name: Run GameTests
+        run: ./gradlew runGameTestServer

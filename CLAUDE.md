@@ -82,5 +82,6 @@ Not built yet. Don't implement any of this unless asked, but keep current work c
 - NeoForge APIs changed a lot between versions. Check against the actual 1.21.1 sources (External Libraries) or docs.neoforged.net for 1.21.1 rather than relying on memory.
 - Dependencies: avoid other gameplay/content mods - depending on one means its systems and design decisions become part of this mod's, which "standalone" is meant to rule out. A well-established library mod that solves a narrow technical problem (rendering, animation, and the like) and carries no gameplay content of its own is fine to use when it's clearly the standard tool for that problem.
 - Planned work is tracked as stories in docs/backlog.md, one story per PR. Read it when starting work, and keep it updated as a story starts, changes scope, or ships.
-- After a change, run `./gradlew build` and say what to check in-game via `runClient`.
+- Every story ships with tests: JUnit unit tests (src/test/java) for pure rules, GameTests (the `gametest` package, run headless by `./gradlew runGameTestServer` or in-game with `/test runall`) for gameplay, and a short manual checklist only for client-side visuals. Pull rules into pure functions so they can be unit tested.
+- After a change, run `./gradlew build` (which runs the unit tests) and `./gradlew runGameTestServer`, and say what's left to check in-game via `runClient`.
 - Do not commit or push. Version control is handled by the owner.
