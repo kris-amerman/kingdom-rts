@@ -160,32 +160,11 @@ public class TownHallBlockEntity extends BlockEntity {
                 attackersByFaction.merge(faction, 1, Integer::sum);
             }
         }
-        // Each hostile faction is compared with the defenders on its own; hostile factions are not
-        // added together (they may well be at war with each other too). Only the strongest one matters.
-        int strongestAttackers = attackersByFaction.values().stream().mapToInt(Integer::intValue).max().orElse(0);
-
-        // Majority rule: the strongest hostile faction outnumbers the defenders -> drain; the
-        // defenders outnumber it, or there are no hostile units at all -> regenerate; equal -> hold.
-        //
-        // Capture: when a drain would take control below 1, the hall changes owner on this check,
-        // to the hostile faction with the most units present, at control 1 in its favor. From the
-        // next check on, the same rule applies relative to the new owner, so it has to keep the
-        // majority to push control back up; a hostile majority can flip it again. On a tie for most
-        // attackers, control holds at 1 until one faction leads. Units don't change allegiance.
+        // The rule itself (majority, flip below 1, tie holds at 1) lives in CaptureRules.
         int oldControl = townHall.control;
-        int newControl = oldControl;
-        UUID capturedBy = null;
-        boolean tiedForCapture = false;
-        if (strongestAttackers > defenders) {
-            newControl -= CONTROL_CHANGE_PER_CHECK;
-            if (newControl < MIN_CONTROL) {
-                newControl = MIN_CONTROL;
-                capturedBy = strongest(attackersByFaction);
-                tiedForCapture = capturedBy == null;
-            }
-        } else if (strongestAttackers < defenders || strongestAttackers == 0) {
-            newControl = Math.min(newControl + CONTROL_CHANGE_PER_CHECK, MAX_CONTROL);
-        }
+        CaptureRules.Outcome result = CaptureRules.evaluate(oldControl, defenders, attackersByFaction);
+        int newControl = result.newControl();
+        UUID capturedBy = result.capturedBy();
 
         String outcome = "";
         if (capturedBy != null) {
@@ -196,13 +175,13 @@ public class TownHallBlockEntity extends BlockEntity {
             townHall.control = newControl;
             townHall.setChanged();
         }
-        if (tiedForCapture) {
+        if (result.tiedForCapture()) {
             outcome = ", holding: tie for most attackers";
         }
 
         // Counts are relative to the owner at the start of this check.
         KingdomRts.LOGGER.debug("{} (town hall at {}): owner={}, attackers={} strongest={}, defenders={}, control={}{}",
-                settlement.name(), pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), strongestAttackers,
+                settlement.name(), pos.toShortString(), factions.nameOf(owner), describe(factions, attackersByFaction), result.strongestAttackers(),
                 defenders, newControl, outcome);
 
         // Hostile faction names, strongest first (ties in alphabetical order), for the bar and alerts.
@@ -211,7 +190,7 @@ public class TownHallBlockEntity extends BlockEntity {
                         .thenComparing(e -> factions.nameOf(e.getKey())))
                 .map(e -> factions.nameOf(e.getKey()))
                 .toList();
-        boolean draining = strongestAttackers > defenders;
+        boolean draining = result.draining();
 
         if (capturedBy != null) {
             String message = settlement.name() + " was captured by " + factions.nameOf(capturedBy)
@@ -219,14 +198,11 @@ public class TownHallBlockEntity extends BlockEntity {
             serverLevel.getServer().getPlayerList().broadcastSystemMessage(Component.literal(message), false);
             // Show the new owner at 1 right away; the next check works out the attackers relative to them.
             townHall.bossBar().update(serverLevel, pos, factions.nameOf(capturedBy), settlement.name(), MIN_CONTROL,
-                    CaptureBossBar.Trend.HOLDING, List.of());
+                    CaptureRules.Trend.HOLDING, List.of());
             return;
         }
 
-        CaptureBossBar.Trend trend = draining ? CaptureBossBar.Trend.DRAINING
-                : strongestAttackers == defenders && strongestAttackers > 0 ? CaptureBossBar.Trend.HOLDING
-                : CaptureBossBar.Trend.RISING;
-        townHall.bossBar().update(serverLevel, pos, factions.nameOf(owner), settlement.name(), newControl, trend, attackerNames);
+        townHall.bossBar().update(serverLevel, pos, factions.nameOf(owner), settlement.name(), newControl, result.trend(), attackerNames);
 
         // Alert the owner's members the moment the hall starts draining (not on every draining check).
         if (draining && !townHall.wasDraining && level.getGameTime() - townHall.lastAlertTick >= ALERT_COOLDOWN_TICKS) {
@@ -269,24 +245,6 @@ public class TownHallBlockEntity extends BlockEntity {
         if (bossBar != null) {
             bossBar.hide();
         }
-    }
-
-    // The faction with the most units, or null if there's a tie for most (or no one).
-    @Nullable
-    private static UUID strongest(Map<UUID, Integer> countsByFaction) {
-        UUID best = null;
-        int bestCount = 0;
-        boolean tied = false;
-        for (Map.Entry<UUID, Integer> entry : countsByFaction.entrySet()) {
-            if (entry.getValue() > bestCount) {
-                best = entry.getKey();
-                bestCount = entry.getValue();
-                tied = false;
-            } else if (entry.getValue() == bestCount) {
-                tied = true;
-            }
-        }
-        return tied ? null : best;
     }
 
     // e.g. "{Red=3, Green=1}"

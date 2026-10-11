@@ -105,6 +105,13 @@ neoForge {
             sourceSet(sourceSets.main)
         }
     }
+
+    // Runs JUnit tests (src/test/java) with Minecraft and this mod loaded, so tests can use game
+    // classes. `./gradlew test` (also part of `./gradlew build`) runs them.
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
 }
 
 // Sets up a dependency configuration called 'localRuntime'.
@@ -116,6 +123,10 @@ configurations {
 }
 
 dependencies {
+    // JUnit 5 for unit tests
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
     // Example optional mod dependency with JEI
     // The JEI API is declared for compile time use, while the full JEI artifact is used at runtime
     // compileOnly "mezz.jei:jei-${mc_version}-common-api:${jei_version}"
@@ -175,6 +186,10 @@ publishing {
             url "file://${project.projectDir}/repo"
         }
     }
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform()
 }
 
 tasks.withType(JavaCompile).configureEach {

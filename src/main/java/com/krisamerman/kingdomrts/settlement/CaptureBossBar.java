@@ -23,19 +23,6 @@ public class CaptureBossBar {
     // At most this many attacking faction names in the title; the rest show as "+N".
     private static final int MAX_NAMED_ATTACKERS = 2;
 
-    // Which way control is moving this check, shown as the bar's color.
-    public enum Trend {
-        DRAINING(BossEvent.BossBarColor.RED),
-        HOLDING(BossEvent.BossBarColor.YELLOW),
-        RISING(BossEvent.BossBarColor.GREEN);
-
-        final BossEvent.BossBarColor color;
-
-        Trend(BossEvent.BossBarColor color) {
-            this.color = color;
-        }
-    }
-
     // NOTCHED_20: 20 segments, so each change of 5 control moves exactly one notch.
     private final ServerBossEvent event = new ServerBossEvent(Component.empty(), BossEvent.BossBarColor.RED,
             BossEvent.BossBarOverlay.NOTCHED_20);
@@ -45,7 +32,7 @@ public class CaptureBossBar {
 
     // Called once per capture check for an owned hall. attackersStrongestFirst = names of the hostile
     // factions with units in the capture radius, strongest first (empty when nobody is attacking).
-    public void update(ServerLevel level, BlockPos pos, String ownerName, String settlementName, int control, Trend trend,
+    public void update(ServerLevel level, BlockPos pos, String ownerName, String settlementName, int control, CaptureRules.Trend trend,
             List<String> attackersStrongestFirst) {
         long now = level.getGameTime();
         if (!attackersStrongestFirst.isEmpty()) {
@@ -57,9 +44,18 @@ public class CaptureBossBar {
         }
 
         event.setName(title(ownerName, settlementName, attackersStrongestFirst));
-        event.setColor(trend.color);
+        event.setColor(color(trend));
         event.setProgress(control / (float) TownHallBlockEntity.MAX_CONTROL);
         updateViewers(level, pos);
+    }
+
+    // The bar's color shows which way control is moving.
+    private static BossEvent.BossBarColor color(CaptureRules.Trend trend) {
+        return switch (trend) {
+            case DRAINING -> BossEvent.BossBarColor.RED;
+            case HOLDING -> BossEvent.BossBarColor.YELLOW;
+            case RISING -> BossEvent.BossBarColor.GREEN;
+        };
     }
 
     // Removes the bar from everyone's screen.
