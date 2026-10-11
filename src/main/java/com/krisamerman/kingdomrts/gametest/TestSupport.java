@@ -17,6 +17,7 @@ import com.krisamerman.kingdomrts.unit.MilitaryUnit;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -26,6 +27,11 @@ import net.minecraft.world.phys.Vec3;
 //
 // Factions and settlements are world-wide saved data, not per test area, so tests use unique
 // faction names and remove their town halls when they finish (which dissolves the settlement).
+//
+// Running tests in-game: /test runall (everything) or /test run <method name, lowercase>.
+// /test runall <class> does NOT work here: vanilla finds a class's tests by a "<class>." name
+// prefix, and our tests are unprefixed (@PrefixGameTestTemplate(false)) so they can share one
+// template. Prefixing would need a template copy per class; not worth it at this size.
 final class TestSupport {
     static final String TEMPLATE = "platform";
     static final int FLOOR_Y = 1;
@@ -75,6 +81,18 @@ final class TestSupport {
         unit.setNoAi(!ai);
         helper.getLevel().addFreshEntity(unit);
         return unit;
+    }
+
+    // A fake server player in the test world, without operator rights (it counts as creative mode).
+    // Remove it with removePlayer when done. Vanilla marks this helper deprecated for removal in a
+    // later Minecraft version but offers no replacement in 1.21.1; this is the one place to change.
+    @SuppressWarnings("removal")
+    static ServerPlayer mockPlayer(GameTestHelper helper) {
+        return helper.makeMockServerPlayerInLevel();
+    }
+
+    static void removePlayer(GameTestHelper helper, ServerPlayer player) {
+        helper.getLevel().getServer().getPlayerList().remove(player);
     }
 
     static TownHallBlockEntity hall(GameTestHelper helper, BlockPos relativePos) {

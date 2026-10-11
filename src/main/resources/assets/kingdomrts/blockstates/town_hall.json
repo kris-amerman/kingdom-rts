@@ -1,5 +1,6 @@
 {
   "variants": {
-    "": { "model": "kingdomrts:block/town_hall" }
+    "claimed=false": { "model": "kingdomrts:block/town_hall" },
+    "claimed=true": { "model": "kingdomrts:block/town_hall" }
   }
 }
