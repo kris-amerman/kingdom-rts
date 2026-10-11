@@ -25,6 +25,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -91,6 +92,16 @@ public class TownHallBlockEntity extends BlockEntity {
     void settlementFounded(UUID settlementId) {
         this.settlementId = settlementId;
         ownerChanged(MAX_CONTROL);
+        setClaimedState(true);
+    }
+
+    // Keeps the block's CLAIMED state (which turns on its protection) in step with its settlement.
+    private void setClaimedState(boolean claimed) {
+        BlockState state = getBlockState();
+        if (level != null && state.hasProperty(TownHallBlock.CLAIMED) && state.getValue(TownHallBlock.CLAIMED) != claimed) {
+            // Same block, so this keeps the block entity; UPDATE_ALL sends the new state to clients.
+            level.setBlock(worldPosition, state.setValue(TownHallBlock.CLAIMED, claimed), Block.UPDATE_ALL);
+        }
     }
 
     // The settlement has a new owner (founded or captured): reset the meter to the given control.
@@ -136,6 +147,7 @@ public class TownHallBlockEntity extends BlockEntity {
                 townHall.settlementId = null; // its settlement no longer exists
                 townHall.setChanged();
             }
+            townHall.setClaimedState(false);
             if (townHall.bossBar != null) {
                 townHall.bossBar.hide();
             }
@@ -143,6 +155,7 @@ public class TownHallBlockEntity extends BlockEntity {
             return;
         }
         UUID owner = settlement.owner();
+        townHall.setClaimedState(true); // e.g. halls claimed before this block state existed
 
         // Presence: only military units that belong to a faction. Mobs never count, factionless
         // units never count, and units of factions not at war with the owner count as neither side.
