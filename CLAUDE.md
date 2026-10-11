@@ -1,6 +1,6 @@
 # Kingdom RTS
 
-A NeoForge mod for Minecraft: a long-lived, real-time kingdom-management game. The player founds and grows settlements, and defends and captures territory against rival factions. Standalone, with no dependency on other gameplay mods.
+A NeoForge mod for Minecraft: a long-lived, real-time kingdom-management game. The player founds and grows settlements, trades and negotiates with rival factions, and defends and captures territory against them. Think Polytopia's empire-building and strategy, with persistent settlements and deeper relationships between factions. Standalone, with no dependency on other gameplay mods.
 
 ## Stack
 - Minecraft 1.21.1, NeoForge 21.1.x, ModDevGradle, Java 21
@@ -9,6 +9,16 @@ A NeoForge mod for Minecraft: a long-lived, real-time kingdom-management game. T
 - `./gradlew runClient` launches the dev client (the main way to verify changes in-game)
 - `./gradlew runServer` runs a dedicated dev server
 - `./gradlew build` compiles and checks the project
+
+## Principles
+- Factions have identical capabilities whether AI-led or player-led. Every action a player can take is an operation any faction can perform, and AI factions follow the same rules and use the same systems. Game rules act on factions and units, not on players; a player is one way of controlling a faction.
+- If everything is makeable and the world is open, no rule makes trading raw materials strictly necessary without artificial scarcity. Like most strategy games, this mod uses unevenly distributed resources to drive competition and trade.
+- Autarky should be a losing strategy, or at least very hard to sustain.
+- Resources are physical items and blocks in the world, not abstract counters.
+- Prefer constraints that come from the world (labor, land, distance, time, geography) over arbitrary rules. A restriction only matters if players can't work around it.
+- Settlement systems (workers, trade) should be easier and more efficient than doing the same work by hand, without making the game trivial.
+- Keep per-unit logic cheap: no per-tick world scans, and spread expensive work across ticks. Jobs are explicit steps, and a unit that can't make progress notices and recovers instead of stalling forever. Measure before optimizing anything bigger.
+- Content is data: units, occupations, buildings and materials are defined as data entries, so a new one doesn't need new code and others can add their own.
 
 ## MVP systems
 The owner will name the system to work on in each session. Work only on that system.
@@ -20,18 +30,22 @@ The owner will name the system to work on in each session. Work only on that sys
 - Majority rule: each hostile faction is compared with the defenders on its own; hostile factions don't combine. When the strongest hostile faction outnumbers the defenders, the meter drains steadily over time. When defenders outnumber it, it regenerates toward 100. When both sides are present and equal, it holds. With no attackers present, it regenerates.
 - Capture is never instant. It requires sustained presence, so a quick raid-and-retreat can't flip a settlement.
 - When a drain would take the meter below 1, the settlement changes owner (see Settlements) to the strongest hostile faction present; a tie for strongest holds the meter at 1. The meter starts at 1 for the new owner, who must keep the majority to raise it.
-- A neutral settlement isn't captured. A player claims it by interacting with it, and it becomes theirs immediately. The meter and unit presence only apply to owned settlements.
+- An unclaimed settlement isn't captured. A player claims it by interacting with it, and it becomes theirs immediately. The meter and unit presence only apply to owned settlements.
+- While a hall is under attack, nearby players see the control meter as a boss bar, and the owner's online members are alerted.
 
 ### Factions
-- A faction is a side that owns settlements and units - effectively a nation. The player has a faction. Rival factions are AI-controlled.
+- A faction is a side that owns settlements and units - effectively a nation. A faction can be led by a player or by AI. Its members are its players and its units.
 - Factions are not hostile to each other by default. A faction can declare war on another, which makes the two hostile. Other relationships, such as neutrality or a formal alliance, are possible.
-- A player starts without a faction. A newly placed town hall is neutral. Claiming a neutral settlement while factionless founds a faction, and the claimer becomes its owner.
+- A player starts without a faction. They found one, and become its leader, in one of two ways: by claiming a naturally generated settlement through its town hall, or by placing a starter camp (see Direction).
 
 ### Settlements
-- A settlement is a city built around a town hall, owned by a faction, or unowned (neutral).
-- Claims the chunks around it. Claimed chunks belong to the settlement's owner.
-- Knows which units and storage containers belong to it.
-- On capture, the settlement and its claimed chunks pass to the new owner, who also gains access to its storage containers. Whether any units change allegiance along with it - and if so, which ones - is still open; don't assume all units automatically flip owners, especially units with a military occupation.
+- A settlement is a city built around a town hall, owned by a faction or unclaimed. A settlement exists once its town hall is built and claimed, as long as there's enough valid space around it (how many chunks, and any buffer from other settlements, is open). Its size doesn't matter.
+- Town halls are built only through the build tool, like every other building (see Direction), so a player's settlement is claimed the moment it's founded. The town hall block is the core block inside the town hall structure, used to claim the settlement and manage it. Unclaimed settlements are only the naturally generated ones, claimed by interacting with their town hall. Every settlement starts with a small claim, and a town hall can't be built in another faction's territory.
+- Until the build tool exists, the MVP places a town hall directly as a block. This is a temporary stand-in: the placed hall starts unclaimed and is claimed by interacting with it.- Claims the chunks around it. Claimed chunks belong to the settlement's owner. For the MVP a settlement has only its starting claim. How claims expand later is open, so don't design it yet.
+- Anyone can place and break blocks, except the town hall and the settlement's storage containers, which can't be broken. What happens when a faction damages another faction's territory while at peace is open.
+- Knows which units and storage containers belong to it. Other factions can't open or break a settlement's storage containers until the settlement is captured. Allied access may come later.
+- Buildings are placed from templates, and a player can't hand-build a structure that counts as a building (players can still place blocks freely; they just don't count as buildings). The template is how the mod knows a building's layout and when it has been damaged or destroyed. Later, a builder will repair a damaged building back to its template when told to, possibly with an auto-repair option; the details are open.
+- On capture, the settlement and its claimed chunks pass to the new owner, who also gains access to its storage containers. Units without a military occupation pass to the new owner. Units with a military occupation keep their faction, which stays hostile to the new owner.
 - A settlement has its own happiness, based on its constituents. If a settlement's happiness drops below a threshold, its units can revolt - stopping work, turning on the settlement's leadership, or breaking away to form an independent hostile faction.
 
 ### Units
@@ -47,6 +61,20 @@ MVP occupations:
   - **Builder**: is assigned a structure to build at a site. It takes the required materials from settlement storage, walks to the site, and places blocks until the structure matches its predefined layout. Materials are used up as blocks are placed. Several builders can work on one structure at once.
 - Stats and job definitions live in data rather than hardcoded per unit type, so a new occupation can be added as a data entry rather than new code. This also keeps the door open to letting others add unit types without forking the mod.
 - Pacing is a design goal for jobs: a player should be able to grow several settlements in a reasonable time without tedious material supply. Build speed and costs will need playtesting, so keep them easy to change.
+
+## Direction
+Not built yet. Don't implement any of this unless asked, but keep current work compatible with it. The fuller design, decisions, and open questions are in docs/design.md.
+
+- **Progression**: A player gets a settlement either by claiming a naturally generated unclaimed one or by placing a starter camp item, which can be crafted or found. The camp comes with a few beds, some starting gold, a builder, and the build tool (see Build tools), which the player uses to choose where the town hall goes. The player commissions the first buildings (a lumber hut, a woodworker's hut, a garden or hunter's hut, a mining hut), and their workers buy what they need from each other, so a basic economy forms. From there, growth follows supply and demand. Starting gold works like Polytopia's stars: just enough to get going, with no debt.
+- **Money**: Gold is physical coin, kept in a faction treasury at the town hall and minted from gold ore. A commission pays the builder, who buys materials from producers and keeps the rest as a wage, so gold circulates through the settlement. The treasury pays for hand-placed and public buildings. In zoned lots, the units who will live or work there pay for private buildings from their own earnings. Gold flows back to the treasury through a sales tax on trades between units (a higher rate lowers happiness), permit fees, and trade with other factions. Naturally generated settlements, for later, already have buildings including a town hall, so claiming one doesn't spawn a starter camp.
+- **Build tools**: The main way a player shapes a settlement, very similar to MineColonies' build tool (likely reusing Structurize if it fits). The player previews a building in the world and confirming the placement commissions it. Buildings are picked from a catalog and paid for in gold rather than crafted as hut blocks. A builder lives on site until the job is finished, and a courier delivers the materials to the site. Placement is only inside the faction's own claim and can't collide with existing buildings; builders clear and level the site. Later tools include demolition, zoning, infrastructure (roads, walls, bridges, terraforming) and possibly claim management. The tools sit on top of faction operations (commission a building at a site, demolish, zone, and so on) that AI factions also use under the same rules, but an AI decides where to build in its own way, such as from a predetermined layout, rather than imitating the player's UI. Building styles and packs are data, so the community can ship their own.
+- **AI factions**: An open world has nothing pushing factions together, so AI-led factions appear near players instead. They show up gradually near where a player has settled, once that settlement passes a development threshold, up to a configurable cap, so players always have neighbors to trade with, ally with or fight. Each starts the same way a player's settlement does, from a starter camp, and grows by the same rules. They aren't created at world generation. Commands create and delete them; deleting a faction removes its leader and units but leaves structures standing.
+- **Population**: A settlement grows as new units appear in it over time.
+- **Growth limits**: Settlements limit their own size naturally - food, housing, space, the cost of defending land, and unrest when happiness isn't met.
+- **Specialization**: At development thresholds a faction makes permanent branch choices that can't be undone. They apply to the whole faction, not to one settlement.
+- **Materials and trade**: A few custom materials, unevenly spread across the world, drive trade and competition. What a shortage does is open; it may be severe enough to kill a settlement, pushing factions toward trade or capture. Trade between factions moves real stock, so a faction can only sell what it holds, and AI factions trade with each other under the same rules.
+- **Relationships**: Modeled on Polytopia. Two factions are at war, neutral, or at peace. Peace is a treaty one faction offers and the other accepts; breaking one leaves a lasting mark. Each AI faction also has a mood toward every other faction, from horrible to great, which sets how aggressive it is and how likely it is to accept peace. The mood comes from visible opinions based on what it can observe - positive ones such as sharing friends or enemies, not having attacked recently, having diplomatic ties, or being powerful, and negative ones such as recent attacks, military units near its borders, looking weak, touching borders, siding with its enemies, or having broken a treaty.
+- **Create**: We plan to lean heavily into Create later - units operating contraptions, Create-built factories, and eventually cannons and vehicles. It will come as an add-on so the core mod also works on its own, so don't add a dependency on Create now.
 
 ## Working notes
 - The owner is rusty on Java. Briefly explain unfamiliar Java or NeoForge concepts as they come up.
