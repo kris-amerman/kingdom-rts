@@ -23,7 +23,7 @@ Story template:
 ## Current: Settlements MVP
 
 ### S-002 Town hall protection
-- **Status:** in review | **Branch:** feature/town-hall-protection | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/town-hall-protection | **PR:** #7 | **Depends on:** S-001
 - **Goal:** a claimed town hall can't be destroyed in survival.
 - **Scope:**
   - A claimed hall can't be mined by anyone in survival; creative-mode operators still can (testing).
