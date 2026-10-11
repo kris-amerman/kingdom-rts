@@ -23,7 +23,7 @@ Story template:
 ## Current: Settlements MVP
 
 ### S-005 Test setup
-- **Status:** in review | **Branch:** feature/test-setup | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/test-setup | **PR:** #6 | **Depends on:** S-001
 - **Goal:** features are checked by automated tests (unit tests + GameTests, run in CI) instead of step-by-step manual testing.
 - **Scope:**
   - JUnit 5 through ModDevGradle's `unitTest` (runs with the game loaded), run by `./gradlew build`.
