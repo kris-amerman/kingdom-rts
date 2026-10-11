@@ -18,6 +18,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
 
@@ -54,12 +55,26 @@ final class TestSupport {
     // Places a town hall and founds a settlement there for the faction, through the same operation
     // the Claim button uses.
     static Settlement found(GameTestHelper helper, BlockPos relativePos, Faction faction) {
+        clearLeftoverSettlements(helper, relativePos);
         helper.setBlock(relativePos, KingdomRts.TOWN_HALL.get());
         SettlementOps.FoundResult result = SettlementOps.found(helper.getLevel(), helper.absolutePos(relativePos), faction);
         if (result.settlement() == null) {
             throw new GameTestAssertException("Couldn't found a settlement: " + result.problem());
         }
         return result.settlement();
+    }
+
+    // A test that fails partway never removes its town hall, so its settlement would stay and make
+    // every later test in the same spot fail with "Too close to ...", hiding the real failure.
+    // Settlement batches run one at a time, so anything claiming this spot is left over: dissolve it.
+    private static void clearLeftoverSettlements(GameTestHelper helper, BlockPos relativePos) {
+        SettlementData settlements = SettlementData.get(helper.getLevel());
+        for (ChunkPos chunk : SettlementOps.startingClaim(helper.absolutePos(relativePos))) {
+            Settlement leftover = settlements.claimAt(helper.getLevel().dimension(), chunk);
+            if (leftover != null) {
+                SettlementOps.dissolve(helper.getLevel(), leftover);
+            }
+        }
     }
 
     // Removes a town hall, which dissolves its settlement, so the claim doesn't affect later tests.

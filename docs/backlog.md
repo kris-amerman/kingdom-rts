@@ -22,31 +22,8 @@ Story template:
 
 ## Current: Settlements MVP
 
-### S-002 Town hall protection
-- **Status:** in review | **Branch:** feature/town-hall-protection | **PR:** #7 | **Depends on:** S-001
-- **Goal:** a claimed town hall can't be destroyed in survival.
-- **Scope:**
-  - A claimed hall can't be mined by anyone in survival; creative-mode operators still can (testing).
-  - Claimed halls are explosion-proof (bedrock-level resistance).
-  - Protection lives on the block itself (break progress, explosion resistance) rather than in event cancelling, which leaks.
-  - Unclaimed halls stay breakable, so a bare hall block can't be used as an unbreakable wall (design.md names this exploit).
-- **Out of scope:** general block protection (CLAUDE.md: anyone can place and break other blocks), damage done at peace.
-- **Test:**
-  - GameTests: a claimed hall survives an explosion next to it; a survival mock player can't break a claimed hall but can break an unclaimed one; removing a hall still dissolves its settlement (already covered).
-  - Manual: in survival, mining a claimed hall makes no progress; a creative operator can break it, which dissolves the settlement. Both checked by the owner, along with `/test runall` passing in-game.
-- **Notes:**
-  - Pistons already can't push the hall, because vanilla refuses to push blocks with block entities.
-  - "Claimed" lives in a `claimed` block-state property, so clients know too (no mining cracks on a claimed hall). `TownHallBlockEntity` keeps it in step with its settlement, including halls claimed before this property existed.
-  - Guards on `TownHallBlock`:
-    - `getDestroyProgress` = 0 (client feedback);
-    - `onDestroyedByPlayer` refuses (the real server check, which also stops creative players who aren't operators);
-    - `getExplosionResistance` = bedrock's;
-    - `canEntityDestroy` = false (wither, dragon, ravagers).
-  - GameTests added: claimed hall survives an explosion; unclaimed hall is destroyed by one; a non-operator player can't break a claimed hall (zero mining progress); a player can break an unclaimed hall. A sabotage check (guards off) fails the two claimed-hall tests.
-  - `TestSupport.mockPlayer` wraps vanilla's mock-player helper, which is marked deprecated for removal in a later Minecraft version but has no 1.21.1 replacement.
-
 ### S-003 Settlement Storage block
-- **Status:** planned | **Branch:** feature/settlement-storage | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/settlement-storage | **PR:** - | **Depends on:** S-001
 - **Goal:** a settlement has storage that other factions can't open, break or drain until they capture it.
 - **Scope:**
   - **Block:** a chest-like block with a single-chest inventory.
@@ -58,10 +35,25 @@ Story template:
 - **Out of scope:** same-faction automation, allied access, units using storage (comes with jobs).
 - **Test:**
   - GameTests: placement inside vs. outside your claim; a hopper underneath pulls nothing; it survives an explosion; access checks for the owner's members vs. another faction (mock players), before and after a capture.
-  - Manual: another faction's player sees the "belongs to" message; contents persist after save and reload.
+  - Manual: another faction's player sees the "belongs to" message; contents persist after save and reload. Owner checked: creative tab entry, barrel look, chest screen, refused placement outside the claim.
 - **Notes:**
   - Custom block chosen over registering vanilla chests, because hoppers and pipes would leak from vanilla ones.
-  - CLAUDE.md says storage "can't be broken" in one place, but the owner decided the owning faction can break its own. Reword that line when this ships.
+  - CLAUDE.md said storage "can't be broken" in one place, but the owner decided the owning faction can break its own. Reworded in this story.
+  - Built as `SettlementStorageBlock` + `SettlementStorageBlockEntity`:
+    - **Automation:** the block entity is a `WorldlyContainer` that offers no slots on any side, so hoppers are shut out. It registers no item-handler capability, and NeoForge only adds those automatically for vanilla block-entity types, so pipe mods can't see it.
+    - **Access:** members of the owning faction, or creative-mode operators. Storage that belongs to no settlement (placed with `/setblock`, or its settlement dissolved) is an ordinary chest.
+    - **The settlement's list:** each settlement records its storage positions (saved), so it "knows its storage containers".
+    - **Shared code:** `SettlementOps.registerStorage` is used by both hand placement and the tests.
+  - **Known quirk:** the client can't see who owns a storage block, so another faction's player trying to mine it may see cracks briefly before the server refuses. Placement refused by the server can likewise flash for a moment.
+  - GameTests added:
+    - placement only in your own claim, and refused outside any claim;
+    - hoppers can't pull from or push into it;
+    - owned storage survives an explosion, contents intact;
+    - access follows the owner, before and after a capture;
+    - only the owner can break it (contents drop, and it leaves the settlement's list).
+
+    A sabotage check fails the matching tests.
+  - Test isolation fix: `TestSupport.found` now dissolves leftover settlements in a test's spot first. Otherwise one test failing partway made later tests fail with "Too close to …", hiding the real failure.
 
 ### S-004 Territory messages
 - **Status:** planned | **Branch:** feature/territory-messages | **PR:** - | **Depends on:** S-001
@@ -82,6 +74,29 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-002 Town hall protection
+- **Status:** done | **Branch:** feature/town-hall-protection | **PR:** #7 | **Depends on:** S-001
+- **Goal:** a claimed town hall can't be destroyed in survival.
+- **Scope:**
+  - A claimed hall can't be mined by anyone in survival; creative-mode operators still can (testing).
+  - Claimed halls are explosion-proof (bedrock-level resistance).
+  - Protection lives on the block itself (break progress, explosion resistance) rather than in event cancelling, which leaks.
+  - Unclaimed halls stay breakable, so a bare hall block can't be used as an unbreakable wall (design.md names this exploit).
+- **Out of scope:** general block protection (CLAUDE.md: anyone can place and break other blocks), damage done at peace.
+- **Test:**
+  - GameTests: a claimed hall survives an explosion next to it; a survival mock player can't break a claimed hall but can break an unclaimed one; removing a hall still dissolves its settlement (already covered).
+  - Manual: in survival, mining a claimed hall makes no progress; a creative operator can break it, which dissolves the settlement. Both checked by the owner, along with `/test runall` passing in-game.
+- **Notes:**
+  - Pistons already can't push the hall, because vanilla refuses to push blocks with block entities.
+  - "Claimed" lives in a `claimed` block-state property, so clients know too (no mining cracks on a claimed hall). `TownHallBlockEntity` keeps it in step with its settlement, including halls claimed before this property existed.
+  - Guards on `TownHallBlock`:
+    - `getDestroyProgress` = 0 (client feedback);
+    - `onDestroyedByPlayer` refuses (the real server check, which also stops creative players who aren't operators);
+    - `getExplosionResistance` = bedrock's;
+    - `canEntityDestroy` = false (wither, dragon, ravagers).
+  - GameTests added: claimed hall survives an explosion; unclaimed hall is destroyed by one; a non-operator player can't break a claimed hall (zero mining progress); a player can break an unclaimed hall. A sabotage check (guards off) fails the two claimed-hall tests.
+  - `TestSupport.mockPlayer` wraps vanilla's mock-player helper, which is marked deprecated for removal in a later Minecraft version but has no 1.21.1 replacement.
 
 ### S-005 Test setup
 - **Status:** done | **Branch:** feature/test-setup | **PR:** #6 | **Depends on:** S-001

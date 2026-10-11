@@ -25,6 +25,7 @@ public final class Settlement {
     private static final String DIMENSION_TAG = "dimension";
     private static final String HALL_TAG = "hall";
     private static final String CHUNKS_TAG = "chunks";
+    private static final String STORAGE_TAG = "storage";
 
     private final UUID id;
     private String name;
@@ -35,6 +36,8 @@ public final class Settlement {
     private final BlockPos townHall;
     // Claimed chunks, in this settlement's dimension. Fixed at founding for the MVP.
     private final Set<ChunkPos> chunks;
+    // Positions of this settlement's Settlement Storage blocks (in its dimension).
+    private final Set<BlockPos> storage = new LinkedHashSet<>();
 
     Settlement(UUID id, String name, UUID owner, ResourceKey<Level> dimension, BlockPos townHall, Set<ChunkPos> chunks) {
         this.id = id;
@@ -69,6 +72,18 @@ public final class Settlement {
         return Collections.unmodifiableSet(chunks);
     }
 
+    public Set<BlockPos> storage() {
+        return Collections.unmodifiableSet(storage);
+    }
+
+    boolean addStorage(BlockPos pos) {
+        return storage.add(pos.immutable());
+    }
+
+    boolean removeStorage(BlockPos pos) {
+        return storage.remove(pos);
+    }
+
     void setName(String name) {
         this.name = name;
     }
@@ -86,6 +101,7 @@ public final class Settlement {
         tag.put(HALL_TAG, NbtUtils.writeBlockPos(townHall));
         // A ChunkPos packs into one long, so the claim saves as a compact long array.
         tag.put(CHUNKS_TAG, new LongArrayTag(chunks.stream().mapToLong(ChunkPos::toLong).toArray()));
+        tag.put(STORAGE_TAG, new LongArrayTag(storage.stream().mapToLong(BlockPos::asLong).toArray()));
         return tag;
     }
 
@@ -96,6 +112,10 @@ public final class Settlement {
         }
         ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(tag.getString(DIMENSION_TAG)));
         BlockPos townHall = NbtUtils.readBlockPos(tag, HALL_TAG).orElse(BlockPos.ZERO);
-        return new Settlement(tag.getUUID(ID_TAG), tag.getString(NAME_TAG), tag.getUUID(OWNER_TAG), dimension, townHall, chunks);
+        Settlement settlement = new Settlement(tag.getUUID(ID_TAG), tag.getString(NAME_TAG), tag.getUUID(OWNER_TAG), dimension, townHall, chunks);
+        for (long packed : tag.getLongArray(STORAGE_TAG)) {
+            settlement.storage.add(BlockPos.of(packed));
+        }
+        return settlement;
     }
 }

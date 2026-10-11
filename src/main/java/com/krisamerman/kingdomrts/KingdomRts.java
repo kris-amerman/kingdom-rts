@@ -2,6 +2,8 @@ package com.krisamerman.kingdomrts;
 
 import org.slf4j.Logger;
 
+import com.krisamerman.kingdomrts.settlement.SettlementStorageBlock;
+import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallMenu;
@@ -22,6 +24,7 @@ import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.material.MapColor;
@@ -76,6 +79,13 @@ public class KingdomRts {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<TownHallBlockEntity>> TOWN_HALL_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("town_hall", () -> BlockEntityType.Builder.of(TownHallBlockEntity::new, TOWN_HALL.get()).build(null));
 
+    // A settlement's protected chest, id "kingdomrts:settlement_storage"
+    public static final DeferredBlock<SettlementStorageBlock> SETTLEMENT_STORAGE = BLOCKS.registerBlock("settlement_storage", SettlementStorageBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5f).sound(SoundType.WOOD));
+    public static final DeferredItem<BlockItem> SETTLEMENT_STORAGE_ITEM = ITEMS.registerSimpleBlockItem("settlement_storage", SETTLEMENT_STORAGE);
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SettlementStorageBlockEntity>> SETTLEMENT_STORAGE_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("settlement_storage", () -> BlockEntityType.Builder.of(SettlementStorageBlockEntity::new, SETTLEMENT_STORAGE.get()).build(null));
+
     // The town hall menu, id "kingdomrts:town_hall". IMenuTypeExtension.create lets the server send
     // extra data (the hall's position and owner name) when the menu opens.
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
@@ -99,6 +109,7 @@ public class KingdomRts {
             .displayItems((parameters, output) -> {
                 output.accept(EXAMPLE_ITEM.get());// Add the example item to the tab. For your own tabs, this method is preferred over the event
                 output.accept(TOWN_HALL_ITEM.get());
+                output.accept(SETTLEMENT_STORAGE_ITEM.get());
             }).build());
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.

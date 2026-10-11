@@ -94,6 +94,41 @@ public final class SettlementOps {
         return null;
     }
 
+    // Why this faction can't put settlement storage here, or null if it can: storage may only go
+    // inside a claim owned by that faction. (A factionless player gets "you need a faction".)
+    @Nullable
+    public static String storagePlacementProblem(ServerLevel level, BlockPos pos, @Nullable UUID faction) {
+        Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(pos));
+        if (settlement == null) {
+            return "Settlement storage can only be placed inside your own settlement's claim";
+        }
+        if (faction == null || !faction.equals(settlement.owner())) {
+            return "This land belongs to " + settlement.name() + "; storage can only go in your own claim";
+        }
+        return null;
+    }
+
+    // Makes the storage block at pos belong to the settlement whose claim it stands in (recorded on
+    // both the settlement and the block). Returns that settlement, or null if no settlement claims
+    // the spot, in which case the block is just an ordinary chest.
+    @Nullable
+    public static Settlement registerStorage(ServerLevel level, BlockPos pos) {
+        SettlementData settlements = SettlementData.get(level);
+        Settlement settlement = settlements.claimAt(level.dimension(), new ChunkPos(pos));
+        if (settlement != null) {
+            settlements.addStorage(settlement, pos);
+        }
+        if (level.getBlockEntity(pos) instanceof SettlementStorageBlockEntity storage) {
+            storage.setSettlement(settlement != null ? settlement.id() : null);
+        }
+        return settlement;
+    }
+
+    // Forgets a storage block (it was broken).
+    public static void unregisterStorage(ServerLevel level, Settlement settlement, BlockPos pos) {
+        SettlementData.get(level).removeStorage(settlement, pos);
+    }
+
     // Removes a settlement and releases its claim (its town hall is gone).
     public static void dissolve(ServerLevel level, Settlement settlement) {
         SettlementData.get(level).dissolve(settlement);
