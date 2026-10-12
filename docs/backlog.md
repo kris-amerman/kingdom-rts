@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-015 Workplaces
-- **Status:** in review | **Branch:** feature/workplaces | **PR:** - | **Depends on:** S-009
+- **Status:** in review | **Branch:** feature/workplaces | **PR:** #16 | **Depends on:** S-009
 - **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
 - **Scope:**
   - **The lumberjack hut**, a workplace block placed directly for now (like the town hall). It can only be placed inside your own claim, belongs to that settlement (which records it), and has a stock inventory protected like settlement storage. Right-clicking opens the stock.
