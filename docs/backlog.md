@@ -22,8 +22,151 @@ Story template:
 
 ## Current: Units MVP
 
+### S-015 Workplaces
+- **Status:** in review | **Branch:** feature/workplaces | **PR:** - | **Depends on:** S-009
+- **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
+- **Scope:**
+  - **The lumberjack hut**, a workplace block placed directly for now (like the town hall). It can only be placed inside your own claim, belongs to that settlement (which records it), and has a stock inventory protected like settlement storage. Right-clicking opens the stock.
+  - **Workplace data:** `data/<ns>/kingdomrts/workplace/<block>.json` gives the occupation its workers get and the worker capacity (default 1).
+  - **Hiring:** `WorkplaceOps.hire` gives an unemployed settler of the hut's settlement the hut's occupation, up to capacity. Firing, leaving the settlement, death, removing the hut, or the settlement dissolving end the job. Units that were unloaded catch up when they load.
+  - **Commands:** `/kingdomrts unit hire <units> <workplace>` and `unit fire <units>`. `spawnunit` no longer hands out jobs, only soldiers or no occupation.
+  - Soldiers are exempt.
+- **Out of scope:** the hut panel (S-017), building levels, work areas (S-014), the build tool, worker supply.
+- **Test:**
+  - Unit tests: the hiring rule, and the workplace entry's defaults and validation.
+  - GameTests:
+    - the hut is recorded on its settlement, with placement only in your own claim;
+    - hiring up to capacity;
+    - only unemployed settlers can be hired (not outsiders or soldiers);
+    - firing and leaving the settlement end the job;
+    - removing the hut unemploys its workers, including one that was unloaded;
+    - a dead worker leaves its workplace;
+    - the hut and its workers pass with the settlement on capture;
+    - other factions can't break the hut;
+    - the hire, fire and spawn commands, run for real.
+  - The lumberjack GameTests now hire their lumberjack at a hut.
+  - Manual: placing the hut (look, creative tab, refused outside your claim), opening its stock.
+- **Notes:**
+  - **Split:** the hut panel (worker list, hire and fire buttons, stock button) is its own story, S-017, to keep this PR small. Until then, hiring is by command. The owner's feedback on this story also added unit names (S-018) and job seeking (S-019).
+  - **Shared container block:** storage and workplaces share `SettlementContainerBlock` (own-claim placement, owner-only access, explosion-proof, no automation). Subclasses only say how they're recorded and what they're called. `WorkplaceBlockEntity` extends the storage block entity for the stock. `SettlementOps.ownClaimProblem` is the shared placement rule.
+  - **Workers live on the settlement:** they're recorded in `SettlementData` (`Workplace`: position, type, workers with the name they had when hired), not on the hut's block entity, so they're known even while the hut's chunk is unloaded. The unit stores its workplace position.
+  - **Pure rule:** `WorkplaceRules.hireProblem`. A unit belongs to the workplace's settlement, has no occupation yet (this also rules out soldiers), and the workplace has room.
+  - **Catch-up** (`WorkplaceOps.catchUp`, run with the settlement catch-up when a unit loads or its settlement changes hands or dissolves): a unit whose workplace no longer lists it loses its job.
+  - **Losing a job:** a unit that loses its job goes back to having no occupation and keeping near its post. Its job goals are removed.
+  - **Hut look:** fletching-table textures, as a placeholder.
+  - **Sabotage checks** that fail the matching tests: ignoring capacity; no catch-up on load.
+
+### S-018 Unit names
+- **Status:** planned | **Branch:** feature/unit-names | **PR:** - | **Depends on:** S-015
+- **Goal:** every unit has a name.
+- **Scope:**
+  - Name pools as data: `data/<ns>/kingdomrts/unit_names/*.json` with `first` and `last` lists, merged across files (loaded like settlement names).
+  - New units get a random first and last name; units saved without one get one when they load.
+  - The name shows when looked at (vanilla's behaviour for named mobs, the owner's choice), and in the unit and hut panels.
+  - `spawnunit` stops setting the "Red soldier" testing tag and reports the new unit's name.
+- **Out of scope:** renaming units.
+- **Test:** unit tests for the name picker; GameTests: a spawned unit has a name from the pools, keeps it through save and load, and the spawn command reports it. Manual: the name shows when looking at a unit.
+- **Notes:** -
+
+### S-017 Hut panel
+- **Status:** planned | **Branch:** feature/hut-panel | **PR:** - | **Depends on:** S-018
+- **Goal:** right-clicking a workplace opens a panel to see and manage it, like MineColonies' hut screens.
+- **Scope:**
+  - Right-clicking the hut opens the panel instead of the stock. Only the owning faction (and creative operators) can open it.
+  - **It shows:** the workplace's name, settlement, job, workers N/capacity, and the list of workers, each with a Fire button.
+  - **Hiring:** the settlement's unemployed settlers are listed with Hire buttons, nearest first, with simple paging.
+  - **Stock:** a button opens the stock (the chest screen).
+- **Out of scope:** automatic hiring (S-019), job settings (S-014, S-016), building levels.
+- **Test:** GameTests with real button clicks: right-clicking opens the panel; Hire and Fire work; candidates leave out soldiers, the employed, and other settlements' units; the Stock button opens the chest; outsiders are refused. Manual: the panel's look.
+- **Notes:** candidates are loaded units only, since an unloaded settler's occupation isn't known.
+
+### S-019 Job seeking
+- **Status:** planned | **Branch:** feature/job-seeking | **PR:** - | **Depends on:** S-017
+- **Goal:** unemployed settlers take jobs at huts with openings by themselves.
+- **Scope:**
+  - **Automatic hiring:** a toggle per hut, on by default (as in MineColonies). Firing someone from the panel switches the hut to manual, so the unit isn't re-hired straight away.
+  - **Seeking:** an unemployed settler checks about every 10 seconds (staggered per unit) for the nearest hut in its settlement with room and automatic hiring on, and is hired there. It only looks at its settlement's few workplaces, so it's cheap.
+- **Out of scope:** worker skills and job preferences (deferred).
+- **Test:**
+  - Unit test: choosing the workplace.
+  - GameTests:
+    - an opening is filled automatically;
+    - a manual hut isn't filled;
+    - firing from the panel switches the hut to manual;
+    - the nearest hut wins;
+    - soldiers and outsiders don't seek jobs.
+  - Manual: the toggle in the panel.
+- **Notes:** -
+
+### S-014 Lumberjack works from its hut
+- **Status:** planned | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-017
+- **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
+- **Scope:**
+  - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
+  - It picks up tree drops (logs, saplings, sticks, apples), not only logs, and gathers the drops around a felled tree.
+  - It deposits what it collected into the hut's stock after each tree or when full, and takes axes from the stock.
+  - Without room in the stock it keeps its logs and waits.
+- **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
+- **Test:** GameTests: trees outside the work area are ignored; logs and other drops end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait. Manual: the work-area setting in the panel.
+- **Notes:** replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
+
+### S-016 Lumberjack hut settings
+- **Status:** planned | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
+- **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
+- **Scope:**
+  - **Replanting** (on/off): it keeps saplings from the felled tree (it picks them up, then) and plants one of the same type where the trunk stood.
+  - **Wood types:** a whitelist or blacklist of log types to fell.
+- **Out of scope:** tree farms, bone meal.
+- **Test:** GameTests: with replanting on, a sapling is planted at the base, and with it off none is; filtered wood types are left standing. Manual: the panel controls.
+- **Notes:** -
+
+### S-010 Building templates and sites
+- **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
+- **Goal:** a settlement can have a building commissioned at a site from a template.
+- **Scope:**
+  - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
+  - **Commission:** a faction operation records a building site (template, position, rotation, settlement). It's refused outside your own claim or when it overlaps another building. Command: `/kingdomrts building commission`.
+  - **Remaining work:** a site can report which blocks are missing and the materials they need.
+- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair.
+- **Test:**
+  - Unit test: the missing-block and materials calculations.
+  - GameTests: commissioning is refused outside the claim; remaining work is correct after some blocks are placed by hand.
+- **Notes:** -
+
+### S-011 Builder job
+- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015
+- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
+- **Scope:**
+  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
+  - Materials are used up as blocks are placed.
+  - Several builders can work one site without placing the same block twice.
+  - Placement speed is set in data.
+- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
+- **Test:**
+  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
+  - Manual: watch it build.
+- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
+
+### S-012 Unit needs (design first)
+- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-011, S-014
+- **Goal:** units have hunger and happiness, drawn from real things in the world.
+- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
+- **Out of scope:** revolts, taxes.
+- **Test:** decided with the design.
+- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
+
+## Later (not yet stories)
+- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
+- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
+- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
+- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
 ### S-009 Lumberjack fells trees
-- **Status:** in review | **Branch:** feature/lumberjack | **PR:** #15 | **Depends on:** S-007, S-008
+- **Status:** done | **Branch:** feature/lumberjack | **PR:** #15 | **Depends on:** S-007, S-008
 - **Goal:** a lumberjack unit fells natural trees in its settlement's claim and keeps the logs, without supervision.
 - **Scope:**
   - **Job steps:** a small framework that runs explicit steps (CLAUDE.md), with a time limit per step and recovery chosen by the job.
@@ -85,84 +228,6 @@ Story template:
     - ignoring the axe;
     - no teleport fallback (both the pit and tree-top tests fail);
     - walking at the log instead of a stand spot (the pit test fails).
-
-### S-015 Workplaces
-- **Status:** planned | **Branch:** feature/workplaces | **PR:** - | **Depends on:** S-009
-- **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
-- **Scope:**
-  - A workplace block per job, placed directly for now (like the town hall): a lumberjack hut first. It can only be placed inside your own claim, belongs to that settlement (which records it), and is protected like settlement storage.
-  - A stock inventory, protected like settlement storage.
-  - A worker capacity set in data (default 1).
-  - **Hiring:** the hut panel lists the settlement's unemployed units to hire (like MineColonies' "Manage Workers"), plus a command. Hiring gives the unit the hut's occupation; firing it, or removing the hut, makes it unemployed.
-  - Soldiers are exempt for now.
-- **Out of scope:** building levels, work areas (S-014), the build tool, worker supply.
-- **Test:** GameTests for placement rules, hiring up to capacity, firing, removing the hut, and capture (the hut and its workers pass with the settlement). Manual: the hut panel.
-- **Notes:** -
-
-### S-014 Lumberjack works from its hut
-- **Status:** planned | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-015
-- **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
-- **Scope:**
-  - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
-  - It deposits logs into the hut's stock after each tree or when full, and takes axes from the stock.
-  - Without room in the stock it keeps its logs and waits.
-- **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
-- **Test:** GameTests: trees outside the work area are ignored; logs end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait. Manual: the work-area setting in the panel.
-- **Notes:** replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
-
-### S-016 Lumberjack hut settings
-- **Status:** planned | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
-- **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
-- **Scope:**
-  - **Replanting** (on/off): it keeps saplings from the felled tree (it picks them up, then) and plants one of the same type where the trunk stood.
-  - **Wood types:** a whitelist or blacklist of log types to fell.
-- **Out of scope:** tree farms, bone meal.
-- **Test:** GameTests: with replanting on, a sapling is planted at the base, and with it off none is; filtered wood types are left standing. Manual: the panel controls.
-- **Notes:** -
-
-### S-010 Building templates and sites
-- **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
-- **Goal:** a settlement can have a building commissioned at a site from a template.
-- **Scope:**
-  - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
-  - **Commission:** a faction operation records a building site (template, position, rotation, settlement). It's refused outside your own claim or when it overlaps another building. Command: `/kingdomrts building commission`.
-  - **Remaining work:** a site can report which blocks are missing and the materials they need.
-- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair.
-- **Test:**
-  - Unit test: the missing-block and materials calculations.
-  - GameTests: commissioning is refused outside the claim; remaining work is correct after some blocks are placed by hand.
-- **Notes:** -
-
-### S-011 Builder job
-- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015
-- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
-- **Scope:**
-  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
-  - Materials are used up as blocks are placed.
-  - Several builders can work one site without placing the same block twice.
-  - Placement speed is set in data.
-- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
-- **Test:**
-  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
-  - Manual: watch it build.
-- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
-
-### S-012 Unit needs (design first)
-- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-011, S-014
-- **Goal:** units have hunger and happiness, drawn from real things in the world.
-- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
-- **Out of scope:** revolts, taxes.
-- **Test:** decided with the design.
-- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
-
-## Later (not yet stories)
-- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
-- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
-- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
-- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
-- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
-
-## Done
 
 ### S-013 Unit info panel
 - **Status:** done | **Branch:** feature/unit-info-panel | **PR:** #14 | **Depends on:** S-008
