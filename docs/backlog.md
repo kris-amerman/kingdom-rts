@@ -22,8 +22,32 @@ Story template:
 
 ## Current: Settlements MVP
 
+### S-004 Territory messages
+- **Status:** in review | **Branch:** feature/territory-messages | **PR:** - | **Depends on:** S-001
+- **Goal:** players can tell when they cross into or out of a settlement's claim.
+- **Scope:** "Entering Oakhaven (Dev)" / "Leaving Oakhaven" in the action bar, checked only when a player changes chunk (no scanning).
+- **Out of scope:** drawing claim borders in the world.
+- **Test:**
+  - GameTest (if a mock player works for this): moving a player across a claim edge produces one enter message and one leave message.
+  - Manual: walk in and out of a claim and check how the action-bar text looks.
+- **Notes:**
+  - Uses NeoForge's `EntityEvent.EnteringSection`, which only fires when an entity enters a new 16×16×16 section. The handler skips height-only moves and compares the claim of the old chunk with the new one, so there's no per-player state and no scanning.
+  - The message choice is a pure function, `TerritoryMessages.message`, covered by the unit tests in `TerritoryMessagesTest`. Moving straight from one claim into another says "Entering …".
+  - GameTest `crossingClaimEdgeShowsMessages` uses a new `TestSupport.recordingPlayer`, a fake player that records its action-bar messages. It checks for exactly one "Entering" on the way in, nothing while moving inside the claim, and one "Leaving" on the way out. A sabotage check (messages disconnected) fails it.
+  - Not covered: no message on login or respawn inside a claim; dimension changes are untested.
+
+## Later (not yet stories)
+- **Unit/occupation refactor:** a generic `Unit` entity with occupation as data, before a second occupation exists. Also adds units belonging to a settlement and the civilian transfer on capture.
+- **Lumberjack job:** needs claims (S-001) and storage (S-003).
+- **Builder job:** needs storage and a structure layout format. Decide whether the MVP builder takes from storage or uses the on-site builder + courier model (open in design.md).
+- **Cleanup:** remove the NeoForge template leftovers (`example_block`, `example_item`, the example `Config` options and the example creative tab).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
 ### S-003 Settlement Storage block
-- **Status:** in review | **Branch:** feature/settlement-storage | **PR:** #8 | **Depends on:** S-001
+- **Status:** done | **Branch:** feature/settlement-storage | **PR:** #8 | **Depends on:** S-001
 - **Goal:** a settlement has storage that other factions can't open, break or drain until they capture it.
 - **Scope:**
   - **Block:** a chest-like block with a single-chest inventory.
@@ -54,26 +78,6 @@ Story template:
 
     A sabotage check fails the matching tests.
   - Test isolation fix: `TestSupport.found` now dissolves leftover settlements in a test's spot first. Otherwise one test failing partway made later tests fail with "Too close to …", hiding the real failure.
-
-### S-004 Territory messages
-- **Status:** planned | **Branch:** feature/territory-messages | **PR:** - | **Depends on:** S-001
-- **Goal:** players can tell when they cross into or out of a settlement's claim.
-- **Scope:** "Entering Oakhaven (Dev)" / "Leaving Oakhaven" in the action bar, checked only when a player changes chunk (no scanning).
-- **Out of scope:** drawing claim borders in the world.
-- **Test:**
-  - GameTest (if a mock player works for this): moving a player across a claim edge produces one enter message and one leave message.
-  - Manual: walk in and out of a claim and check how the action-bar text looks.
-- **Notes:** -
-
-## Later (not yet stories)
-- **Unit/occupation refactor:** a generic `Unit` entity with occupation as data, before a second occupation exists. Also adds units belonging to a settlement and the civilian transfer on capture.
-- **Lumberjack job:** needs claims (S-001) and storage (S-003).
-- **Builder job:** needs storage and a structure layout format. Decide whether the MVP builder takes from storage or uses the on-site builder + courier model (open in design.md).
-- **Cleanup:** remove the NeoForge template leftovers (`example_block`, `example_item`, the example `Config` options and the example creative tab).
-- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
-- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
-
-## Done
 
 ### S-002 Town hall protection
 - **Status:** done | **Branch:** feature/town-hall-protection | **PR:** #7 | **Depends on:** S-001
