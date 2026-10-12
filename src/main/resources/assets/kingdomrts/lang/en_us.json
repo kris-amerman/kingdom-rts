@@ -1,19 +1,9 @@
 {
-  "itemGroup.kingdomrts": "Kingdom RTS Tab",
-  "block.kingdomrts.example_block": "Example Block",
+  "itemGroup.kingdomrts": "Kingdom RTS",
   "block.kingdomrts.town_hall": "Town Hall",
   "block.kingdomrts.settlement_storage": "Settlement Storage",
   "container.kingdomrts.settlement_storage": "Settlement Storage",
-  "item.kingdomrts.example_item": "Example Item",
   "entity.kingdomrts.military_unit": "Military Unit",
   "container.kingdomrts.town_hall": "Town Hall",
-  "button.kingdomrts.claim": "Claim",
-
-  "kingdomrts.configuration.title": "Kingdom RTS Configs",
-  "kingdomrts.configuration.section.kingdomrts.common.toml": "Kingdom RTS Configs",
-  "kingdomrts.configuration.section.kingdomrts.common.toml.title": "Kingdom RTS Configs",
-  "kingdomrts.configuration.items": "Item List",
-  "kingdomrts.configuration.logDirtBlock": "Log Dirt Block",
-  "kingdomrts.configuration.magicNumberIntroduction": "Magic Number Text",
-  "kingdomrts.configuration.magicNumber": "Magic Number"
+  "button.kingdomrts.claim": "Claim"
 }
