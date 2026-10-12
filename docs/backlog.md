@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-009 Lumberjack fells trees
-- **Status:** in review | **Branch:** feature/lumberjack | **PR:** - | **Depends on:** S-007, S-008
+- **Status:** in review | **Branch:** feature/lumberjack | **PR:** #15 | **Depends on:** S-007, S-008
 - **Goal:** a lumberjack unit fells natural trees in its settlement's claim and keeps the logs, without supervision.
 - **Scope:**
   - **Job steps:** a small framework that runs explicit steps (CLAUDE.md), with a time limit per step and recovery chosen by the job.
