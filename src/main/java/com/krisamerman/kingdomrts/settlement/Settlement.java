@@ -8,8 +8,10 @@ import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.LongArrayTag;
 import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
@@ -26,6 +28,8 @@ public final class Settlement {
     private static final String HALL_TAG = "hall";
     private static final String CHUNKS_TAG = "chunks";
     private static final String STORAGE_TAG = "storage";
+    private static final String UNITS_TAG = "units";
+    private static final String OWNER_CHANGES_TAG = "owner_changes";
 
     private final UUID id;
     private String name;
@@ -38,6 +42,11 @@ public final class Settlement {
     private final Set<ChunkPos> chunks;
     // Positions of this settlement's Settlement Storage blocks (in its dimension).
     private final Set<BlockPos> storage = new LinkedHashSet<>();
+    // The units that belong to this settlement (entity UUIDs; a unit may be unloaded).
+    private final Set<UUID> units = new LinkedHashSet<>();
+    // Counts changes of owner, so units that were unloaded during a capture can tell they missed
+    // one when they load (see Unit#getSeenOwnerChanges).
+    private int ownerChanges;
 
     Settlement(UUID id, String name, UUID owner, ResourceKey<Level> dimension, BlockPos townHall, Set<ChunkPos> chunks) {
         this.id = id;
@@ -76,6 +85,22 @@ public final class Settlement {
         return Collections.unmodifiableSet(storage);
     }
 
+    public Set<UUID> units() {
+        return Collections.unmodifiableSet(units);
+    }
+
+    public int ownerChanges() {
+        return ownerChanges;
+    }
+
+    boolean addUnit(UUID unit) {
+        return units.add(unit);
+    }
+
+    boolean removeUnit(UUID unit) {
+        return units.remove(unit);
+    }
+
     boolean addStorage(BlockPos pos) {
         return storage.add(pos.immutable());
     }
@@ -90,6 +115,7 @@ public final class Settlement {
 
     void setOwner(UUID owner) {
         this.owner = owner;
+        ownerChanges++;
     }
 
     CompoundTag save() {
@@ -102,6 +128,10 @@ public final class Settlement {
         // A ChunkPos packs into one long, so the claim saves as a compact long array.
         tag.put(CHUNKS_TAG, new LongArrayTag(chunks.stream().mapToLong(ChunkPos::toLong).toArray()));
         tag.put(STORAGE_TAG, new LongArrayTag(storage.stream().mapToLong(BlockPos::asLong).toArray()));
+        ListTag unitList = new ListTag();
+        units.forEach(unit -> unitList.add(NbtUtils.createUUID(unit)));
+        tag.put(UNITS_TAG, unitList);
+        tag.putInt(OWNER_CHANGES_TAG, ownerChanges);
         return tag;
     }
 
@@ -116,6 +146,10 @@ public final class Settlement {
         for (long packed : tag.getLongArray(STORAGE_TAG)) {
             settlement.storage.add(BlockPos.of(packed));
         }
+        for (Tag unit : tag.getList(UNITS_TAG, Tag.TAG_INT_ARRAY)) {
+            settlement.units.add(NbtUtils.loadUUID(unit));
+        }
+        settlement.ownerChanges = tag.getInt(OWNER_CHANGES_TAG);
         return settlement;
     }
 }

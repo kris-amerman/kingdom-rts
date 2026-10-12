@@ -85,4 +85,16 @@ class CaptureRulesTest {
         assertEquals(MIN_CONTROL, outcome.newControl());
         assertTrue(outcome.draining());
     }
+
+    @Test
+    void militaryUnitsKeepTheirFactionOnCapture() {
+        UUID blue = UUID.randomUUID();
+        assertEquals(blue, CaptureRules.factionAfterCapture(blue, true, RED));
+    }
+
+    @Test
+    void otherUnitsPassToTheNewOwner() {
+        assertEquals(RED, CaptureRules.factionAfterCapture(UUID.randomUUID(), false, RED));
+        assertEquals(RED, CaptureRules.factionAfterCapture(null, false, RED)); // even a factionless one
+    }
 }

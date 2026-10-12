@@ -19,6 +19,8 @@ import com.krisamerman.kingdomrts.unit.Unit;
 import com.mojang.authlib.GameProfile;
 
 import io.netty.channel.embedded.EmbeddedChannel;
+import net.minecraft.commands.CommandSource;
+import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -113,6 +115,41 @@ final class TestSupport {
         unit.setNoAi(!ai);
         helper.getLevel().addFreshEntity(unit);
         return unit;
+    }
+
+    // Runs a command as an operator standing at relativePos (so selectors like @e[distance=..3]
+    // and ~ ~ ~ work from there), and returns everything it printed, failures included.
+    static List<String> runCommand(GameTestHelper helper, BlockPos relativePos, String command) {
+        List<String> output = new ArrayList<>();
+        CommandSource recorder = new CommandSource() {
+            @Override
+            public void sendSystemMessage(Component message) {
+                output.add(message.getString());
+            }
+
+            @Override
+            public boolean acceptsSuccess() {
+                return true;
+            }
+
+            @Override
+            public boolean acceptsFailure() {
+                return true;
+            }
+
+            @Override
+            public boolean shouldInformAdmins() {
+                return false;
+            }
+        };
+        ServerLevel level = helper.getLevel();
+        CommandSourceStack source = level.getServer().createCommandSourceStack()
+                .withSource(recorder)
+                .withLevel(level)
+                .withPosition(Vec3.atBottomCenterOf(helper.absolutePos(relativePos)))
+                .withPermission(4);
+        level.getServer().getCommands().performPrefixedCommand(source, command);
+        return output;
     }
 
     // A fake server player in the test world, without operator rights (it counts as creative mode).

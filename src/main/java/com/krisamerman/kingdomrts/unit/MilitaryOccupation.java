@@ -50,7 +50,7 @@ public record MilitaryOccupation(double maxHealth, double movementSpeed, double 
     }
 
     @Override
-    public boolean countsAtCapture() {
+    public boolean isMilitary() {
         return true;
     }
 }

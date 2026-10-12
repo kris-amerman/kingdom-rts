@@ -8,6 +8,7 @@ import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.settlement.SettlementOps;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -49,6 +50,7 @@ public class Unit extends PathfinderMob {
 
     private static final String FACTION_TAG = "faction_id";
     private static final String SETTLEMENT_TAG = "settlement";
+    private static final String SEEN_OWNER_CHANGES_TAG = "seen_owner_changes";
     private static final String HOME_TAG = "home";
     private static final String POST_TAG = "post";
     private static final String OCCUPATION_TAG = "occupation";
@@ -58,9 +60,14 @@ public class Unit extends PathfinderMob {
     // (a mercenary, say). A factionless unit is never part of any faction's presence or wars.
     @Nullable
     private UUID factionId;
-    // The settlement this unit belongs to. Only stored for now; settlements don't track units yet.
+    // The settlement this unit belongs to (it's also in that settlement's unit list). Changed only
+    // through SettlementOps, which keeps both sides in step.
     @Nullable
     private UUID settlementId;
+    // How many owner changes of its settlement this unit has caught up with. If the settlement was
+    // captured while this unit was unloaded, the numbers differ when it loads, and it catches up
+    // then (see SettlementOps#catchUp).
+    private int seenOwnerChanges;
     // Where it lives, independent of its settlement.
     @Nullable
     private BlockPos home;
@@ -165,9 +172,9 @@ public class Unit extends PathfinderMob {
         return occupation;
     }
 
-    // Whether this unit counts as its faction's presence at a capture point.
-    public boolean countsAtCapture() {
-        return occupation != null && occupation.countsAtCapture();
+    // Whether this unit has a military occupation (see Occupation#isMilitary).
+    public boolean isMilitary() {
+        return occupation != null && occupation.isMilitary();
     }
 
     // ---- Combat ----
@@ -208,8 +215,19 @@ public class Unit extends PathfinderMob {
         return settlementId;
     }
 
-    public void setSettlementId(@Nullable UUID settlementId) {
+    public int getSeenOwnerChanges() {
+        return seenOwnerChanges;
+    }
+
+    // Use SettlementOps.setUnitSettlement, which also updates the settlement's unit list.
+    public void setSettlement(@Nullable UUID settlementId, int seenOwnerChanges) {
         this.settlementId = settlementId;
+        this.seenOwnerChanges = seenOwnerChanges;
+    }
+
+    // Use SettlementOps (capture, catching up), which applies the rules for who changes faction.
+    public void setFactionId(@Nullable UUID factionId) {
+        this.factionId = factionId;
     }
 
     @Nullable
@@ -261,6 +279,25 @@ public class Unit extends PathfinderMob {
         return false;
     }
 
+    // Server: catches up with anything that happened to its settlement while it was unloaded
+    // (a capture, or the settlement dissolving). Runs when the unit is spawned or loaded.
+    @Override
+    public void onAddedToLevel() {
+        super.onAddedToLevel();
+        if (level() instanceof ServerLevel serverLevel) {
+            SettlementOps.catchUp(serverLevel, this);
+        }
+    }
+
+    // When a unit dies or is discarded (not when its chunk unloads), its settlement forgets it.
+    @Override
+    public void remove(RemovalReason reason) {
+        super.remove(reason);
+        if (reason.shouldDestroy() && level() instanceof ServerLevel serverLevel) {
+            SettlementOps.unitRemoved(serverLevel, this);
+        }
+    }
+
     // A unit's inventory is real items, so they drop where it dies.
     @Override
     protected void dropCustomDeathLoot(ServerLevel level, DamageSource damageSource, boolean recentlyHit) {
@@ -278,6 +315,7 @@ public class Unit extends PathfinderMob {
         }
         if (settlementId != null) {
             tag.putUUID(SETTLEMENT_TAG, settlementId);
+            tag.putInt(SEEN_OWNER_CHANGES_TAG, seenOwnerChanges);
         }
         if (home != null) {
             tag.put(HOME_TAG, NbtUtils.writeBlockPos(home));
@@ -297,6 +335,7 @@ public class Unit extends PathfinderMob {
         super.readAdditionalSaveData(tag);
         factionId = tag.hasUUID(FACTION_TAG) ? tag.getUUID(FACTION_TAG) : null;
         settlementId = tag.hasUUID(SETTLEMENT_TAG) ? tag.getUUID(SETTLEMENT_TAG) : null;
+        seenOwnerChanges = tag.getInt(SEEN_OWNER_CHANGES_TAG);
         home = NbtUtils.readBlockPos(tag, HOME_TAG).orElse(null);
         // Vanilla doesn't save the restriction, so setPost rebuilds it.
         setPost(NbtUtils.readBlockPos(tag, POST_TAG).orElse(null));

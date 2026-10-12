@@ -29,8 +29,10 @@ public interface Occupation {
     // Unit#addOccupationGoal, so they're removed again if the occupation changes). Server only.
     void applyTo(Unit unit);
 
-    // Whether a unit with this occupation counts as its faction's presence at a capture point.
-    default boolean countsAtCapture() {
+    // Whether this is a military occupation. A military unit counts as its faction's presence at a
+    // capture point, and keeps its faction when its settlement is captured (other units pass to the
+    // new owner).
+    default boolean isMilitary() {
         return false;
     }
 

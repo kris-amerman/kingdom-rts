@@ -47,13 +47,13 @@ public final class SettlementCommands {
     }
 
     // A settlement-name argument that Tab-completes existing settlement names.
-    private static RequiredArgumentBuilder<CommandSourceStack, String> settlementArgument(String argName) {
+    public static RequiredArgumentBuilder<CommandSourceStack, String> settlementArgument(String argName) {
         return Commands.argument(argName, StringArgumentType.word())
                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
                         SettlementData.get(ctx.getSource().getServer()).names(), builder));
     }
 
-    private static Settlement getSettlement(CommandContext<CommandSourceStack> ctx, String argName) throws CommandSyntaxException {
+    public static Settlement getSettlement(CommandContext<CommandSourceStack> ctx, String argName) throws CommandSyntaxException {
         String name = StringArgumentType.getString(ctx, argName);
         Settlement settlement = SettlementData.get(ctx.getSource().getServer()).byName(name);
         if (settlement == null) {
@@ -73,7 +73,8 @@ public final class SettlementCommands {
                     + " | owner: " + factions.nameOf(settlement.owner())
                     + " | town hall: " + settlement.townHall().toShortString()
                     + " in " + settlement.dimension().location()
-                    + " | claim: " + settlement.chunks().size() + " chunks";
+                    + " | claim: " + settlement.chunks().size() + " chunks"
+                    + " | units: " + settlement.units().size();
             source.sendSuccess(() -> Component.literal(line), false);
         }
         return settlements.all().size();
@@ -88,7 +89,7 @@ public final class SettlementCommands {
         }
         String owner = FactionData.get(source.getServer()).nameOf(settlement.owner());
         source.sendSuccess(() -> Component.literal("Chunk " + chunk.x + ", " + chunk.z + " belongs to "
-                + settlement.name() + " (" + owner + ")"), false);
+                + settlement.name() + " (" + owner + "), " + settlement.units().size() + " units"), false);
         return 1;
     }
 

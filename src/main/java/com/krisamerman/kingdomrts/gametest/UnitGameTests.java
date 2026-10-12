@@ -68,10 +68,10 @@ public class UnitGameTests {
         helper.assertTrue(unit.getOccupation() == soldier, "Expected the soldier occupation");
         helper.assertTrue(unit.getMaxHealth() == (float) soldier.maxHealth(), "Max health " + unit.getMaxHealth() + " != " + soldier.maxHealth());
         helper.assertTrue(unit.getAttackRange() == soldier.attackRange(), "Attack range " + unit.getAttackRange() + " != " + soldier.attackRange());
-        helper.assertTrue(unit.countsAtCapture(), "A soldier should count at capture");
+        helper.assertTrue(unit.isMilitary(), "A soldier should count at capture");
 
         Unit idle = unit(helper, SPOT.east(), null, null, false);
-        helper.assertTrue(idle.getOccupation() == null && idle.getAttackRange() == 0 && !idle.countsAtCapture(),
+        helper.assertTrue(idle.getOccupation() == null && idle.getAttackRange() == 0 && !idle.isMilitary(),
                 "A unit with no occupation has no attack range and doesn't count at capture");
         helper.succeed();
     }
@@ -82,7 +82,7 @@ public class UnitGameTests {
         Unit original = unit(helper, SPOT, red, false);
         UUID settlementId = UUID.randomUUID();
         BlockPos home = helper.absolutePos(SPOT.east(3));
-        original.setSettlementId(settlementId);
+        original.setSettlement(settlementId, 3);
         original.setHome(home);
         original.getInventory().setItem(2, new ItemStack(Items.OAK_LOG, 12));
 
@@ -92,7 +92,7 @@ public class UnitGameTests {
         loaded.load(saved);
 
         helper.assertTrue(red.id().equals(loaded.getFactionId()), "Faction not saved");
-        helper.assertTrue(settlementId.equals(loaded.getSettlementId()), "Settlement not saved");
+        helper.assertTrue(settlementId.equals(loaded.getSettlementId()) && loaded.getSeenOwnerChanges() == 3, "Settlement not saved");
         helper.assertTrue(home.equals(loaded.getHome()), "Home not saved");
         helper.assertTrue(original.getPost().equals(loaded.getPost()), "Post not saved");
         helper.assertTrue(Occupation.SOLDIER.equals(loaded.getOccupationId()), "Occupation not saved");

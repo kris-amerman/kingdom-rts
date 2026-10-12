@@ -166,7 +166,7 @@ public class TownHallBlockEntity extends BlockEntity {
         int defenders = 0;
         Map<UUID, Integer> attackersByFaction = new HashMap<>();
         for (Unit unit : level.getEntitiesOfClass(Unit.class, area,
-                e -> e.isAlive() && e.countsAtCapture() && e.getFactionId() != null && withinRadius(e, center, radiusSqr))) {
+                e -> e.isAlive() && e.isMilitary() && e.getFactionId() != null && withinRadius(e, center, radiusSqr))) {
             UUID faction = unit.getFactionId();
             if (owner.equals(faction)) {
                 defenders++;

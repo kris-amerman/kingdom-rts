@@ -127,6 +127,18 @@ public class SettlementData extends SavedData {
         setDirty();
     }
 
+    void addUnit(Settlement settlement, UUID unit) {
+        if (settlement.addUnit(unit)) {
+            setDirty();
+        }
+    }
+
+    void removeUnit(Settlement settlement, UUID unit) {
+        if (settlement.removeUnit(unit)) {
+            setDirty();
+        }
+    }
+
     void addStorage(Settlement settlement, BlockPos pos) {
         if (settlement.addStorage(pos)) {
             setDirty();
