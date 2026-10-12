@@ -14,8 +14,8 @@ import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
-import com.krisamerman.kingdomrts.unit.MilitaryStats;
-import com.krisamerman.kingdomrts.unit.MilitaryUnit;
+import com.krisamerman.kingdomrts.unit.Occupation;
+import com.krisamerman.kingdomrts.unit.Unit;
 import com.mojang.authlib.GameProfile;
 
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -25,6 +25,7 @@ import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
@@ -92,17 +93,23 @@ final class TestSupport {
         helper.setBlock(relativePos, Blocks.AIR);
     }
 
-    // Spawns a military unit posted where it stands. ai = false gives a unit that still counts for
+    // Spawns a soldier posted where it stands. ai = false gives a unit that still counts for
     // capture but never moves or fights, which keeps counting tests deterministic.
-    static MilitaryUnit unit(GameTestHelper helper, BlockPos relativePos, @Nullable Faction faction, boolean ai) {
-        MilitaryUnit unit = KingdomRts.MILITARY_UNIT.get().create(helper.getLevel());
+    static Unit unit(GameTestHelper helper, BlockPos relativePos, @Nullable Faction faction, boolean ai) {
+        return unit(helper, relativePos, faction, Occupation.SOLDIER, ai);
+    }
+
+    // Spawns a unit with the given occupation (null for none), posted where it stands.
+    static Unit unit(GameTestHelper helper, BlockPos relativePos, @Nullable Faction faction,
+            @Nullable ResourceLocation occupation, boolean ai) {
+        Unit unit = KingdomRts.UNIT.get().create(helper.getLevel());
         if (unit == null) {
-            throw new GameTestAssertException("Couldn't create a military unit");
+            throw new GameTestAssertException("Couldn't create a unit");
         }
         BlockPos pos = helper.absolutePos(relativePos);
         Vec3 feet = Vec3.atBottomCenterOf(pos);
         unit.moveTo(feet.x, feet.y, feet.z, 0.0f, 0.0f);
-        unit.setup(faction != null ? faction.id() : null, pos, MilitaryStats.DEFAULT_ID);
+        unit.setup(faction != null ? faction.id() : null, pos, occupation);
         unit.setNoAi(!ai);
         helper.getLevel().addFreshEntity(unit);
         return unit;

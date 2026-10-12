@@ -6,17 +6,17 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.HumanoidMobRenderer;
 import net.minecraft.resources.ResourceLocation;
 
-// Client-only. Draws a MilitaryUnit with the vanilla zombie model and skin (placeholder art).
-public class MilitaryUnitRenderer extends HumanoidMobRenderer<MilitaryUnit, HumanoidModel<MilitaryUnit>> {
+// Client-only. Draws a unit with the vanilla zombie model and skin (placeholder art).
+public class UnitRenderer extends HumanoidMobRenderer<Unit, HumanoidModel<Unit>> {
     private static final ResourceLocation TEXTURE =
             ResourceLocation.withDefaultNamespace("textures/entity/zombie/zombie.png");
 
-    public MilitaryUnitRenderer(EntityRendererProvider.Context context) {
+    public UnitRenderer(EntityRendererProvider.Context context) {
         super(context, new HumanoidModel<>(context.bakeLayer(ModelLayers.ZOMBIE)), 0.5f);
     }
 
     @Override
-    public ResourceLocation getTextureLocation(MilitaryUnit unit) {
+    public ResourceLocation getTextureLocation(Unit unit) {
         return TEXTURE;
     }
 }

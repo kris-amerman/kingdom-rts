@@ -1,7 +1,7 @@
 package com.krisamerman.kingdomrts;
 
 import com.krisamerman.kingdomrts.settlement.TownHallScreen;
-import com.krisamerman.kingdomrts.unit.MilitaryUnitRenderer;
+import com.krisamerman.kingdomrts.unit.UnitRenderer;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -17,7 +17,7 @@ import net.neoforged.neoforge.client.event.RegisterMenuScreensEvent;
 public class KingdomRtsClient {
     @SubscribeEvent
     static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
-        event.registerEntityRenderer(KingdomRts.MILITARY_UNIT.get(), MilitaryUnitRenderer::new);
+        event.registerEntityRenderer(KingdomRts.UNIT.get(), UnitRenderer::new);
     }
 
     // Tells the client which screen to show when the server opens each menu type.

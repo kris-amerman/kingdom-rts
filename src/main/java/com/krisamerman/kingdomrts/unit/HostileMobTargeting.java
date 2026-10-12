@@ -8,7 +8,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.EntityJoinLevelEvent;
 
-// Makes vanilla hostile mobs go after military units, the way zombies already go after villagers.
+// Makes vanilla hostile mobs go after units (of any occupation), the way zombies already go after villagers.
 // Vanilla mobs only target a hardcoded list of classes (players, villagers, iron golems, ...), so
 // rather than changing each mob class we add one extra targeting goal to every hostile mob
 // as it enters the world.
@@ -24,10 +24,10 @@ public class HostileMobTargeting {
         if (event.getLevel().isClientSide) {
             return; // AI only runs on the server
         }
-        if (event.getEntity() instanceof Monster monster && MilitaryUnit.isHostileMob(monster)) {
+        if (event.getEntity() instanceof Monster monster && Unit.isHostileMob(monster)) {
             // true = must see the unit to start targeting it, like vanilla's villager targeting.
             monster.targetSelector.addGoal(TARGET_PRIORITY,
-                    new NearestAttackableTargetGoal<>(monster, MilitaryUnit.class, true));
+                    new NearestAttackableTargetGoal<>(monster, Unit.class, true));
         }
     }
 }

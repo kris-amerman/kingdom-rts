@@ -11,7 +11,7 @@ import javax.annotation.Nullable;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
-import com.krisamerman.kingdomrts.unit.MilitaryUnit;
+import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -157,15 +157,16 @@ public class TownHallBlockEntity extends BlockEntity {
         UUID owner = settlement.owner();
         townHall.setClaimedState(true); // e.g. halls claimed before this block state existed
 
-        // Presence: only military units that belong to a faction. Mobs never count, factionless
-        // units never count, and units of factions not at war with the owner count as neither side.
+        // Presence: only units with a military occupation that belong to a faction. Mobs never
+        // count, other units never count (even of the same faction), factionless units never count,
+        // and units of factions not at war with the owner count as neither side.
         Vec3 center = Vec3.atCenterOf(pos);
         AABB area = new AABB(pos).inflate(PRESENCE_RADIUS);
         double radiusSqr = PRESENCE_RADIUS * PRESENCE_RADIUS;
         int defenders = 0;
         Map<UUID, Integer> attackersByFaction = new HashMap<>();
-        for (MilitaryUnit unit : level.getEntitiesOfClass(MilitaryUnit.class, area,
-                e -> e.isAlive() && e.getFactionId() != null && withinRadius(e, center, radiusSqr))) {
+        for (Unit unit : level.getEntitiesOfClass(Unit.class, area,
+                e -> e.isAlive() && e.countsAtCapture() && e.getFactionId() != null && withinRadius(e, center, radiusSqr))) {
             UUID faction = unit.getFactionId();
             if (owner.equals(faction)) {
                 defenders++;
