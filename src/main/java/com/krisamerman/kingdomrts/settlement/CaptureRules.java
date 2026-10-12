@@ -36,6 +36,13 @@ public final class CaptureRules {
     private CaptureRules() {
     }
 
+    // The faction a unit of a captured settlement ends up with: units with a military occupation
+    // keep theirs (and stay hostile to the new owner); every other unit passes to the new owner.
+    @Nullable
+    public static UUID factionAfterCapture(@Nullable UUID unitFaction, boolean military, UUID newOwner) {
+        return military ? unitFaction : newOwner;
+    }
+
     public static Outcome evaluate(int control, int defenders, Map<UUID, Integer> attackersByFaction) {
         int strongestAttackers = attackersByFaction.values().stream().mapToInt(Integer::intValue).max().orElse(0);
         if (strongestAttackers > defenders) {

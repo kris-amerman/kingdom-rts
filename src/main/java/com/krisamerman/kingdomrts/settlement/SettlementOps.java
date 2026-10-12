@@ -1,12 +1,15 @@
 package com.krisamerman.kingdomrts.settlement;
 
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.Faction;
+import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -77,9 +80,69 @@ public final class SettlementOps {
         return new FoundResult(settlement, null);
     }
 
-    // Passes a settlement, with its claim, to a new owning faction (on capture).
+    // Passes a settlement, with its claim, to a new owning faction (on capture). Its units that
+    // aren't military pass to the new owner too: loaded ones now, unloaded ones when they next load.
     public static void transfer(ServerLevel level, Settlement settlement, UUID newOwner) {
         SettlementData.get(level).setOwner(settlement, newOwner);
+        forEachLoadedUnit(level, settlement, unit -> catchUp(level, unit));
+    }
+
+    // ---- Units ----
+
+    // Makes a unit belong to a settlement, or to none (null), keeping the unit and the settlement's
+    // unit list in step. Faction and settlement are independent, so this doesn't change its faction.
+    public static void setUnitSettlement(ServerLevel level, Unit unit, @Nullable Settlement settlement) {
+        SettlementData settlements = SettlementData.get(level);
+        Settlement old = settlements.byId(unit.getSettlementId());
+        if (old != null) {
+            settlements.removeUnit(old, unit.getUUID());
+        }
+        if (settlement != null) {
+            settlements.addUnit(settlement, unit.getUUID());
+            unit.setSettlement(settlement.id(), settlement.ownerChanges());
+        } else {
+            unit.setSettlement(null, 0);
+        }
+    }
+
+    // A unit died or was discarded: its settlement forgets it.
+    public static void unitRemoved(ServerLevel level, Unit unit) {
+        SettlementData settlements = SettlementData.get(level);
+        Settlement settlement = settlements.byId(unit.getSettlementId());
+        if (settlement != null) {
+            settlements.removeUnit(settlement, unit.getUUID());
+        }
+    }
+
+    // Brings a unit up to date with its settlement: if the settlement changed owner since the unit
+    // last checked, a non-military unit passes to the current owner; if the settlement is gone, the
+    // unit no longer belongs to one. Runs on capture for loaded units and when a unit loads.
+    public static void catchUp(ServerLevel level, Unit unit) {
+        if (unit.getSettlementId() == null) {
+            return;
+        }
+        Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+        if (settlement == null) {
+            unit.setSettlement(null, 0); // dissolved while the unit was away
+            return;
+        }
+        if (unit.getSeenOwnerChanges() != settlement.ownerChanges()) {
+            unit.setFactionId(CaptureRules.factionAfterCapture(unit.getFactionId(), unit.isMilitary(), settlement.owner()));
+            unit.setSettlement(settlement.id(), settlement.ownerChanges());
+        }
+    }
+
+    // Runs action for each of the settlement's units that is currently loaded.
+    private static void forEachLoadedUnit(ServerLevel anyLevel, Settlement settlement, Consumer<Unit> action) {
+        ServerLevel level = anyLevel.getServer().getLevel(settlement.dimension());
+        if (level == null) {
+            return;
+        }
+        for (UUID id : List.copyOf(settlement.units())) {
+            if (level.getEntity(id) instanceof Unit unit) {
+                action.accept(unit);
+            }
+        }
     }
 
     // Renames a settlement. Returns why the name can't be used, or null on success.
@@ -129,8 +192,10 @@ public final class SettlementOps {
         SettlementData.get(level).removeStorage(settlement, pos);
     }
 
-    // Removes a settlement and releases its claim (its town hall is gone).
+    // Removes a settlement and releases its claim (its town hall is gone). Its units no longer
+    // belong to a settlement: loaded ones now, unloaded ones when they next load.
     public static void dissolve(ServerLevel level, Settlement settlement) {
         SettlementData.get(level).dissolve(settlement);
+        forEachLoadedUnit(level, settlement, unit -> unit.setSettlement(null, 0));
     }
 }

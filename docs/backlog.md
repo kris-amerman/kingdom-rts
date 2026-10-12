@@ -22,45 +22,43 @@ Story template:
 
 ## Current: Units MVP
 
-### S-007 Generic Unit with data-driven occupations
-- **Status:** in review | **Branch:** feature/unit-occupations | **PR:** #12 | **Depends on:** -
-- **Goal:** one `Unit` entity replaces `MilitaryUnit`. What a unit does comes from its occupation, a data entry. Military is the first occupation, with unchanged behaviour.
-- **Scope:**
-  - **Unit fields**, each optional and independent (CLAUDE.md): faction (moved from `MilitaryUnit`), settlement id (stored only; S-008 gives it meaning), home (`BlockPos`), inventory (a saved 9-slot container), occupation id.
-  - **Occupation registry:** the datapack registry `kingdomrts:occupation` replaces `military_stats`. An entry has a `type` (only `military` for now) and that type's settings; for military, the current four stats. `soldier.json` moves over. Reuse the `MilitaryStats` pattern (codec + `DataPackRegistryEvent`).
-  - **Behaviour from the occupation:** its goals (`HoldPostAttackGoal`, `HostileInRangeTargetGoal`, the post restriction), its targeting rules, and whether the unit counts at capture (`TownHallBlockEntity`).
-  - `spawnunit` takes `occupation <id>`, defaulting to `kingdomrts:soldier`.
-  - The entity id becomes `kingdomrts:unit`, with the renderer and lang updated.
-- **Out of scope:** settlement membership logic, jobs, hunger and happiness.
-- **Test:**
-  - Port `CombatGameTests` and the capture GameTests without changing what they check; they are the safety net.
-  - New GameTests: a unit with no occupation, or a non-military one, doesn't count at capture; inventory, home and occupation survive a save/load round trip.
-  - Unit test: occupation JSON decodes, and bad entries are rejected.
-  - Manual: spawn units with each command form and check the name tags; soldiers still fight and hold their post. Checked by the owner.
-- **Notes:**
-  - Old dev-world `military_unit` entities are dropped by the id change.
-  - **Occupation JSON:** `data/<ns>/kingdomrts/occupation/<name>.json`, e.g. `{ "type": "kingdomrts:military", "max_health": 24, ... }`. `"type"` picks the code (`OccupationType`); the other fields are that type's settings. Types are a fixed list in code for now (only military); they can become a NeoForge registry if other mods need to add types.
-  - **How an occupation drives a unit:** `Occupation.applyTo(unit)` sets the stats and adds the occupation's AI goals through `Unit.addOccupationGoal`, so they can be swapped out if the occupation changes. Every unit has the basic goals (float, stroll near its post, look around). Military adds hold-post attack, return to post, and target selection, at the same priorities as before.
-  - **Capture:** counts units whose occupation `countsAtCapture()` (military only).
-  - **Targeting:** soldiers target any unit of a hostile faction, not only soldiers. Hostile mobs target every unit, like villagers.
-  - **Inventory:** 9 slots, saved slot by slot (vanilla `SimpleContainer`'s own save packs items into the first slots, which the round-trip test caught). It drops when the unit dies.
-  - **Command:** `/kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]`, with occupation ids tab-completed from the datapacks. The name tag shows faction and occupation.
-  - **Non-military coverage:** there's no non-military occupation type yet, so "doesn't count at capture" is tested with no occupation and with an id that doesn't exist. S-009's lumberjack adds the real non-military case.
-  - GameTests added: units without a military occupation don't count; a soldier gets its stats from its occupation entry; a unit survives save and load (faction, settlement, home, post, occupation, inventory); inventory drops on death. Unit tests: `OccupationCodecTest` (5). A sabotage check (every unit counts at capture) fails two of the GameTests.
-
 ### S-008 Units belong to settlements
-- **Status:** planned | **Branch:** feature/settlement-units | **PR:** - | **Depends on:** S-007
+- **Status:** in review | **Branch:** feature/settlement-units | **PR:** - | **Depends on:** S-007
 - **Goal:** a settlement knows its units, and capture hands its civilians to the new owner.
 - **Scope:**
-  - `Settlement` gets a saved set of unit UUIDs, like its storage set, kept up to date by `SettlementOps.addUnit` / `removeUnit`. A unit is removed when it dies.
-  - `spawnunit` gains `settlement <name>`.
+  - `Settlement` gets a saved set of unit UUIDs, like its storage set, kept up to date by `SettlementOps.setUnitSettlement` / `unitRemoved`. A unit is removed when it dies.
+  - `/kingdomrts unit join <units> <settlement>`, `unit leave <units>` and `unit info <units>`, using entity selectors.
   - **On capture:** non-military units of the settlement switch to the new owner's faction; military units keep their faction (CLAUDE.md).
-  - Units in unloaded chunks catch up when they next load: a unit compares its stored faction with its settlement's owner.
-  - `/kingdomrts settlement here` shows the unit count.
+  - Units in unloaded chunks catch up when they next load.
+  - `/kingdomrts settlement here` and `list` show the unit count.
 - **Out of scope:** assigning homes automatically, population growth.
 - **Test:**
-  - GameTests: on capture, a civilian flips to the new owner and a soldier keeps its faction; a unit's death removes it from the settlement; a unit loaded after a capture catches up.
-- **Notes:** -
+  - GameTests: on capture, a civilian flips to the new owner and a soldier keeps its faction; a unit's death removes it from the settlement; a unit loaded after a capture catches up; the `unit join|leave|info` and `settlement here` commands, run for real.
+  - Manual: none. There are no client-side visuals in this story.
+- **Notes:**
+  - **Scope change:** settlement membership is set with `/kingdomrts unit join|leave` (entity selectors) instead of a `settlement <name>` option on `spawnunit`. Another option would have doubled the spawn command's tree, and join/leave also works on units that already exist. `unit info` was added so a manual test can see factions change, since name tags are set once at spawn.
+  - **Catching up:** each settlement counts its owner changes, and each unit remembers the count it has seen. When a unit loads (`Unit.onAddedToLevel`) with an older count, a non-military unit takes the current owner's faction. This handles several captures in a row while the unit was away, and it needs no list of pending changes. Loaded units are updated at capture time. A unit whose settlement was dissolved while it was away drops the settlement when it loads.
+  - **The capture rule** is a pure function, `CaptureRules.factionAfterCapture` (military keeps its faction, everyone else passes), covered by unit tests. It applies to every non-military unit of the settlement, whatever its faction, as CLAUDE.md says.
+  - `Occupation.countsAtCapture()` was renamed `isMilitary()`, since it now decides both capture presence and who keeps their faction.
+  - **Removal:** a unit leaves its settlement's list only when it's destroyed (killed or discarded), not when its chunk unloads.
+  - GameTests added: capture hands civilians to the new owner; unloaded units catch up after a capture; a dead unit leaves the settlement; dissolving releases units. Unit tests: two for `factionAfterCapture`. Sabotage checks (no catch-up on load; civilians keep their faction on capture; `unit join` doing nothing) fail the matching tests.
+  - New `TestSupport.runCommand`: runs a real command as an operator standing at a spot in the test, and returns everything it printed. Commands are tested this way from now on, instead of in manual checklists.
+
+### S-013 Unit info panel
+- **Status:** planned | **Branch:** feature/unit-info-panel | **PR:** - | **Depends on:** S-008
+- **Goal:** right-clicking a unit shows its details, in full to its own faction and in part to everyone else.
+- **Scope:**
+  - **Everyone sees:** name, faction, occupation, health / max health, and the occupation's basic stats (attack damage, attack range, speed).
+  - **Members of the unit's faction also see:** settlement, home, post and the inventory (view-only).
+  - **Factionless units:** nobody gets the full view. Only the owner sees everything; there's no creative-operator exception.
+  - **The server decides what to send:** hidden information never reaches a limited viewer's client.
+  - The access rule is a pure function (full or limited).
+- **Out of scope:** giving orders, renaming, changing occupation, allied access (open).
+- **Test:**
+  - Unit tests: the access rule.
+  - GameTest: the server-side builder gives a member the full data and an outsider the limited set (no inventory).
+  - Manual: how the screen looks for each viewer.
+- **Notes:** the inventory is view-only for now, but the owner wants players to add and remove items later, so build the screen with that in mind.
 
 ### S-009 Lumberjack job
 - **Status:** planned | **Branch:** feature/lumberjack | **PR:** - | **Depends on:** S-007, S-008
@@ -117,6 +115,32 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-007 Generic Unit with data-driven occupations
+- **Status:** done | **Branch:** feature/unit-occupations | **PR:** #12 | **Depends on:** -
+- **Goal:** one `Unit` entity replaces `MilitaryUnit`. What a unit does comes from its occupation, a data entry. Military is the first occupation, with unchanged behaviour.
+- **Scope:**
+  - **Unit fields**, each optional and independent (CLAUDE.md): faction (moved from `MilitaryUnit`), settlement id (stored only; S-008 gives it meaning), home (`BlockPos`), inventory (a saved 9-slot container), occupation id.
+  - **Occupation registry:** the datapack registry `kingdomrts:occupation` replaces `military_stats`. An entry has a `type` (only `military` for now) and that type's settings; for military, the current four stats. `soldier.json` moves over. Reuse the `MilitaryStats` pattern (codec + `DataPackRegistryEvent`).
+  - **Behaviour from the occupation:** its goals (`HoldPostAttackGoal`, `HostileInRangeTargetGoal`, the post restriction), its targeting rules, and whether the unit counts at capture (`TownHallBlockEntity`).
+  - `spawnunit` takes `occupation <id>`, defaulting to `kingdomrts:soldier`.
+  - The entity id becomes `kingdomrts:unit`, with the renderer and lang updated.
+- **Out of scope:** settlement membership logic, jobs, hunger and happiness.
+- **Test:**
+  - Port `CombatGameTests` and the capture GameTests without changing what they check; they are the safety net.
+  - New GameTests: a unit with no occupation, or a non-military one, doesn't count at capture; inventory, home and occupation survive a save/load round trip.
+  - Unit test: occupation JSON decodes, and bad entries are rejected.
+  - Manual: spawn units with each command form and check the name tags; soldiers still fight and hold their post. Checked by the owner.
+- **Notes:**
+  - Old dev-world `military_unit` entities are dropped by the id change.
+  - **Occupation JSON:** `data/<ns>/kingdomrts/occupation/<name>.json`, e.g. `{ "type": "kingdomrts:military", "max_health": 24, ... }`. `"type"` picks the code (`OccupationType`); the other fields are that type's settings. Types are a fixed list in code for now (only military); they can become a NeoForge registry if other mods need to add types.
+  - **How an occupation drives a unit:** `Occupation.applyTo(unit)` sets the stats and adds the occupation's AI goals through `Unit.addOccupationGoal`, so they can be swapped out if the occupation changes. Every unit has the basic goals (float, stroll near its post, look around). Military adds hold-post attack, return to post, and target selection, at the same priorities as before.
+  - **Capture:** counts units whose occupation `countsAtCapture()` (military only).
+  - **Targeting:** soldiers target any unit of a hostile faction, not only soldiers. Hostile mobs target every unit, like villagers.
+  - **Inventory:** 9 slots, saved slot by slot (vanilla `SimpleContainer`'s own save packs items into the first slots, which the round-trip test caught). It drops when the unit dies.
+  - **Command:** `/kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]`, with occupation ids tab-completed from the datapacks. The name tag shows faction and occupation.
+  - **Non-military coverage:** there's no non-military occupation type yet, so "doesn't count at capture" is tested with no occupation and with an id that doesn't exist. S-009's lumberjack adds the real non-military case.
+  - GameTests added: units without a military occupation don't count; a soldier gets its stats from its occupation entry; a unit survives save and load (faction, settlement, home, post, occupation, inventory); inventory drops on death. Unit tests: `OccupationCodecTest` (5). A sabotage check (every unit counts at capture) fails two of the GameTests.
 
 ### S-006 Template cleanup
 - **Status:** done | **Branch:** feature/template-cleanup | **PR:** #11 | **Depends on:** -

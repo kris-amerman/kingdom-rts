@@ -18,7 +18,7 @@ class OccupationCodecTest {
                   "attack_damage": 4, "attack_range": 2.5 }""").getOrThrow();
         assertEquals(new MilitaryOccupation(24, 0.3, 4, 2.5), occupation);
         assertEquals(OccupationType.MILITARY, occupation.type());
-        assertTrue(occupation.countsAtCapture());
+        assertTrue(occupation.isMilitary());
     }
 
     @Test

@@ -10,6 +10,7 @@ import com.krisamerman.kingdomrts.settlement.SettlementCommands;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
+import com.krisamerman.kingdomrts.unit.UnitCommands;
 import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -44,6 +45,8 @@ public class KingdomRtsCommands {
                 .then(FactionCommands.build())
                 // /kingdomrts settlement list|here|rename|found ...
                 .then(SettlementCommands.build())
+                // /kingdomrts unit join|leave|info ...
+                .then(UnitCommands.build())
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
                 .then(spawnOptions(Commands.literal("spawnunit"), ctx -> Occupation.SOLDIER)
                         .then(Commands.literal("occupation")
