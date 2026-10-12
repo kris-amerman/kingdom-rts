@@ -7,6 +7,7 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 // A unit's role: what it does and what it's good at. Occupations are datapack entries, so a new
@@ -22,6 +23,7 @@ public interface Occupation {
             ResourceKey.createRegistryKey(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "occupation"));
 
     ResourceLocation SOLDIER = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "soldier");
+    ResourceLocation LUMBERJACK = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "lumberjack");
 
     OccupationType type();
 
@@ -34,6 +36,11 @@ public interface Occupation {
     // new owner).
     default boolean isMilitary() {
         return false;
+    }
+
+    // Whether a unit with this occupation picks up this item from the ground (if it has room).
+    default boolean wantsToPickUp(ItemStack stack) {
+        return true;
     }
 
     // Looks up an entry from the datapacks loaded into this world.

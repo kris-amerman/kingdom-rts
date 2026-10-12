@@ -22,8 +22,150 @@ Story template:
 
 ## Current: Units MVP
 
+### S-009 Lumberjack fells trees
+- **Status:** in review | **Branch:** feature/lumberjack | **PR:** #15 | **Depends on:** S-007, S-008
+- **Goal:** a lumberjack unit fells natural trees in its settlement's claim and keeps the logs, without supervision.
+- **Scope:**
+  - **Job steps:** a small framework that runs explicit steps (CLAUDE.md), with a time limit per step and recovery chosen by the job.
+    - The lumberjack's steps: find a tree in the claim, walk next to it, fell the whole tree, repeat.
+  - **Tree search:** spread across ticks over the claimed chunks, with no per-tick world scan.
+  - **What counts as a tree:** connected logs with natural (non-persistent) leaves touching them, so player-built logs are left alone.
+  - **Breaking:** each log takes as long as it would for a player with the same tool. It uses its own best axe, which wears out. Reach is unlimited: it fells the whole tree from the ground.
+  - **Pathfinding:** it walks to a standable spot beside the trunk, notices when it's stuck and gets itself out.
+  - **Data:** a `lumberjack` occupation type (`movement_speed`).
+  - **Pickup:** lumberjacks only pick up logs.
+- **Out of scope:** workplaces (S-015), work areas and depositing (S-014), replanting and wood filters (S-016), taking tools from stock, payment and gold.
+- **Test:**
+  - Unit tests: the step runner (order, time limits, stopping), tree detection, break times.
+  - GameTests:
+    - fells a tree and keeps its logs;
+    - leaves player-built logs alone;
+    - recovers when its tree disappears on the way;
+    - ignores trees outside its claim;
+    - doesn't chop with no room;
+    - idles without a settlement;
+    - break time matches vanilla's for a player;
+    - felling by hand takes a player's time;
+    - uses and wears its axe;
+    - carries on by hand when the axe breaks;
+    - reaches a tree open on one side only;
+    - gets down from a tree top;
+    - climbs out of a pit;
+    - skips a tree it can't reach.
+  - Manual: watch one work; crack animation, axe in hand, behaviour in a real forest. Checked by the owner.
+- **Notes:**
+  - **Split:** the original S-009 (fell trees and haul logs to storage) was split, to keep PRs small. After the owner's feedback, the follow-ups became workplaces (S-015), working from the hut (S-014) and hut settings (S-016).
+  - **Job framework (`unit/job`):** a `Job` hands out `JobStep`s. `JobRunner` ticks the current step, fails it when it runs past its time limit, and asks the job for the next step (passing how the last one went). `JobGoal` runs it as an AI goal. Shared steps: `WalkToStep`, `WaitStep`.
+  - **Search:** a heightmap lookup per claim column (the highest non-leaf block), 128 columns per tick, skipping unloaded chunks. Candidate logs are then checked nearest first with `TreeRules`, 4 per tick. A 3×3 claim takes about 20 ticks.
+  - **Tree rule (pure, `TreeRules`):** logs connected in all 26 directions (so branches count), at most 256 of them, and at least 3 natural leaves touching. Leaves placed by players are persistent, so they never count.
+  - **Breaking (owner feedback):** breaking was instant at first.
+    - **Timing:** `BreakTime` copies vanilla's player formula (tool speed, Efficiency via the `MINING_EFFICIENCY` attribute, `BLOCK_BREAK_SPEED`, the ÷30 or ÷100 harvest rule). Units now have the two mining attributes, so enchanted tools work. Oak takes 60 ticks by hand, 30 with a wooden axe, 10 with an iron one. A GameTest checks it against vanilla's own numbers for a player. `chop_ticks` was removed from the data.
+    - **Felling:** highest log first, with vanilla's crack animation and arm swings.
+    - **Axes:** while chopping it holds its fastest axe from its inventory, which takes durability per log. It switches to the next axe or bare hands when one breaks, and puts the axe back in its slot afterwards. The held axe always drops if the unit dies.
+    - **Drops:** they go straight into the inventory, so logs can't get stuck in the canopy.
+  - **Pathfinding (owner feedback: it skipped trees, got stuck, and once got stranded on a tree):**
+    - **Stand spot:** it walks to a standable spot within 2 blocks of the trunk (solid ground that isn't part of a tree, room for its body), preferring one it has a full path to (checking at most 8). Aiming at the log itself is what led it up trees.
+    - **Exact spot:** it paths to the spot itself (accuracy 0). Vanilla's `moveTo(x, y, z)` happily stops a block short, which left units just outside reach until the stuck handling nudged them, so walks took about 15 s instead of 4.
+    - **Recovery ladder** (in `WalkToStep`):
+      1. re-plan once a second;
+      2. no progress for 3 s, or standing on a tree: step to a random nearby spot (twice);
+      3. still stuck: hop to a safe spot within 8 blocks (the owner chose short teleports as the last resort). It never moves closer to the target, so it can't hop over a wall to a tree it couldn't walk to.
+      4. still stuck: fail, and the job skips that tree for a minute.
+    - **Restriction:** workers no longer keep within 6 blocks of their post, since that's for soldiers and idle units.
+  - **Recovery:**
+    - a tree it can't reach is skipped for a minute;
+    - a tree that disappears on the way is replaced by the next one;
+    - with no settlement, no room or no trees, it waits and checks again.
+  - `Occupation.wantsToPickUp` lets each occupation filter what it picks up (lumberjack: logs only).
+  - **Flakes:** GameTests run 3 times in a row without flakes.
+  - **Sabotage checks** that fail the matching tests:
+    - logs without leaves count as trees;
+    - chopping with no room;
+    - instant breaking;
+    - ignoring the axe;
+    - no teleport fallback (both the pit and tree-top tests fail);
+    - walking at the log instead of a stand spot (the pit test fails).
+
+### S-015 Workplaces
+- **Status:** planned | **Branch:** feature/workplaces | **PR:** - | **Depends on:** S-009
+- **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
+- **Scope:**
+  - A workplace block per job, placed directly for now (like the town hall): a lumberjack hut first. It can only be placed inside your own claim, belongs to that settlement (which records it), and is protected like settlement storage.
+  - A stock inventory, protected like settlement storage.
+  - A worker capacity set in data (default 1).
+  - **Hiring:** the hut panel lists the settlement's unemployed units to hire (like MineColonies' "Manage Workers"), plus a command. Hiring gives the unit the hut's occupation; firing it, or removing the hut, makes it unemployed.
+  - Soldiers are exempt for now.
+- **Out of scope:** building levels, work areas (S-014), the build tool, worker supply.
+- **Test:** GameTests for placement rules, hiring up to capacity, firing, removing the hut, and capture (the hut and its workers pass with the settlement). Manual: the hut panel.
+- **Notes:** -
+
+### S-014 Lumberjack works from its hut
+- **Status:** planned | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-015
+- **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
+- **Scope:**
+  - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
+  - It deposits logs into the hut's stock after each tree or when full, and takes axes from the stock.
+  - Without room in the stock it keeps its logs and waits.
+- **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
+- **Test:** GameTests: trees outside the work area are ignored; logs end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait. Manual: the work-area setting in the panel.
+- **Notes:** replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
+
+### S-016 Lumberjack hut settings
+- **Status:** planned | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
+- **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
+- **Scope:**
+  - **Replanting** (on/off): it keeps saplings from the felled tree (it picks them up, then) and plants one of the same type where the trunk stood.
+  - **Wood types:** a whitelist or blacklist of log types to fell.
+- **Out of scope:** tree farms, bone meal.
+- **Test:** GameTests: with replanting on, a sapling is planted at the base, and with it off none is; filtered wood types are left standing. Manual: the panel controls.
+- **Notes:** -
+
+### S-010 Building templates and sites
+- **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
+- **Goal:** a settlement can have a building commissioned at a site from a template.
+- **Scope:**
+  - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
+  - **Commission:** a faction operation records a building site (template, position, rotation, settlement). It's refused outside your own claim or when it overlaps another building. Command: `/kingdomrts building commission`.
+  - **Remaining work:** a site can report which blocks are missing and the materials they need.
+- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair.
+- **Test:**
+  - Unit test: the missing-block and materials calculations.
+  - GameTests: commissioning is refused outside the claim; remaining work is correct after some blocks are placed by hand.
+- **Notes:** -
+
+### S-011 Builder job
+- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015
+- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
+- **Scope:**
+  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
+  - Materials are used up as blocks are placed.
+  - Several builders can work one site without placing the same block twice.
+  - Placement speed is set in data.
+- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
+- **Test:**
+  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
+  - Manual: watch it build.
+- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
+
+### S-012 Unit needs (design first)
+- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-011, S-014
+- **Goal:** units have hunger and happiness, drawn from real things in the world.
+- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
+- **Out of scope:** revolts, taxes.
+- **Test:** decided with the design.
+- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
+
+## Later (not yet stories)
+- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
+- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
+- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
 ### S-013 Unit info panel
-- **Status:** in review | **Branch:** feature/unit-info-panel | **PR:** #14 | **Depends on:** S-008
+- **Status:** done | **Branch:** feature/unit-info-panel | **PR:** #14 | **Depends on:** S-008
 - **Goal:** right-clicking a unit shows its details, in full to its own faction and in part to everyone else.
 - **Scope:**
   - **Everyone sees:** name, faction, occupation, health / max health, and the occupation's basic stats (attack damage, attack range, speed).
@@ -52,62 +194,6 @@ Story template:
   - Right-clicking always opens the panel, so items used on mobs (such as name tags) no longer work on units. Revisit if that matters.
   - **Test player upgrade:** `TestSupport.recordingPlayer` now records every packet sent to it instead of sending it. Vanilla's mock player can't receive NeoForge's packets, such as opening a menu with extra data. Tests can now check what actually reaches a player's client.
   - GameTests added: own faction sees everything, while an outsider and a factionless player see only the basics; nobody gets the full view of a factionless unit. Both check the panel the client builds from the packet that was sent, and that no packet carries the unit's items to an outsider. Unit tests: `UnitInfoTest` (6), covering the access rule and the snapshot surviving the trip to the client. Pickup GameTests: a unit picks up a nearby item; a full unit leaves it on the ground. GameTest `ownerCanGiveAndTakeItems`: an owner moves items in and out with real clicks and shift-clicks, and the panel stops being valid once they leave the faction. Sabotage checks (everyone gets the full view; no pickup; no access re-check) fail the matching GameTests.
-
-### S-009 Lumberjack job
-- **Status:** planned | **Branch:** feature/lumberjack | **PR:** - | **Depends on:** S-007, S-008
-- **Goal:** a lumberjack unit fells trees in its settlement's claim and stores the logs in settlement storage, without supervision.
-- **Scope:**
-  - **Job steps:** a small framework that runs explicit steps (CLAUDE.md), with a timeout per step and recovery (give up, pick again, back off). The lumberjack's steps: find a tree in the claim, walk to it, fell the whole tree, collect the drops, walk to storage, deposit, repeat.
-  - **Tree search:** spread across ticks over the claimed chunks, with no per-tick world scan.
-  - **Storage:** units of the owning faction can use settlement storage (left for later in S-003).
-  - **Data:** a `lumberjack` occupation type, with tuning such as search radius and chop time.
-- **Out of scope:** replanting (maybe later), tools wearing out, payment and gold.
-- **Test:**
-  - Unit tests: the step and recovery logic as pure functions where possible, and tree-shape detection.
-  - GameTests: fells a tree and its logs end up in storage; recovers when its tree disappears mid-walk; idles without stalling or crashing when there's no storage or no tree.
-  - Manual: watch one work.
-- **Notes:** may split in two (job framework, then lumberjack) if it gets big.
-
-### S-010 Building templates and sites
-- **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
-- **Goal:** a settlement can have a building commissioned at a site from a template.
-- **Scope:**
-  - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
-  - **Commission:** a faction operation records a building site (template, position, rotation, settlement). It's refused outside your own claim or when it overlaps another building. Command: `/kingdomrts building commission`.
-  - **Remaining work:** a site can report which blocks are missing and the materials they need.
-- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair.
-- **Test:**
-  - Unit test: the missing-block and materials calculations.
-  - GameTests: commissioning is refused outside the claim; remaining work is correct after some blocks are placed by hand.
-- **Notes:** -
-
-### S-011 Builder job
-- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-009, S-010
-- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
-- **Scope:**
-  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
-  - Materials are used up as blocks are placed.
-  - Several builders can work one site without placing the same block twice.
-  - Placement speed is set in data.
-- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
-- **Test:**
-  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
-  - Manual: watch it build.
-- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
-
-### S-012 Unit needs (design first)
-- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-009, S-011
-- **Goal:** units have hunger and happiness, drawn from real things in the world.
-- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
-- **Out of scope:** revolts, taxes.
-- **Test:** decided with the design.
-- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
-
-## Later (not yet stories)
-- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
-- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
-
-## Done
 
 ### S-008 Units belong to settlements
 - **Status:** done | **Branch:** feature/settlement-units | **PR:** #13 | **Depends on:** S-007

@@ -47,6 +47,20 @@ class OccupationCodecTest {
         assertEquals(soldier, OccupationType.OCCUPATION_CODEC.parse(JsonOps.INSTANCE, json).getOrThrow());
     }
 
+    @Test
+    void lumberjackEntryDecodes() {
+        Occupation occupation = decode("""
+                { "type": "kingdomrts:lumberjack", "movement_speed": 0.3 }""").getOrThrow();
+        assertEquals(new LumberjackOccupation(0.3), occupation);
+        assertTrue(!occupation.isMilitary());
+    }
+
+    @Test
+    void lumberjackNeedsAMovementSpeed() {
+        assertTrue(decode("""
+                { "type": "kingdomrts:lumberjack" }""").isError());
+    }
+
     private static DataResult<Occupation> decode(String json) {
         return OccupationType.OCCUPATION_CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(json));
     }
