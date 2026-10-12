@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-006 Template cleanup
-- **Status:** in review | **Branch:** feature/template-cleanup | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/template-cleanup | **PR:** #11 | **Depends on:** -
 - **Goal:** none of the NeoForge MDK example code is left.
 - **Scope:**
   - Remove `example_block`, `example_item` and the BUILDING_BLOCKS `addCreative` hook.
