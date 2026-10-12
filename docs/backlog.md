@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-007 Generic Unit with data-driven occupations
-- **Status:** in review | **Branch:** feature/unit-occupations | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/unit-occupations | **PR:** #12 | **Depends on:** -
 - **Goal:** one `Unit` entity replaces `MilitaryUnit`. What a unit does comes from its occupation, a data entry. Military is the first occupation, with unchanged behaviour.
 - **Scope:**
   - **Unit fields**, each optional and independent (CLAUDE.md): faction (moved from `MilitaryUnit`), settlement id (stored only; S-008 gives it meaning), home (`BlockPos`), inventory (a saved 9-slot container), occupation id.
