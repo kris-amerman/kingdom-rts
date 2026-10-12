@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-013 Unit info panel
-- **Status:** in review | **Branch:** feature/unit-info-panel | **PR:** - | **Depends on:** S-008
+- **Status:** in review | **Branch:** feature/unit-info-panel | **PR:** #14 | **Depends on:** S-008
 - **Goal:** right-clicking a unit shows its details, in full to its own faction and in part to everyone else.
 - **Scope:**
   - **Everyone sees:** name, faction, occupation, health / max health, and the occupation's basic stats (attack damage, attack range, speed).
