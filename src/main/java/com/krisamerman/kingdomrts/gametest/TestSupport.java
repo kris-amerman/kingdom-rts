@@ -1,5 +1,8 @@
 package com.krisamerman.kingdomrts.gametest;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.annotation.Nullable;
@@ -13,11 +16,18 @@ import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.MilitaryStats;
 import com.krisamerman.kingdomrts.unit.MilitaryUnit;
+import com.mojang.authlib.GameProfile;
 
+import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.network.Connection;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.PacketFlow;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -104,6 +114,33 @@ final class TestSupport {
     @SuppressWarnings("removal")
     static ServerPlayer mockPlayer(GameTestHelper helper) {
         return helper.makeMockServerPlayerInLevel();
+    }
+
+    // A fake server player that records its action-bar messages, so tests can check what a player
+    // would see. Built the same way as vanilla's mock player. Remove it with removePlayer when done.
+    static RecordingPlayer recordingPlayer(GameTestHelper helper) {
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(new GameProfile(UUID.randomUUID(), "test-recorder"), false);
+        RecordingPlayer player = new RecordingPlayer(helper.getLevel(), cookie);
+        Connection connection = new Connection(PacketFlow.SERVERBOUND);
+        new EmbeddedChannel(connection); // a do-nothing network channel
+        helper.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        return player;
+    }
+
+    static final class RecordingPlayer extends ServerPlayer {
+        final List<String> actionBar = new ArrayList<>();
+
+        RecordingPlayer(ServerLevel level, CommonListenerCookie cookie) {
+            super(level.getServer(), level, cookie.gameProfile(), cookie.clientInformation());
+        }
+
+        @Override
+        public void displayClientMessage(Component message, boolean actionBar) {
+            if (actionBar) {
+                this.actionBar.add(message.getString());
+            }
+            super.displayClientMessage(message, actionBar);
+        }
     }
 
     static void removePlayer(GameTestHelper helper, ServerPlayer player) {
