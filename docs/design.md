@@ -147,6 +147,17 @@ Suggested first set: medicinal herb, tin, and one prestige good. Uncertain: iron
 
 **Trade.** Moves real goods, so a faction can only sell what it holds, and prices respond to stock. AI factions trade with each other too. AI factions could act as market makers with standing offers and needs, so supply isn't left to chance.
 
+## Workplaces and supply
+**Workplaces.** Every settlement job works from a workplace building of its kind, as in MineColonies: a lumberjack works from a lumberjack hut. You build the workplace first, then hire into it. A workplace can employ several workers (unlike MineColonies' usual one), perhaps more at higher building levels. The workplace holds its workers' stock (what they produce, and their tools), and its panel holds the job's settings: work area, replanting, which wood to fell, and so on. Workplaces come from the build tool like every building; until it exists they're placed directly. Military units are exempt for now. Barracks or guard towers may come later.
+
+**Work areas.** A worker stays within an area around its workplace (and inside the claim), configurable from the workplace panel, so it doesn't walk across the city for one tree. A toggle on the panel or the build tool could show the area's edges.
+
+**Supply (open).** Each workplace type has a base demand defined in data, its wanted stock (a lumberjack hut: one axe in use and a couple of spares). In MineColonies, couriers deliver what workers request, and with few couriers everything waits on them: workers spend much of their time idle and the player steps in to help. Ideas to avoid that:
+- Workers fill gaps themselves, trying the cheapest source first: their own workplace's stock, then the nearest settlement storage, then other workplaces' surplus offered for sale (each workplace a small shop), paying in gold once money exists.
+- A market building where producers drop surplus and anyone buys, so buyers walk to one place instead of many.
+- Couriers as an optional job that moves bulk surplus to markets or storage ahead of demand. They make things faster but never block work.
+- Shortages shown as visible demand (on the workplace panel, perhaps a settlement overview), so the player can see what's missing and why.
+
 ## Units
 - Population grows as units appear in a settlement. Citizens have names, health, hunger and an inventory, and are vulnerable to hostile mobs and units.
 - Units, occupations, buildings and materials are data, so the community and modpacks can add their own.
@@ -172,6 +183,7 @@ Sources: [CC:CBC](https://modrinth.com/mod/cc-cbc), [Create Big Cannons: Ballist
 - The starter camp recipe and loot. Build tool details and whether Structurize fits (see Build tools).
 - Money details: tax rate, permit fees, whether lots are leased, payment timing, subsidies, how the mint works, state wages, daily needs, prices inside a settlement, and sinks (see How money flows).
 - How severe material shortages are.
+- Workplaces: how many workers each can employ (building level?), and how worker supply works (markets, shops, couriers; see Workplaces and supply).
 - Surrender: does it end hostility, transfer units, settle the war? Military units stay hostile after capture until then.
 - How claims expand. What naturally generated settlements look like (later).
 - What happens when a faction damages another's territory at peace, and how repairs are triggered.

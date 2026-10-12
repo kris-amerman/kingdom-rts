@@ -12,13 +12,16 @@ import net.minecraft.resources.ResourceLocation;
 // A kind of occupation, backed by code: "kingdomrts:military" means hold a post and fight. The
 // type's codec says which fields an occupation entry of that type has.
 //
-// Types are a fixed list for now (only military; jobs such as the lumberjack will add theirs).
+// Types are a fixed list for now (military and lumberjack).
 // If other mods ever need to add types, this can become a NeoForge registry.
 public record OccupationType(ResourceLocation id, MapCodec<? extends Occupation> codec) {
     public static final OccupationType MILITARY = new OccupationType(
             ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "military"), MilitaryOccupation.CODEC);
 
-    private static final Map<ResourceLocation, OccupationType> TYPES = Map.of(MILITARY.id(), MILITARY);
+    public static final OccupationType LUMBERJACK = new OccupationType(
+            ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "lumberjack"), LumberjackOccupation.CODEC);
+
+    private static final Map<ResourceLocation, OccupationType> TYPES = Map.of(MILITARY.id(), MILITARY, LUMBERJACK.id(), LUMBERJACK);
 
     // Reads a type from its id, refusing ids that aren't a known type.
     public static final Codec<OccupationType> CODEC = ResourceLocation.CODEC.comapFlatMap(

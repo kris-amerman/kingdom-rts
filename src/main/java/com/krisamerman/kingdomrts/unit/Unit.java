@@ -106,7 +106,11 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         return PathfinderMob.createMobAttributes()
                 .add(Attributes.MAX_HEALTH, 20.0)
                 .add(Attributes.MOVEMENT_SPEED, 0.25)
-                .add(Attributes.ATTACK_DAMAGE, 1.0);
+                .add(Attributes.ATTACK_DAMAGE, 1.0)
+                // Player attributes for breaking blocks, so tools and their enchantments (Efficiency)
+                // work for units the way they do for players (see BreakTime).
+                .add(Attributes.MINING_EFFICIENCY)
+                .add(Attributes.BLOCK_BREAK_SPEED);
     }
 
     // Goals every unit has, whatever its occupation (lower number = higher priority). The
@@ -280,7 +284,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
 
     @Override
     public boolean wantsToPickUp(ItemStack stack) {
-        return inventory.canAddItem(stack);
+        return inventory.canAddItem(stack) && (occupation == null || occupation.wantsToPickUp(stack));
     }
 
     // Into the inventory, rather than vanilla's default of equipping the item.
