@@ -23,6 +23,7 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 
 // A Settlement Storage block's inventory (one chest's worth) and the settlement it belongs to.
@@ -46,7 +47,12 @@ public class SettlementStorageBlockEntity extends BaseContainerBlockEntity imple
         super(KingdomRts.SETTLEMENT_STORAGE_BLOCK_ENTITY.get(), pos, state);
     }
 
-    void setSettlement(@Nullable UUID settlementId) {
+    // For blocks built on this one (a workplace's stock).
+    protected SettlementStorageBlockEntity(BlockEntityType<?> type, BlockPos pos, BlockState state) {
+        super(type, pos, state);
+    }
+
+    public void setSettlement(@Nullable UUID settlementId) {
         this.settlementId = settlementId;
         setChanged();
     }

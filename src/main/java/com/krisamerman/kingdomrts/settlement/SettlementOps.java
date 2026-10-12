@@ -93,6 +93,9 @@ public final class SettlementOps {
     // unit list in step. Faction and settlement are independent, so this doesn't change its faction.
     public static void setUnitSettlement(ServerLevel level, Unit unit, @Nullable Settlement settlement) {
         SettlementData settlements = SettlementData.get(level);
+        if (settlement == null || !settlement.id().equals(unit.getSettlementId())) {
+            WorkplaceOps.fire(level, unit); // its workplace belongs to the settlement it's leaving
+        }
         Settlement old = settlements.byId(unit.getSettlementId());
         if (old != null) {
             settlements.removeUnit(old, unit.getUUID());
@@ -105,8 +108,9 @@ public final class SettlementOps {
         }
     }
 
-    // A unit died or was discarded: its settlement forgets it.
+    // A unit died or was discarded: its settlement (and workplace) forget it.
     public static void unitRemoved(ServerLevel level, Unit unit) {
+        WorkplaceOps.unitRemoved(level, unit);
         SettlementData settlements = SettlementData.get(level);
         Settlement settlement = settlements.byId(unit.getSettlementId());
         if (settlement != null) {
@@ -117,19 +121,18 @@ public final class SettlementOps {
     // Brings a unit up to date with its settlement: if the settlement changed owner since the unit
     // last checked, a non-military unit passes to the current owner; if the settlement is gone, the
     // unit no longer belongs to one. Runs on capture for loaded units and when a unit loads.
+    // Also catches up with its workplace (see WorkplaceOps#catchUp).
     public static void catchUp(ServerLevel level, Unit unit) {
-        if (unit.getSettlementId() == null) {
-            return;
+        if (unit.getSettlementId() != null) {
+            Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+            if (settlement == null) {
+                unit.setSettlement(null, 0); // dissolved while the unit was away
+            } else if (unit.getSeenOwnerChanges() != settlement.ownerChanges()) {
+                unit.setFactionId(CaptureRules.factionAfterCapture(unit.getFactionId(), unit.isMilitary(), settlement.owner()));
+                unit.setSettlement(settlement.id(), settlement.ownerChanges());
+            }
         }
-        Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
-        if (settlement == null) {
-            unit.setSettlement(null, 0); // dissolved while the unit was away
-            return;
-        }
-        if (unit.getSeenOwnerChanges() != settlement.ownerChanges()) {
-            unit.setFactionId(CaptureRules.factionAfterCapture(unit.getFactionId(), unit.isMilitary(), settlement.owner()));
-            unit.setSettlement(settlement.id(), settlement.ownerChanges());
-        }
+        WorkplaceOps.catchUp(level, unit);
     }
 
     // Runs action for each of the settlement's units that is currently loaded.
@@ -158,15 +161,22 @@ public final class SettlementOps {
     }
 
     // Why this faction can't put settlement storage here, or null if it can: storage may only go
-    // inside a claim owned by that faction. (A factionless player gets "you need a faction".)
+    // inside a claim owned by that faction.
     @Nullable
     public static String storagePlacementProblem(ServerLevel level, BlockPos pos, @Nullable UUID faction) {
+        return ownClaimProblem(level, pos, faction, "storage");
+    }
+
+    // Why this faction can't put a settlement's block (storage, a workplace) here, or null if it
+    // can: it may only go inside a claim owned by that faction. noun is what to call it ("storage").
+    @Nullable
+    public static String ownClaimProblem(ServerLevel level, BlockPos pos, @Nullable UUID faction, String noun) {
         Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(pos));
         if (settlement == null) {
-            return "Settlement storage can only be placed inside your own settlement's claim";
+            return "A " + noun + " can only be placed inside your own settlement's claim";
         }
         if (faction == null || !faction.equals(settlement.owner())) {
-            return "This land belongs to " + settlement.name() + "; storage can only go in your own claim";
+            return "This land belongs to " + settlement.name() + "; a " + noun + " can only go in your own claim";
         }
         return null;
     }
@@ -196,6 +206,6 @@ public final class SettlementOps {
     // belong to a settlement: loaded ones now, unloaded ones when they next load.
     public static void dissolve(ServerLevel level, Settlement settlement) {
         SettlementData.get(level).dissolve(settlement);
-        forEachLoadedUnit(level, settlement, unit -> unit.setSettlement(null, 0));
+        forEachLoadedUnit(level, settlement, unit -> catchUp(level, unit)); // no settlement, no workplace
     }
 }

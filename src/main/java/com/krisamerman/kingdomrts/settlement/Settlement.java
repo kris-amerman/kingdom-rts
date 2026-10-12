@@ -1,9 +1,14 @@
 package com.krisamerman.kingdomrts.settlement;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+
+import javax.annotation.Nullable;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -30,6 +35,7 @@ public final class Settlement {
     private static final String STORAGE_TAG = "storage";
     private static final String UNITS_TAG = "units";
     private static final String OWNER_CHANGES_TAG = "owner_changes";
+    private static final String WORKPLACES_TAG = "workplaces";
 
     private final UUID id;
     private String name;
@@ -47,6 +53,8 @@ public final class Settlement {
     // Counts changes of owner, so units that were unloaded during a capture can tell they missed
     // one when they load (see Unit#getSeenOwnerChanges).
     private int ownerChanges;
+    // Its workplaces, by block position (in its dimension).
+    private final Map<BlockPos, Workplace> workplaces = new LinkedHashMap<>();
 
     Settlement(UUID id, String name, UUID owner, ResourceKey<Level> dimension, BlockPos townHall, Set<ChunkPos> chunks) {
         this.id = id;
@@ -87,6 +95,23 @@ public final class Settlement {
 
     public Set<UUID> units() {
         return Collections.unmodifiableSet(units);
+    }
+
+    public Collection<Workplace> workplaces() {
+        return Collections.unmodifiableCollection(workplaces.values());
+    }
+
+    @Nullable
+    public Workplace workplaceAt(BlockPos pos) {
+        return workplaces.get(pos);
+    }
+
+    boolean addWorkplace(Workplace workplace) {
+        return workplaces.putIfAbsent(workplace.pos(), workplace) == null;
+    }
+
+    boolean removeWorkplace(BlockPos pos) {
+        return workplaces.remove(pos) != null;
     }
 
     public int ownerChanges() {
@@ -132,6 +157,9 @@ public final class Settlement {
         units.forEach(unit -> unitList.add(NbtUtils.createUUID(unit)));
         tag.put(UNITS_TAG, unitList);
         tag.putInt(OWNER_CHANGES_TAG, ownerChanges);
+        ListTag workplaceList = new ListTag();
+        workplaces.values().forEach(workplace -> workplaceList.add(workplace.save()));
+        tag.put(WORKPLACES_TAG, workplaceList);
         return tag;
     }
 
@@ -150,6 +178,9 @@ public final class Settlement {
             settlement.units.add(NbtUtils.loadUUID(unit));
         }
         settlement.ownerChanges = tag.getInt(OWNER_CHANGES_TAG);
+        for (Tag workplace : tag.getList(WORKPLACES_TAG, Tag.TAG_COMPOUND)) {
+            settlement.addWorkplace(Workplace.load((CompoundTag) workplace));
+        }
         return settlement;
     }
 }

@@ -45,7 +45,7 @@ public class KingdomRtsCommands {
                 .then(FactionCommands.build())
                 // /kingdomrts settlement list|here|rename|found ...
                 .then(SettlementCommands.build())
-                // /kingdomrts unit join|leave|info ...
+                // /kingdomrts unit join|leave|hire|fire|info ...
                 .then(UnitCommands.build())
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
                 .then(spawnOptions(Commands.literal("spawnunit"), ctx -> Occupation.SOLDIER)
@@ -113,6 +113,12 @@ public class KingdomRtsCommands {
         Vec3 spawnPos = source.getPosition();
         if (occupation != null && Occupation.get(level, occupation).isEmpty()) {
             source.sendFailure(Component.literal("Unknown occupation: " + occupation));
+            return 0;
+        }
+        // A job comes from a workplace (CLAUDE.md), so only soldiers or no occupation can be spawned.
+        if (occupation != null && !Occupation.get(level, occupation).get().isMilitary()) {
+            source.sendFailure(Component.literal(occupation + " is a job: spawn the unit with no occupation, then hire it at a workplace"
+                    + " (/kingdomrts unit hire)"));
             return 0;
         }
 

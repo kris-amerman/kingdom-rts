@@ -20,6 +20,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -135,6 +136,33 @@ public class SettlementData extends SavedData {
 
     void removeUnit(Settlement settlement, UUID unit) {
         if (settlement.removeUnit(unit)) {
+            setDirty();
+        }
+    }
+
+    Workplace addWorkplace(Settlement settlement, BlockPos pos, ResourceLocation type) {
+        Workplace workplace = new Workplace(pos, type);
+        if (settlement.addWorkplace(workplace)) {
+            setDirty();
+            return workplace;
+        }
+        return settlement.workplaceAt(pos);
+    }
+
+    void removeWorkplace(Settlement settlement, BlockPos pos) {
+        if (settlement.removeWorkplace(pos)) {
+            setDirty();
+        }
+    }
+
+    void addWorker(Workplace workplace, UUID unit, String name) {
+        if (workplace.addWorker(unit, name)) {
+            setDirty();
+        }
+    }
+
+    void removeWorker(Workplace workplace, UUID unit) {
+        if (workplace.removeWorker(unit)) {
             setDirty();
         }
     }

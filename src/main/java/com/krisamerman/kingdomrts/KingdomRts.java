@@ -7,6 +7,9 @@ import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallMenu;
+import com.krisamerman.kingdomrts.settlement.WorkplaceBlock;
+import com.krisamerman.kingdomrts.settlement.WorkplaceBlockEntity;
+import com.krisamerman.kingdomrts.settlement.WorkplaceType;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.OccupationType;
 import com.krisamerman.kingdomrts.unit.Unit;
@@ -70,6 +73,15 @@ public class KingdomRts {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SettlementStorageBlockEntity>> SETTLEMENT_STORAGE_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("settlement_storage", () -> BlockEntityType.Builder.of(SettlementStorageBlockEntity::new, SETTLEMENT_STORAGE.get()).build(null));
 
+    // The lumberjack's workplace, id "kingdomrts:lumberjack_hut" (placed directly until the build
+    // tool exists). What it employs comes from data/kingdomrts/kingdomrts/workplace/lumberjack_hut.json.
+    public static final DeferredBlock<WorkplaceBlock> LUMBERJACK_HUT = BLOCKS.registerBlock("lumberjack_hut", WorkplaceBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5f).sound(SoundType.WOOD));
+    public static final DeferredItem<BlockItem> LUMBERJACK_HUT_ITEM = ITEMS.registerSimpleBlockItem("lumberjack_hut", LUMBERJACK_HUT);
+    // A workplace's stock, shared by every workplace block.
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorkplaceBlockEntity>> WORKPLACE_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("workplace", () -> BlockEntityType.Builder.of(WorkplaceBlockEntity::new, LUMBERJACK_HUT.get()).build(null));
+
     // The town hall menu, id "kingdomrts:town_hall". IMenuTypeExtension.create lets the server send
     // extra data (the hall's position and owner name) when the menu opens.
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
@@ -92,6 +104,7 @@ public class KingdomRts {
             .displayItems((parameters, output) -> {
                 output.accept(TOWN_HALL_ITEM.get());
                 output.accept(SETTLEMENT_STORAGE_ITEM.get());
+                output.accept(LUMBERJACK_HUT_ITEM.get());
             }).build());
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.
@@ -121,5 +134,6 @@ public class KingdomRts {
     // occupations only matter on the server, so they aren't sent to clients.
     private void registerDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {
         event.dataPackRegistry(Occupation.REGISTRY_KEY, OccupationType.OCCUPATION_CODEC);
+        event.dataPackRegistry(WorkplaceType.REGISTRY_KEY, WorkplaceType.CODEC);
     }
 }

@@ -5,6 +5,7 @@ import static com.krisamerman.kingdomrts.gametest.TestSupport.HALL;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.TEMPLATE;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.faction;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.found;
+import static com.krisamerman.kingdomrts.gametest.TestSupport.lumberjackHut;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.recordingPlayer;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.removeHall;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.removePlayer;
@@ -15,12 +16,14 @@ import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.gametest.TestSupport.RecordingPlayer;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
+import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.BreakTime;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
+import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
@@ -44,6 +47,7 @@ public class LumberjackGameTests {
     private static final BlockPos TREE = new BlockPos(3, FLOOR_Y + 1, 3);
     private static final BlockPos OTHER_TREE = new BlockPos(13, FLOOR_Y + 1, 3);
     private static final BlockPos LUMBERJACK = new BlockPos(13, FLOOR_Y + 1, 13);
+    private static final BlockPos HUT = new BlockPos(16, FLOOR_Y + 1, 8);
 
     @GameTest(template = TEMPLATE, batch = "lumberjack_fell", timeoutTicks = 600)
     public static void fellsATreeInItsClaim(GameTestHelper helper) {
@@ -322,12 +326,18 @@ public class LumberjackGameTests {
         return lumberjack;
     }
 
-    // A settlement for a new faction, with a lumberjack that belongs to it.
+    // A settlement for a new faction with a lumberjack hut, and a settler hired there as its
+    // lumberjack (the only way a unit gets the job).
     private static Unit setUp(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
         Settlement settlement = found(helper, HALL, blue);
-        Unit lumberjack = unit(helper, LUMBERJACK, blue, Occupation.LUMBERJACK, true);
+        lumberjackHut(helper, HUT);
+        Unit lumberjack = unit(helper, LUMBERJACK, blue, null, true);
         SettlementOps.setUnitSettlement(helper.getLevel(), lumberjack, settlement);
+        String problem = WorkplaceOps.hire(helper.getLevel(), lumberjack, helper.absolutePos(HUT));
+        if (problem != null) {
+            throw new GameTestAssertException("Couldn't hire the lumberjack: " + problem);
+        }
         return lumberjack;
     }
 

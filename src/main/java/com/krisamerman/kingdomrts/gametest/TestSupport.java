@@ -14,6 +14,7 @@ import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
+import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 import com.mojang.authlib.GameProfile;
@@ -91,6 +92,15 @@ final class TestSupport {
             if (leftover != null) {
                 SettlementOps.dissolve(helper.getLevel(), leftover);
             }
+        }
+    }
+
+    // Places a lumberjack hut and records it on the settlement whose claim it's in, as placing it by
+    // hand does.
+    static void lumberjackHut(GameTestHelper helper, BlockPos relativePos) {
+        helper.setBlock(relativePos, KingdomRts.LUMBERJACK_HUT.get());
+        if (WorkplaceOps.register(helper.getLevel(), helper.absolutePos(relativePos)) == null) {
+            throw new GameTestAssertException("Couldn't register the lumberjack hut");
         }
     }
 

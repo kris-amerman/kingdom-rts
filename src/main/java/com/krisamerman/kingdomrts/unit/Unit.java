@@ -63,6 +63,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     private static final String POST_TAG = "post";
     private static final String OCCUPATION_TAG = "occupation";
     private static final String INVENTORY_TAG = "inventory";
+    private static final String WORKPLACE_TAG = "workplace";
 
     // The faction this unit belongs to (see FactionData), or null for a factionless unit
     // (a mercenary, say). A factionless unit is never part of any faction's presence or wars.
@@ -79,6 +80,10 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     // Where it lives, independent of its settlement.
     @Nullable
     private BlockPos home;
+    // The workplace it's employed at (see WorkplaceOps), or null if it has no job there. Changed
+    // only through WorkplaceOps, which keeps the workplace's worker list in step.
+    @Nullable
+    private BlockPos workplace;
     // Where it stays: random strolls keep within HOLD_RADIUS of it.
     @Nullable
     private BlockPos post;
@@ -135,6 +140,12 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
 
     // ---- Occupation ----
 
+    // Use WorkplaceOps (hiring, firing) for jobs; this just swaps the occupation and its goals.
+    public void setOccupation(@Nullable ResourceLocation occupationId) {
+        this.occupationId = occupationId;
+        applyOccupation();
+    }
+
     // Looks up the occupation entry and lets it set up the unit's stats and goals.
     private void applyOccupation() {
         occupationGoals.forEach(goal -> {
@@ -143,6 +154,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         });
         occupationGoals.clear();
         attackRange = 0;
+        setPost(post); // back to keeping near its post, unless the occupation says otherwise
         occupation = occupationId != null ? Occupation.get(level(), occupationId).orElse(null) : null;
         if (occupationId != null && occupation == null) {
             KingdomRts.LOGGER.warn("No occupation entry '{}'; unit has no occupation", occupationId);
@@ -240,6 +252,16 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     // Use SettlementOps (capture, catching up), which applies the rules for who changes faction.
     public void setFactionId(@Nullable UUID factionId) {
         this.factionId = factionId;
+    }
+
+    @Nullable
+    public BlockPos getWorkplace() {
+        return workplace;
+    }
+
+    // Use WorkplaceOps.hire / fire, which also update the workplace.
+    public void setWorkplace(@Nullable BlockPos workplace) {
+        this.workplace = workplace != null ? workplace.immutable() : null;
     }
 
     @Nullable
@@ -366,6 +388,9 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         if (home != null) {
             tag.put(HOME_TAG, NbtUtils.writeBlockPos(home));
         }
+        if (workplace != null) {
+            tag.put(WORKPLACE_TAG, NbtUtils.writeBlockPos(workplace));
+        }
         if (post != null) {
             tag.put(POST_TAG, NbtUtils.writeBlockPos(post));
         }
@@ -383,6 +408,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         settlementId = tag.hasUUID(SETTLEMENT_TAG) ? tag.getUUID(SETTLEMENT_TAG) : null;
         seenOwnerChanges = tag.getInt(SEEN_OWNER_CHANGES_TAG);
         home = NbtUtils.readBlockPos(tag, HOME_TAG).orElse(null);
+        workplace = NbtUtils.readBlockPos(tag, WORKPLACE_TAG).orElse(null);
         // Vanilla doesn't save the restriction, so setPost rebuilds it.
         setPost(NbtUtils.readBlockPos(tag, POST_TAG).orElse(null));
         occupationId = tag.contains(OCCUPATION_TAG, Tag.TAG_STRING) ? ResourceLocation.tryParse(tag.getString(OCCUPATION_TAG)) : null;

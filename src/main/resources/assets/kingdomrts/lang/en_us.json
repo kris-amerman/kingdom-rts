@@ -2,6 +2,7 @@
   "itemGroup.kingdomrts": "Kingdom RTS",
   "block.kingdomrts.town_hall": "Town Hall",
   "block.kingdomrts.settlement_storage": "Settlement Storage",
+  "block.kingdomrts.lumberjack_hut": "Lumberjack Hut",
   "container.kingdomrts.settlement_storage": "Settlement Storage",
   "entity.kingdomrts.unit": "Unit",
   "occupation.kingdomrts.soldier": "Soldier",
