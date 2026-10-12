@@ -10,6 +10,7 @@ import com.krisamerman.kingdomrts.settlement.TownHallMenu;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.OccupationType;
 import com.krisamerman.kingdomrts.unit.Unit;
+import com.krisamerman.kingdomrts.unit.UnitMenu;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.registries.Registries;
@@ -73,6 +74,9 @@ public class KingdomRts {
     // extra data (the hall's position and owner name) when the menu opens.
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
             MENU_TYPES.register("town_hall", () -> IMenuTypeExtension.create(TownHallMenu::new));
+    // The unit info panel, id "kingdomrts:unit". The server sends what the viewer may see when it opens.
+    public static final DeferredHolder<MenuType<?>, MenuType<UnitMenu>> UNIT_MENU =
+            MENU_TYPES.register("unit", () -> IMenuTypeExtension.create(UnitMenu::new));
 
     // A unit (whatever its occupation), id "kingdomrts:unit". Player-sized hitbox.
     public static final DeferredHolder<EntityType<?>, EntityType<Unit>> UNIT =

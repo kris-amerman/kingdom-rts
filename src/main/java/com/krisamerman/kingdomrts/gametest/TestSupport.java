@@ -25,12 +25,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
+import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.CommonListenerCookie;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.Vec3;
@@ -160,19 +164,35 @@ final class TestSupport {
         return helper.makeMockServerPlayerInLevel();
     }
 
-    // A fake server player that records its action-bar messages, so tests can check what a player
-    // would see. Built the same way as vanilla's mock player. Remove it with removePlayer when done.
+    // A fake server player that records its action-bar messages and every packet the server sends
+    // it, so tests can check what a player would see and what reaches their client. Built the same
+    // way as vanilla's mock player, except that packets are recorded instead of sent: vanilla's mock
+    // player can't receive NeoForge's own packets (such as opening a menu with extra data), because
+    // no real client ever agreed to them. Remove it with removePlayer when done.
     static RecordingPlayer recordingPlayer(GameTestHelper helper) {
-        CommonListenerCookie cookie = CommonListenerCookie.createInitial(new GameProfile(UUID.randomUUID(), "test-recorder"), false);
+        MinecraftServer server = helper.getLevel().getServer();
+        CommonListenerCookie cookie = CommonListenerCookie.createInitial(
+                new GameProfile(UUID.randomUUID(), "test-player-" + RECORDING_PLAYERS.incrementAndGet()), false);
         RecordingPlayer player = new RecordingPlayer(helper.getLevel(), cookie);
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection); // a do-nothing network channel
-        helper.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        server.getPlayerList().placeNewPlayer(connection, player, cookie);
+        List<Packet<?>> sent = player.sent; // (inside the class below, "player" means its own field)
+        player.connection = new ServerGamePacketListenerImpl(server, connection, player, cookie) {
+            @Override
+            public void send(Packet<?> packet, @Nullable PacketSendListener listener) {
+                sent.add(packet);
+            }
+        };
         return player;
     }
 
+    private static final AtomicInteger RECORDING_PLAYERS = new AtomicInteger();
+
     static final class RecordingPlayer extends ServerPlayer {
         final List<String> actionBar = new ArrayList<>();
+        // Packets sent to this player since it joined, oldest first.
+        final List<Packet<?>> sent = new ArrayList<>();
 
         RecordingPlayer(ServerLevel level, CommonListenerCookie cookie) {
             super(level.getServer(), level, cookie.gameProfile(), cookie.clientInformation());

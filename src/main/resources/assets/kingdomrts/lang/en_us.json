@@ -4,6 +4,7 @@
   "block.kingdomrts.settlement_storage": "Settlement Storage",
   "container.kingdomrts.settlement_storage": "Settlement Storage",
   "entity.kingdomrts.unit": "Unit",
+  "occupation.kingdomrts.soldier": "Soldier",
   "container.kingdomrts.town_hall": "Town Hall",
   "button.kingdomrts.claim": "Claim"
 }
