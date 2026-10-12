@@ -22,26 +22,8 @@ Story template:
 
 ## Current: Units MVP
 
-### S-006 Template cleanup
-- **Status:** in review | **Branch:** feature/template-cleanup | **PR:** #11 | **Depends on:** -
-- **Goal:** none of the NeoForge MDK example code is left.
-- **Scope:**
-  - Remove `example_block`, `example_item` and the BUILDING_BLOCKS `addCreative` hook.
-  - Remove `Config.java`, its registration and logging in `KingdomRts`, and the config screen in `KingdomRtsClient`.
-  - Keep one creative tab, renamed `kingdomrts:main`, with the town hall as its icon, holding the town hall and storage block (and later the unit spawn egg).
-  - Remove leftover `en_us.json` entries.
-- **Out of scope:** any gameplay change.
-- **Test:**
-  - The existing unit tests and GameTests still pass.
-  - Manual: the creative tab looks right and holds the town hall and storage block.
-- **Notes:**
-  - Also removed the MDK's "hello" log lines (common setup, server starting, client setup), which made the mod class register itself on the game event bus for no reason.
-  - The tab's title is now "Kingdom RTS" (was "Kingdom RTS Tab"). Old dev worlds lose any `example_block` placed in them.
-  - Left alone: the commented-out examples in `build.gradle` and `neoforge.mods.toml`, which are build/metadata boilerplate rather than mod code.
-  - No new tests: nothing gameplay-related changed. The 28 unit tests and 20 GameTests still pass.
-
 ### S-007 Generic Unit with data-driven occupations
-- **Status:** planned | **Branch:** feature/unit-occupations | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/unit-occupations | **PR:** #12 | **Depends on:** -
 - **Goal:** one `Unit` entity replaces `MilitaryUnit`. What a unit does comes from its occupation, a data entry. Military is the first occupation, with unchanged behaviour.
 - **Scope:**
   - **Unit fields**, each optional and independent (CLAUDE.md): faction (moved from `MilitaryUnit`), settlement id (stored only; S-008 gives it meaning), home (`BlockPos`), inventory (a saved 9-slot container), occupation id.
@@ -54,7 +36,17 @@ Story template:
   - Port `CombatGameTests` and the capture GameTests without changing what they check; they are the safety net.
   - New GameTests: a unit with no occupation, or a non-military one, doesn't count at capture; inventory, home and occupation survive a save/load round trip.
   - Unit test: occupation JSON decodes, and bad entries are rejected.
-- **Notes:** old dev-world `military_unit` entities are dropped by the id change.
+  - Manual: spawn units with each command form and check the name tags; soldiers still fight and hold their post. Checked by the owner.
+- **Notes:**
+  - Old dev-world `military_unit` entities are dropped by the id change.
+  - **Occupation JSON:** `data/<ns>/kingdomrts/occupation/<name>.json`, e.g. `{ "type": "kingdomrts:military", "max_health": 24, ... }`. `"type"` picks the code (`OccupationType`); the other fields are that type's settings. Types are a fixed list in code for now (only military); they can become a NeoForge registry if other mods need to add types.
+  - **How an occupation drives a unit:** `Occupation.applyTo(unit)` sets the stats and adds the occupation's AI goals through `Unit.addOccupationGoal`, so they can be swapped out if the occupation changes. Every unit has the basic goals (float, stroll near its post, look around). Military adds hold-post attack, return to post, and target selection, at the same priorities as before.
+  - **Capture:** counts units whose occupation `countsAtCapture()` (military only).
+  - **Targeting:** soldiers target any unit of a hostile faction, not only soldiers. Hostile mobs target every unit, like villagers.
+  - **Inventory:** 9 slots, saved slot by slot (vanilla `SimpleContainer`'s own save packs items into the first slots, which the round-trip test caught). It drops when the unit dies.
+  - **Command:** `/kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]`, with occupation ids tab-completed from the datapacks. The name tag shows faction and occupation.
+  - **Non-military coverage:** there's no non-military occupation type yet, so "doesn't count at capture" is tested with no occupation and with an id that doesn't exist. S-009's lumberjack adds the real non-military case.
+  - GameTests added: units without a military occupation don't count; a soldier gets its stats from its occupation entry; a unit survives save and load (faction, settlement, home, post, occupation, inventory); inventory drops on death. Unit tests: `OccupationCodecTest` (5). A sabotage check (every unit counts at capture) fails two of the GameTests.
 
 ### S-008 Units belong to settlements
 - **Status:** planned | **Branch:** feature/settlement-units | **PR:** - | **Depends on:** S-007
@@ -125,6 +117,24 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-006 Template cleanup
+- **Status:** done | **Branch:** feature/template-cleanup | **PR:** #11 | **Depends on:** -
+- **Goal:** none of the NeoForge MDK example code is left.
+- **Scope:**
+  - Remove `example_block`, `example_item` and the BUILDING_BLOCKS `addCreative` hook.
+  - Remove `Config.java`, its registration and logging in `KingdomRts`, and the config screen in `KingdomRtsClient`.
+  - Keep one creative tab, renamed `kingdomrts:main`, with the town hall as its icon, holding the town hall and storage block (and later the unit spawn egg).
+  - Remove leftover `en_us.json` entries.
+- **Out of scope:** any gameplay change.
+- **Test:**
+  - The existing unit tests and GameTests still pass.
+  - Manual: the creative tab looks right and holds the town hall and storage block. Checked by the owner.
+- **Notes:**
+  - Also removed the MDK's "hello" log lines (common setup, server starting, client setup), which made the mod class register itself on the game event bus for no reason.
+  - The tab's title is now "Kingdom RTS" (was "Kingdom RTS Tab"). Old dev worlds lose any `example_block` placed in them.
+  - Left alone: the commented-out examples in `build.gradle` and `neoforge.mods.toml`, which are build/metadata boilerplate rather than mod code.
+  - No new tests: nothing gameplay-related changed. The 28 unit tests and 20 GameTests still pass.
 
 ### S-004 Territory messages
 - **Status:** done | **Branch:** feature/territory-messages | **PR:** #9 | **Depends on:** S-001

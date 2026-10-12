@@ -3,7 +3,7 @@
   "block.kingdomrts.town_hall": "Town Hall",
   "block.kingdomrts.settlement_storage": "Settlement Storage",
   "container.kingdomrts.settlement_storage": "Settlement Storage",
-  "entity.kingdomrts.military_unit": "Military Unit",
+  "entity.kingdomrts.unit": "Unit",
   "container.kingdomrts.town_hall": "Town Hall",
   "button.kingdomrts.claim": "Claim"
 }

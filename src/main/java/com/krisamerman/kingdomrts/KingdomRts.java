@@ -7,8 +7,9 @@ import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallMenu;
-import com.krisamerman.kingdomrts.unit.MilitaryStats;
-import com.krisamerman.kingdomrts.unit.MilitaryUnit;
+import com.krisamerman.kingdomrts.unit.Occupation;
+import com.krisamerman.kingdomrts.unit.OccupationType;
+import com.krisamerman.kingdomrts.unit.Unit;
 import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.registries.Registries;
@@ -73,11 +74,11 @@ public class KingdomRts {
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
             MENU_TYPES.register("town_hall", () -> IMenuTypeExtension.create(TownHallMenu::new));
 
-    // A unit with a military occupation, id "kingdomrts:military_unit". Player-sized hitbox.
-    public static final DeferredHolder<EntityType<?>, EntityType<MilitaryUnit>> MILITARY_UNIT =
-            ENTITY_TYPES.register("military_unit", () -> EntityType.Builder.of(MilitaryUnit::new, MobCategory.MISC)
+    // A unit (whatever its occupation), id "kingdomrts:unit". Player-sized hitbox.
+    public static final DeferredHolder<EntityType<?>, EntityType<Unit>> UNIT =
+            ENTITY_TYPES.register("unit", () -> EntityType.Builder.of(Unit::new, MobCategory.MISC)
                     .sized(0.6f, 1.95f)
-                    .build("military_unit"));
+                    .build("unit"));
 
     // The mod's creative tab, id "kingdomrts:main", placed after the vanilla combat tab.
     public static final DeferredHolder<CreativeModeTab, CreativeModeTab> MAIN_TAB = CREATIVE_MODE_TABS.register("main", () -> CreativeModeTab.builder()
@@ -109,12 +110,12 @@ public class KingdomRts {
 
     // Every living entity type needs its attributes (health, speed, ...) registered.
     private void registerEntityAttributes(EntityAttributeCreationEvent event) {
-        event.put(MILITARY_UNIT.get(), MilitaryUnit.createAttributes().build());
+        event.put(UNIT.get(), Unit.createAttributes().build());
     }
 
     // Datapack registries are loaded from JSON when a world loads. No network codec:
-    // the stats only matter on the server, so they aren't sent to clients.
+    // occupations only matter on the server, so they aren't sent to clients.
     private void registerDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {
-        event.dataPackRegistry(MilitaryStats.REGISTRY_KEY, MilitaryStats.CODEC);
+        event.dataPackRegistry(Occupation.REGISTRY_KEY, OccupationType.OCCUPATION_CODEC);
     }
 }

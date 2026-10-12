@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
-import com.krisamerman.kingdomrts.unit.MilitaryUnit;
+import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -30,8 +30,8 @@ public class CombatGameTests {
         Faction red = faction(helper, "Red");
         Faction blue = faction(helper, "Blue");
         setWar(helper, red, blue, true);
-        MilitaryUnit a = unit(helper, A, red, true);
-        MilitaryUnit b = unit(helper, B, blue, true);
+        Unit a = unit(helper, A, red, true);
+        Unit b = unit(helper, B, blue, true);
         helper.succeedWhen(() -> helper.assertTrue(hurt(a) || hurt(b), "Expected units at war to fight"));
     }
 
@@ -39,8 +39,8 @@ public class CombatGameTests {
     public static void unitsAtPeaceDontFight(GameTestHelper helper) {
         Faction red = faction(helper, "Red");
         Faction blue = faction(helper, "Blue");
-        MilitaryUnit a = unit(helper, A, red, true);
-        MilitaryUnit b = unit(helper, B, blue, true);
+        Unit a = unit(helper, A, red, true);
+        Unit b = unit(helper, B, blue, true);
         helper.startSequence()
                 .thenIdle(100)
                 .thenExecute(() -> helper.assertFalse(hurt(a) || hurt(b), "Units of factions at peace attacked each other: "
@@ -53,8 +53,8 @@ public class CombatGameTests {
         Faction red = faction(helper, "Red");
         Faction blue = faction(helper, "Blue");
         setWar(helper, red, blue, true);
-        MilitaryUnit a = unit(helper, A, red, true);
-        MilitaryUnit b = unit(helper, B, blue, true);
+        Unit a = unit(helper, A, red, true);
+        Unit b = unit(helper, B, blue, true);
         AtomicReference<float[]> healthAtPeace = new AtomicReference<>();
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(hurt(a) || hurt(b), "Waiting for the fight to start"))
@@ -67,12 +67,12 @@ public class CombatGameTests {
                 .thenSucceed();
     }
 
-    private static String describe(MilitaryUnit unit) {
+    private static String describe(Unit unit) {
         return unit.getHealth() + "/" + unit.getMaxHealth() + " last damage: "
                 + (unit.getLastDamageSource() != null ? unit.getLastDamageSource().getMsgId() + " by " + unit.getLastDamageSource().getEntity() : "none");
     }
 
-    private static boolean hurt(MilitaryUnit unit) {
+    private static boolean hurt(Unit unit) {
         return unit.getHealth() < unit.getMaxHealth();
     }
 }

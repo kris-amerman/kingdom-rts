@@ -12,10 +12,10 @@ public class HoldPostAttackGoal extends Goal {
     // Ticks between swings (20 = 1 second, same as vanilla melee mobs). Behavior tuning, not a stat.
     public static final int ATTACK_COOLDOWN_TICKS = 20;
 
-    private final MilitaryUnit unit;
+    private final Unit unit;
     private int cooldown;
 
-    public HoldPostAttackGoal(MilitaryUnit unit) {
+    public HoldPostAttackGoal(Unit unit) {
         this.unit = unit;
         // MOVE and LOOK: while fighting, lower-priority goals that move or turn the unit
         // (wandering, looking around) are paused.
