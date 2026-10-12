@@ -28,6 +28,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -109,5 +110,31 @@ public class UnitGameTests {
         unit.getInventory().setItem(0, new ItemStack(Items.DIAMOND));
         unit.kill();
         helper.succeedWhen(() -> helper.assertItemEntityPresent(Items.DIAMOND, SPOT, 2.0));
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void unitPicksUpItemsNearby(GameTestHelper helper) {
+        Unit unit = unit(helper, SPOT, null, false);
+        helper.spawnItem(Items.OAK_LOG, Vec3.atBottomCenterOf(SPOT.east())); // within reach
+        helper.succeedWhen(() -> {
+            helper.assertTrue(unit.getInventory().countItem(Items.OAK_LOG) == 1, "Waiting for the unit to pick up the log");
+            helper.assertItemEntityNotPresent(Items.OAK_LOG, SPOT, 3.0);
+        });
+    }
+
+    @GameTest(template = TEMPLATE, timeoutTicks = 100)
+    public static void fullUnitLeavesItemsOnTheGround(GameTestHelper helper) {
+        Unit unit = unit(helper, SPOT, null, false);
+        for (int i = 0; i < Unit.INVENTORY_SIZE; i++) {
+            unit.getInventory().setItem(i, new ItemStack(Items.DIRT, 64));
+        }
+        helper.spawnItem(Items.OAK_LOG, Vec3.atBottomCenterOf(SPOT.east())); // within reach
+        helper.startSequence()
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    helper.assertItemEntityPresent(Items.OAK_LOG, SPOT, 3.0);
+                    helper.assertTrue(unit.getInventory().countItem(Items.OAK_LOG) == 0, "A full unit shouldn't take more items");
+                })
+                .thenSucceed();
     }
 }

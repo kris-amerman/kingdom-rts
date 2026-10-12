@@ -2,6 +2,7 @@ package com.krisamerman.kingdomrts;
 
 import com.krisamerman.kingdomrts.settlement.TownHallScreen;
 import com.krisamerman.kingdomrts.unit.UnitRenderer;
+import com.krisamerman.kingdomrts.unit.UnitScreen;
 
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -24,5 +25,6 @@ public class KingdomRtsClient {
     @SubscribeEvent
     static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(KingdomRts.TOWN_HALL_MENU.get(), TownHallScreen::new);
+        event.register(KingdomRts.UNIT_MENU.get(), UnitScreen::new);
     }
 }

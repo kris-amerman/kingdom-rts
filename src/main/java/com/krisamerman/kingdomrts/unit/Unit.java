@@ -17,6 +17,9 @@ import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.Containers;
 import net.minecraft.world.SimpleContainer;
@@ -35,18 +38,23 @@ import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.npc.InventoryCarrier;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 // A unit: an NPC tracked individually, unlike a generic mob. Everything about it is optional and
 // independent: it may have a faction, a settlement, a home, items in its inventory and an
 // occupation, in any combination. What it does comes from its occupation (see Occupation), which
 // is a datapack entry; a unit with no occupation just idles near its post.
-public class Unit extends PathfinderMob {
+public class Unit extends PathfinderMob implements InventoryCarrier {
     // How far from its post the unit may wander. Behavior tuning, not a per-occupation stat.
     public static final int HOLD_RADIUS = 6;
     public static final int INVENTORY_SIZE = 9;
+    // How often a unit looks for items on the ground to pick up (vanilla mobs look every tick).
+    private static final int PICKUP_INTERVAL_TICKS = 10;
 
     private static final String FACTION_TAG = "faction_id";
     private static final String SETTLEMENT_TAG = "settlement";
@@ -253,8 +261,32 @@ public class Unit extends PathfinderMob {
         }
     }
 
+    // (Also InventoryCarrier's: vanilla's shared code for mobs that carry items, like villagers.)
+    @Override
     public SimpleContainer getInventory() {
         return inventory;
+    }
+
+    // ---- Picking up items ----
+
+    // Units pick up items lying on the ground nearby, as long as they have room. Vanilla's Mob
+    // checks this each tick and then looks for items within reach; answering yes only every few
+    // ticks keeps that search cheap. (Like other mobs, units don't pick up items when the
+    // mobGriefing game rule is off.) This will likely need rules later, so units don't hoard trash.
+    @Override
+    public boolean canPickUpLoot() {
+        return tickCount % PICKUP_INTERVAL_TICKS == 0;
+    }
+
+    @Override
+    public boolean wantsToPickUp(ItemStack stack) {
+        return inventory.canAddItem(stack);
+    }
+
+    // Into the inventory, rather than vanilla's default of equipping the item.
+    @Override
+    protected void pickUpItem(ItemEntity itemEntity) {
+        InventoryCarrier.pickUpItem(this, this, itemEntity);
     }
 
     // ---- Vanilla behavior ----
@@ -271,6 +303,16 @@ public class Unit extends PathfinderMob {
     @Override
     public boolean removeWhenFarAway(double distanceToClosestPlayer) {
         return false;
+    }
+
+    // Right-clicking a unit opens its info panel (see UnitMenu for who sees what).
+    @Override
+    protected InteractionResult mobInteract(Player player, InteractionHand hand) {
+        if (player instanceof ServerPlayer serverPlayer) {
+            UnitMenu.open(serverPlayer, this);
+        }
+        // On the client, SUCCESS plays the hand-swing; the server opens the menu.
+        return InteractionResult.sidedSuccess(level().isClientSide);
     }
 
     // Leashing replaces the mob's restriction, which would break its post.

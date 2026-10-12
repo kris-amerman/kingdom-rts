@@ -22,34 +22,12 @@ Story template:
 
 ## Current: Units MVP
 
-### S-008 Units belong to settlements
-- **Status:** in review | **Branch:** feature/settlement-units | **PR:** #13 | **Depends on:** S-007
-- **Goal:** a settlement knows its units, and capture hands its civilians to the new owner.
-- **Scope:**
-  - `Settlement` gets a saved set of unit UUIDs, like its storage set, kept up to date by `SettlementOps.setUnitSettlement` / `unitRemoved`. A unit is removed when it dies.
-  - `/kingdomrts unit join <units> <settlement>`, `unit leave <units>` and `unit info <units>`, using entity selectors.
-  - **On capture:** non-military units of the settlement switch to the new owner's faction; military units keep their faction (CLAUDE.md).
-  - Units in unloaded chunks catch up when they next load.
-  - `/kingdomrts settlement here` and `list` show the unit count.
-- **Out of scope:** assigning homes automatically, population growth.
-- **Test:**
-  - GameTests: on capture, a civilian flips to the new owner and a soldier keeps its faction; a unit's death removes it from the settlement; a unit loaded after a capture catches up; the `unit join|leave|info` and `settlement here` commands, run for real.
-  - Manual: none. There are no client-side visuals in this story.
-- **Notes:**
-  - **Scope change:** settlement membership is set with `/kingdomrts unit join|leave` (entity selectors) instead of a `settlement <name>` option on `spawnunit`. Another option would have doubled the spawn command's tree, and join/leave also works on units that already exist. `unit info` was added so a manual test can see factions change, since name tags are set once at spawn.
-  - **Catching up:** each settlement counts its owner changes, and each unit remembers the count it has seen. When a unit loads (`Unit.onAddedToLevel`) with an older count, a non-military unit takes the current owner's faction. This handles several captures in a row while the unit was away, and it needs no list of pending changes. Loaded units are updated at capture time. A unit whose settlement was dissolved while it was away drops the settlement when it loads.
-  - **The capture rule** is a pure function, `CaptureRules.factionAfterCapture` (military keeps its faction, everyone else passes), covered by unit tests. It applies to every non-military unit of the settlement, whatever its faction, as CLAUDE.md says.
-  - `Occupation.countsAtCapture()` was renamed `isMilitary()`, since it now decides both capture presence and who keeps their faction.
-  - **Removal:** a unit leaves its settlement's list only when it's destroyed (killed or discarded), not when its chunk unloads.
-  - GameTests added: capture hands civilians to the new owner; unloaded units catch up after a capture; a dead unit leaves the settlement; dissolving releases units. Unit tests: two for `factionAfterCapture`. Sabotage checks (no catch-up on load; civilians keep their faction on capture; `unit join` doing nothing) fail the matching tests.
-  - New `TestSupport.runCommand`: runs a real command as an operator standing at a spot in the test, and returns everything it printed. Commands are tested this way from now on, instead of in manual checklists.
-
 ### S-013 Unit info panel
-- **Status:** planned | **Branch:** feature/unit-info-panel | **PR:** - | **Depends on:** S-008
+- **Status:** in review | **Branch:** feature/unit-info-panel | **PR:** - | **Depends on:** S-008
 - **Goal:** right-clicking a unit shows its details, in full to its own faction and in part to everyone else.
 - **Scope:**
   - **Everyone sees:** name, faction, occupation, health / max health, and the occupation's basic stats (attack damage, attack range, speed).
-  - **Members of the unit's faction also see:** settlement, home, post and the inventory (view-only).
+  - **Members of the unit's faction also see:** settlement, home, post and the inventory, and can move items in and out of it.
   - **Factionless units:** nobody gets the full view. Only the owner sees everything; there's no creative-operator exception.
   - **The server decides what to send:** hidden information never reaches a limited viewer's client.
   - The access rule is a pure function (full or limited).
@@ -57,8 +35,23 @@ Story template:
 - **Test:**
   - Unit tests: the access rule.
   - GameTest: the server-side builder gives a member the full data and an outsider the limited set (no inventory).
-  - Manual: how the screen looks for each viewer.
-- **Notes:** the inventory is view-only for now, but the owner wants players to add and remove items later, so build the screen with that in mind.
+  - Manual: how the screen looks for each viewer. Checked by the owner.
+- **Notes:**
+  - **Scope change (owner feedback on the first version):**
+    - The panel now looks like a vanilla container screen: the unit drawn on the left (following the mouse, as the player does in their inventory), label/value rows beside it, the unit's inventory row ("Carrying"), and the player's own inventory below. It's drawn with fills that copy vanilla's panel and slot look (`client/GuiDraw`).
+    - Units pick up items on the ground near them when they have room (`Unit` is now an `InventoryCarrier`, like villagers). It checks every 10 ticks instead of vanilla's every tick, and it respects the mobGriefing game rule like other mobs. It may need rules later so units don't collect trash.
+  - **Scope change:** owners can now give and take items, which was planned for later. Clicking and shift-clicking work as in a chest. The server re-checks access every tick while the panel is open, and closes it if the player leaves the faction or the unit changes faction (e.g. on capture).
+  - Occupation names are translated (`occupation.<namespace>.<name>`), falling back to the capitalised id for datapack occupations without a translation.
+  - Values too long for their row are cut short with "...", and hovering shows them in full.
+  - **Built as:** `Unit.mobInteract` opens `UnitMenu` (a menu, like the town hall's), which draws as `UnitScreen`.
+    - `UnitInfo` is the snapshot sent when the panel opens: the basics for everyone, plus `Details` (settlement, home, post) only for the full view.
+    - `UnitInfo.accessFor` is the pure access rule: full only when the viewer's faction is the unit's faction.
+    - Health stays live through a `ContainerData`; the rest is a snapshot taken when the panel opens.
+  - **Keeping the inventory private:** for a limited viewer the menu has no slots at all, so vanilla's menu sync never sends them the items. It isn't just hidden by the screen.
+  - The panel closes if the unit dies or the player walks more than 8 blocks away.
+  - Right-clicking always opens the panel, so items used on mobs (such as name tags) no longer work on units. Revisit if that matters.
+  - **Test player upgrade:** `TestSupport.recordingPlayer` now records every packet sent to it instead of sending it. Vanilla's mock player can't receive NeoForge's packets, such as opening a menu with extra data. Tests can now check what actually reaches a player's client.
+  - GameTests added: own faction sees everything, while an outsider and a factionless player see only the basics; nobody gets the full view of a factionless unit. Both check the panel the client builds from the packet that was sent, and that no packet carries the unit's items to an outsider. Unit tests: `UnitInfoTest` (6), covering the access rule and the snapshot surviving the trip to the client. Pickup GameTests: a unit picks up a nearby item; a full unit leaves it on the ground. GameTest `ownerCanGiveAndTakeItems`: an owner moves items in and out with real clicks and shift-clicks, and the panel stops being valid once they leave the faction. Sabotage checks (everyone gets the full view; no pickup; no access re-check) fail the matching GameTests.
 
 ### S-009 Lumberjack job
 - **Status:** planned | **Branch:** feature/lumberjack | **PR:** - | **Depends on:** S-007, S-008
@@ -115,6 +108,28 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-008 Units belong to settlements
+- **Status:** done | **Branch:** feature/settlement-units | **PR:** #13 | **Depends on:** S-007
+- **Goal:** a settlement knows its units, and capture hands its civilians to the new owner.
+- **Scope:**
+  - `Settlement` gets a saved set of unit UUIDs, like its storage set, kept up to date by `SettlementOps.setUnitSettlement` / `unitRemoved`. A unit is removed when it dies.
+  - `/kingdomrts unit join <units> <settlement>`, `unit leave <units>` and `unit info <units>`, using entity selectors.
+  - **On capture:** non-military units of the settlement switch to the new owner's faction; military units keep their faction (CLAUDE.md).
+  - Units in unloaded chunks catch up when they next load.
+  - `/kingdomrts settlement here` and `list` show the unit count.
+- **Out of scope:** assigning homes automatically, population growth.
+- **Test:**
+  - GameTests: on capture, a civilian flips to the new owner and a soldier keeps its faction; a unit's death removes it from the settlement; a unit loaded after a capture catches up; the `unit join|leave|info` and `settlement here` commands, run for real.
+  - Manual: none. There are no client-side visuals in this story.
+- **Notes:**
+  - **Scope change:** settlement membership is set with `/kingdomrts unit join|leave` (entity selectors) instead of a `settlement <name>` option on `spawnunit`. Another option would have doubled the spawn command's tree, and join/leave also works on units that already exist. `unit info` was added so a manual test can see factions change, since name tags are set once at spawn.
+  - **Catching up:** each settlement counts its owner changes, and each unit remembers the count it has seen. When a unit loads (`Unit.onAddedToLevel`) with an older count, a non-military unit takes the current owner's faction. This handles several captures in a row while the unit was away, and it needs no list of pending changes. Loaded units are updated at capture time. A unit whose settlement was dissolved while it was away drops the settlement when it loads.
+  - **The capture rule** is a pure function, `CaptureRules.factionAfterCapture` (military keeps its faction, everyone else passes), covered by unit tests. It applies to every non-military unit of the settlement, whatever its faction, as CLAUDE.md says.
+  - `Occupation.countsAtCapture()` was renamed `isMilitary()`, since it now decides both capture presence and who keeps their faction.
+  - **Removal:** a unit leaves its settlement's list only when it's destroyed (killed or discarded), not when its chunk unloads.
+  - GameTests added: capture hands civilians to the new owner; unloaded units catch up after a capture; a dead unit leaves the settlement; dissolving releases units. Unit tests: two for `factionAfterCapture`. Sabotage checks (no catch-up on load; civilians keep their faction on capture; `unit join` doing nothing) fail the matching tests.
+  - New `TestSupport.runCommand`: runs a real command as an operator standing at a spot in the test, and returns everything it printed. Commands are tested this way from now on, instead of in manual checklists.
 
 ### S-007 Generic Unit with data-driven occupations
 - **Status:** done | **Branch:** feature/unit-occupations | **PR:** #12 | **Depends on:** -
