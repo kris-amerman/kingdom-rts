@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-008 Units belong to settlements
-- **Status:** in review | **Branch:** feature/settlement-units | **PR:** - | **Depends on:** S-007
+- **Status:** in review | **Branch:** feature/settlement-units | **PR:** #13 | **Depends on:** S-007
 - **Goal:** a settlement knows its units, and capture hands its civilians to the new owner.
 - **Scope:**
   - `Settlement` gets a saved set of unit UUIDs, like its storage set, kept up to date by `SettlementOps.setUnitSettlement` / `unitRemoved`. A unit is removed when it dies.
