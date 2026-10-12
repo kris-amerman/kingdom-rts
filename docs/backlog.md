@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-006 Template cleanup
-- **Status:** planned | **Branch:** feature/template-cleanup | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/template-cleanup | **PR:** - | **Depends on:** -
 - **Goal:** none of the NeoForge MDK example code is left.
 - **Scope:**
   - Remove `example_block`, `example_item` and the BUILDING_BLOCKS `addCreative` hook.
@@ -34,7 +34,11 @@ Story template:
 - **Test:**
   - The existing unit tests and GameTests still pass.
   - Manual: the creative tab looks right and holds the town hall and storage block.
-- **Notes:** -
+- **Notes:**
+  - Also removed the MDK's "hello" log lines (common setup, server starting, client setup), which made the mod class register itself on the game event bus for no reason.
+  - The tab's title is now "Kingdom RTS" (was "Kingdom RTS Tab"). Old dev worlds lose any `example_block` placed in them.
+  - Left alone: the commented-out examples in `build.gradle` and `neoforge.mods.toml`, which are build/metadata boilerplate rather than mod code.
+  - No new tests: nothing gameplay-related changed. The 28 unit tests and 20 GameTests still pass.
 
 ### S-007 Generic Unit with data-driven occupations
 - **Status:** planned | **Branch:** feature/unit-occupations | **PR:** - | **Depends on:** -
