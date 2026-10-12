@@ -23,7 +23,7 @@ Story template:
 ## Current: Settlements MVP
 
 ### S-004 Territory messages
-- **Status:** in review | **Branch:** feature/territory-messages | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/territory-messages | **PR:** #9 | **Depends on:** S-001
 - **Goal:** players can tell when they cross into or out of a settlement's claim.
 - **Scope:** "Entering Oakhaven (Dev)" / "Leaving Oakhaven" in the action bar, checked only when a player changes chunk (no scanning).
 - **Out of scope:** drawing claim borders in the world.
