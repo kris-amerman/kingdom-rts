@@ -22,14 +22,11 @@ import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.unit.Unit;
 import com.krisamerman.kingdomrts.unit.UnitMenu;
 
-import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
-import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
-import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
 import net.minecraft.world.InteractionHand;
@@ -38,8 +35,6 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
-import net.neoforged.neoforge.network.connection.ConnectionType;
-import net.neoforged.neoforge.network.payload.AdvancedOpenScreenPayload;
 
 // The unit info panel, opened the way a player opens it (right-clicking the unit): the unit's own
 // faction gets the details and the inventory; anyone else gets only the basics. The checks are made
@@ -168,15 +163,8 @@ public class UnitInfoGameTests {
         if (!(player.containerMenu instanceof UnitMenu)) {
             throw new GameTestAssertException("Right-clicking the unit didn't open its panel");
         }
-        for (Packet<?> packet : player.sent) {
-            if (packet instanceof ClientboundCustomPayloadPacket custom && custom.payload() instanceof AdvancedOpenScreenPayload open) {
-                // Read the extra data the way the client does (see NeoForge's ClientPayloadHandler).
-                RegistryFriendlyByteBuf data = new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(open.additionalData()),
-                        helper.getLevel().registryAccess(), ConnectionType.NEOFORGE);
-                return new UnitMenu(open.windowId(), player.getInventory(), data);
-            }
-        }
-        throw new GameTestAssertException("No open-screen packet was sent");
+        TestSupport.OpenedScreen opened = TestSupport.lastOpenedScreen(helper, player);
+        return new UnitMenu(opened.windowId(), player.getInventory(), opened.data());
     }
 
     // Every item stack sent to the player in menu contents or slot updates.

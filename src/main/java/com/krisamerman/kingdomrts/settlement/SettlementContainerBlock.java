@@ -8,6 +8,7 @@ import com.krisamerman.kingdomrts.faction.FactionData;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.Containers;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
@@ -50,6 +51,11 @@ public abstract class SettlementContainerBlock extends Block implements EntityBl
     // What players are told it is when they're refused, e.g. "storage".
     protected abstract String noun();
 
+    // What right-clicking opens for someone allowed in: the inventory, unless a subclass has a panel.
+    protected void open(ServerPlayer player, SettlementStorageBlockEntity storage) {
+        player.openMenu(storage);
+    }
+
     // Returning null cancels the placement. The client can't see claims, so only the server
     // decides; a refused block briefly appears on the placer's screen and then disappears.
     @Nullable
@@ -80,9 +86,9 @@ public abstract class SettlementContainerBlock extends Block implements EntityBl
 
     @Override
     protected InteractionResult useWithoutItem(BlockState state, Level level, BlockPos pos, Player player, BlockHitResult hitResult) {
-        if (!level.isClientSide && level.getBlockEntity(pos) instanceof SettlementStorageBlockEntity storage) {
+        if (player instanceof ServerPlayer serverPlayer && level.getBlockEntity(pos) instanceof SettlementStorageBlockEntity storage) {
             if (storage.canAccess(player)) {
-                player.openMenu(storage);
+                open(serverPlayer, storage);
             } else {
                 player.displayClientMessage(Component.literal("This " + noun() + " belongs to " + storage.getSettlement().name()), true);
             }

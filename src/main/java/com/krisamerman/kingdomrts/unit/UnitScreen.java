@@ -6,6 +6,7 @@ import java.util.Locale;
 
 import javax.annotation.Nullable;
 
+import com.krisamerman.kingdomrts.client.DisplayNames;
 import com.krisamerman.kingdomrts.client.GuiDraw;
 
 import net.minecraft.client.gui.GuiGraphics;
@@ -13,7 +14,6 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
@@ -47,7 +47,7 @@ public class UnitScreen extends AbstractContainerScreen<UnitMenu> {
         super(menu, inventory, title);
         UnitInfo info = menu.getInfo();
         rows.add(new Row("Faction", info.factionName()));
-        rows.add(new Row("Job", occupationName(info.occupation())));
+        rows.add(new Row("Job", DisplayNames.occupation(info.occupation())));
         rows.add(new Row("Health", "")); // value drawn live in renderLabels
         rows.add(new Row("Damage", number(info.attackDamage())));
         rows.add(new Row("Range", number(info.attackRange())));
@@ -137,18 +137,6 @@ public class UnitScreen extends AbstractContainerScreen<UnitMenu> {
             return value;
         }
         return font.plainSubstrByWidth(value, room - font.width("...")) + "...";
-    }
-
-    // "kingdomrts:soldier" -> the "occupation.kingdomrts.soldier" translation, or "Soldier" if a
-    // datapack's occupation has none.
-    private static String occupationName(String id) {
-        ResourceLocation location = ResourceLocation.tryParse(id);
-        if (location == null) {
-            return id;
-        }
-        String path = location.getPath().replace('_', ' ');
-        String fallback = path.isEmpty() ? id : Character.toUpperCase(path.charAt(0)) + path.substring(1);
-        return Component.translatableWithFallback("occupation." + location.getNamespace() + "." + location.getPath(), fallback).getString();
     }
 
     private static String number(double value) {

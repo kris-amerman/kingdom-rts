@@ -9,6 +9,8 @@ import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallMenu;
 import com.krisamerman.kingdomrts.settlement.WorkplaceBlock;
 import com.krisamerman.kingdomrts.settlement.WorkplaceBlockEntity;
+import com.krisamerman.kingdomrts.settlement.WorkplaceMenu;
+import com.krisamerman.kingdomrts.settlement.WorkplaceStockMenu;
 import com.krisamerman.kingdomrts.settlement.WorkplaceType;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.OccupationType;
@@ -86,6 +88,12 @@ public class KingdomRts {
     // extra data (the hall's position and owner name) when the menu opens.
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
             MENU_TYPES.register("town_hall", () -> IMenuTypeExtension.create(TownHallMenu::new));
+    // The hut panel, id "kingdomrts:workplace". The server sends the workplace's details when it opens.
+    public static final DeferredHolder<MenuType<?>, MenuType<WorkplaceMenu>> WORKPLACE_MENU =
+            MENU_TYPES.register("workplace", () -> IMenuTypeExtension.create(WorkplaceMenu::new));
+    // A workplace's stock opened from its panel (a chest with a Back button), id "kingdomrts:workplace_stock".
+    public static final DeferredHolder<MenuType<?>, MenuType<WorkplaceStockMenu>> WORKPLACE_STOCK_MENU =
+            MENU_TYPES.register("workplace_stock", () -> IMenuTypeExtension.create(WorkplaceStockMenu::new));
     // The unit info panel, id "kingdomrts:unit". The server sends what the viewer may see when it opens.
     public static final DeferredHolder<MenuType<?>, MenuType<UnitMenu>> UNIT_MENU =
             MENU_TYPES.register("unit", () -> IMenuTypeExtension.create(UnitMenu::new));

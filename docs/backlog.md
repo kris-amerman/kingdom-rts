@@ -22,34 +22,38 @@ Story template:
 
 ## Current: Units MVP
 
-### S-018 Unit names
-- **Status:** in review | **Branch:** feature/unit-names | **PR:** #17 | **Depends on:** S-015
-- **Goal:** every unit has a name.
-- **Scope:**
-  - Name pools as data: `data/<ns>/kingdomrts/unit_names/*.json` with `first` and `last` lists, merged across files (loaded like settlement names).
-  - New units get a random first and last name; units saved without one get one when they load.
-  - The name shows when looked at (vanilla's behaviour for named mobs, the owner's choice), and in the unit and hut panels.
-  - `spawnunit` stops setting the "Red soldier" testing tag and reports the new unit's name.
-- **Out of scope:** renaming units.
-- **Test:** unit tests for the name picker; GameTests: a spawned unit has a name from the pools, keeps it through save and load, and the spawn command reports it. Manual: the name shows when looking at a unit. Checked by the owner.
-- **Notes:**
-  - `UnitNames` is a datapack reload listener like `SettlementNames`, reading `data/<ns>/kingdomrts/unit_names/*.json`. Its pure `pick(first, last, random)` is unit-tested. The default pools have 60 first and 60 last names, and two units can share a name.
-  - The name is vanilla's custom name: saved with the unit, shown when looked at (`CustomNameVisible` off). Units get one in `setup`, and units saved before names existed get one when they load.
-  - Units spawned earlier with the "Red soldier" testing tag keep it, since it's already a custom name.
-  - The unit panel's title and a workplace's worker list already used the unit's name, so they show it with no changes.
-  - Sabotage check (no name given) fails the naming GameTest.
-
 ### S-017 Hut panel
-- **Status:** planned | **Branch:** feature/hut-panel | **PR:** - | **Depends on:** S-018
+- **Status:** in review | **Branch:** feature/hut-panel | **PR:** #18 | **Depends on:** S-018
 - **Goal:** right-clicking a workplace opens a panel to see and manage it, like MineColonies' hut screens.
 - **Scope:**
   - Right-clicking the hut opens the panel instead of the stock. Only the owning faction (and creative operators) can open it.
   - **It shows:** the workplace's name, settlement, job, workers N/capacity, and the list of workers, each with a Fire button.
   - **Hiring:** the settlement's unemployed settlers are listed with Hire buttons, nearest first, with simple paging.
-  - **Stock:** a button opens the stock (the chest screen).
+  - **Stock:** a button opens the stock (the chest screen), which has a Back button to the panel.
 - **Out of scope:** automatic hiring (S-019), job settings (S-014, S-016), building levels.
-- **Test:** GameTests with real button clicks: right-clicking opens the panel; Hire and Fire work; candidates leave out soldiers, the employed, and other settlements' units; the Stock button opens the chest; outsiders are refused. Manual: the panel's look.
-- **Notes:** candidates are loaded units only, since an unloaded settler's occupation isn't known.
+- **Test:** GameTests with real button clicks: right-clicking opens the panel; Hire and Fire work; candidates leave out soldiers, the employed, and other settlements' units; the Stock button opens the chest; outsiders are refused. Manual: the panel's look. Checked by the owner.
+- **Notes:**
+  - Candidates are loaded units only, since an unloaded settler's occupation isn't known.
+  - **Built as:** `WorkplaceMenu` + `WorkplaceScreen`, following the town hall menu.
+    - The server sends a `WorkplaceInfo` snapshot: type, settlement, job, capacity, workers, and the current page of candidates.
+    - Buttons go through `clickMenuButton` ids (Stock, previous/next page, Hire *i*, Fire *i*). After a hire or fire, the panel simply reopens with a fresh snapshot.
+  - **Opening:** right-clicking a workplace opens the panel instead of the stock (`SettlementContainerBlock.open` is now a hook that `WorkplaceBlock` overrides). The panel closes if the hut is gone, the player walks away, or they lose access.
+  - **Firing an unloaded worker:** `WorkplaceOps.fire(level, workplace, id)` takes it off the list, and the unit loses its job when it loads.
+  - **The Hire button** is disabled when the hut is full. The server refuses too, with a message.
+  - **Owner feedback:**
+    - **Back button:** the stock now opens as `WorkplaceStockMenu` (vanilla's chest menu under its own menu type), whose screen adds a Back button.
+    - **Cursor jump:** paging, hiring and firing moved the cursor to the middle of the panel. Each refresh reopens the menu, and by default the server first tells the client to close the old screen, which re-centres the mouse. `SwitchingMenuProvider` opens menus in place instead (NeoForge's `shouldTriggerClientSideContainerClosingOnOpen`). It's used for refreshes and for the panel ↔ stock switch, and GameTests check that no close packet is sent.
+  - **Other changes:** the occupation display name moved to `client/DisplayNames`, shared by the unit and hut panels. `TestSupport.lastOpenedScreen` rebuilds the client's copy of any opened menu for tests.
+  - GameTests added:
+    - the panel's details, with candidates nearest first (no workers, soldiers or outsiders);
+    - the Hire and Fire buttons, with the panel refreshing;
+    - the Hire button respects capacity;
+    - firing an unloaded worker;
+    - paging;
+    - the Stock button opens the chest;
+    - outsiders can't open it.
+
+    Sabotage checks (candidates include the employed; firing an unloaded worker doesn't update the list; switching closes the screen first) fail the matching tests.
 
 ### S-019 Job seeking
 - **Status:** planned | **Branch:** feature/job-seeking | **PR:** - | **Depends on:** S-017
@@ -144,6 +148,23 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-018 Unit names
+- **Status:** done | **Branch:** feature/unit-names | **PR:** #17 | **Depends on:** S-015
+- **Goal:** every unit has a name.
+- **Scope:**
+  - Name pools as data: `data/<ns>/kingdomrts/unit_names/*.json` with `first` and `last` lists, merged across files (loaded like settlement names).
+  - New units get a random first and last name; units saved without one get one when they load.
+  - The name shows when looked at (vanilla's behaviour for named mobs, the owner's choice), and in the unit and hut panels.
+  - `spawnunit` stops setting the "Red soldier" testing tag and reports the new unit's name.
+- **Out of scope:** renaming units.
+- **Test:** unit tests for the name picker; GameTests: a spawned unit has a name from the pools, keeps it through save and load, and the spawn command reports it. Manual: the name shows when looking at a unit. Checked by the owner.
+- **Notes:**
+  - `UnitNames` is a datapack reload listener like `SettlementNames`, reading `data/<ns>/kingdomrts/unit_names/*.json`. Its pure `pick(first, last, random)` is unit-tested. The default pools have 60 first and 60 last names, and two units can share a name.
+  - The name is vanilla's custom name: saved with the unit, shown when looked at (`CustomNameVisible` off). Units get one in `setup`, and units saved before names existed get one when they load.
+  - Units spawned earlier with the "Red soldier" testing tag keep it, since it's already a custom name.
+  - The unit panel's title and a workplace's worker list already used the unit's name, so they show it with no changes.
+  - Sabotage check (no name given) fails the naming GameTest.
 
 ### S-015 Workplaces
 - **Status:** done | **Branch:** feature/workplaces | **PR:** #16 | **Depends on:** S-009
