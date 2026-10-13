@@ -22,42 +22,8 @@ Story template:
 
 ## Current: Units MVP
 
-### S-015 Workplaces
-- **Status:** in review | **Branch:** feature/workplaces | **PR:** #16 | **Depends on:** S-009
-- **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
-- **Scope:**
-  - **The lumberjack hut**, a workplace block placed directly for now (like the town hall). It can only be placed inside your own claim, belongs to that settlement (which records it), and has a stock inventory protected like settlement storage. Right-clicking opens the stock.
-  - **Workplace data:** `data/<ns>/kingdomrts/workplace/<block>.json` gives the occupation its workers get and the worker capacity (default 1).
-  - **Hiring:** `WorkplaceOps.hire` gives an unemployed settler of the hut's settlement the hut's occupation, up to capacity. Firing, leaving the settlement, death, removing the hut, or the settlement dissolving end the job. Units that were unloaded catch up when they load.
-  - **Commands:** `/kingdomrts unit hire <units> <workplace>` and `unit fire <units>`. `spawnunit` no longer hands out jobs, only soldiers or no occupation.
-  - Soldiers are exempt.
-- **Out of scope:** the hut panel (S-017), building levels, work areas (S-014), the build tool, worker supply.
-- **Test:**
-  - Unit tests: the hiring rule, and the workplace entry's defaults and validation.
-  - GameTests:
-    - the hut is recorded on its settlement, with placement only in your own claim;
-    - hiring up to capacity;
-    - only unemployed settlers can be hired (not outsiders or soldiers);
-    - firing and leaving the settlement end the job;
-    - removing the hut unemploys its workers, including one that was unloaded;
-    - a dead worker leaves its workplace;
-    - the hut and its workers pass with the settlement on capture;
-    - other factions can't break the hut;
-    - the hire, fire and spawn commands, run for real.
-  - The lumberjack GameTests now hire their lumberjack at a hut.
-  - Manual: placing the hut (look, creative tab, refused outside your claim), opening its stock.
-- **Notes:**
-  - **Split:** the hut panel (worker list, hire and fire buttons, stock button) is its own story, S-017, to keep this PR small. Until then, hiring is by command. The owner's feedback on this story also added unit names (S-018) and job seeking (S-019).
-  - **Shared container block:** storage and workplaces share `SettlementContainerBlock` (own-claim placement, owner-only access, explosion-proof, no automation). Subclasses only say how they're recorded and what they're called. `WorkplaceBlockEntity` extends the storage block entity for the stock. `SettlementOps.ownClaimProblem` is the shared placement rule.
-  - **Workers live on the settlement:** they're recorded in `SettlementData` (`Workplace`: position, type, workers with the name they had when hired), not on the hut's block entity, so they're known even while the hut's chunk is unloaded. The unit stores its workplace position.
-  - **Pure rule:** `WorkplaceRules.hireProblem`. A unit belongs to the workplace's settlement, has no occupation yet (this also rules out soldiers), and the workplace has room.
-  - **Catch-up** (`WorkplaceOps.catchUp`, run with the settlement catch-up when a unit loads or its settlement changes hands or dissolves): a unit whose workplace no longer lists it loses its job.
-  - **Losing a job:** a unit that loses its job goes back to having no occupation and keeping near its post. Its job goals are removed.
-  - **Hut look:** fletching-table textures, as a placeholder.
-  - **Sabotage checks** that fail the matching tests: ignoring capacity; no catch-up on load.
-
 ### S-018 Unit names
-- **Status:** planned | **Branch:** feature/unit-names | **PR:** - | **Depends on:** S-015
+- **Status:** in review | **Branch:** feature/unit-names | **PR:** #17 | **Depends on:** S-015
 - **Goal:** every unit has a name.
 - **Scope:**
   - Name pools as data: `data/<ns>/kingdomrts/unit_names/*.json` with `first` and `last` lists, merged across files (loaded like settlement names).
@@ -65,8 +31,13 @@ Story template:
   - The name shows when looked at (vanilla's behaviour for named mobs, the owner's choice), and in the unit and hut panels.
   - `spawnunit` stops setting the "Red soldier" testing tag and reports the new unit's name.
 - **Out of scope:** renaming units.
-- **Test:** unit tests for the name picker; GameTests: a spawned unit has a name from the pools, keeps it through save and load, and the spawn command reports it. Manual: the name shows when looking at a unit.
-- **Notes:** -
+- **Test:** unit tests for the name picker; GameTests: a spawned unit has a name from the pools, keeps it through save and load, and the spawn command reports it. Manual: the name shows when looking at a unit. Checked by the owner.
+- **Notes:**
+  - `UnitNames` is a datapack reload listener like `SettlementNames`, reading `data/<ns>/kingdomrts/unit_names/*.json`. Its pure `pick(first, last, random)` is unit-tested. The default pools have 60 first and 60 last names, and two units can share a name.
+  - The name is vanilla's custom name: saved with the unit, shown when looked at (`CustomNameVisible` off). Units get one in `setup`, and units saved before names existed get one when they load.
+  - Units spawned earlier with the "Red soldier" testing tag keep it, since it's already a custom name.
+  - The unit panel's title and a workplace's worker list already used the unit's name, so they show it with no changes.
+  - Sabotage check (no name given) fails the naming GameTest.
 
 ### S-017 Hut panel
 - **Status:** planned | **Branch:** feature/hut-panel | **PR:** - | **Depends on:** S-018
@@ -120,6 +91,14 @@ Story template:
 - **Test:** GameTests: with replanting on, a sapling is planted at the base, and with it off none is; filtered wood types are left standing. Manual: the panel controls.
 - **Notes:** -
 
+### S-020 spawnunit defaults to no occupation
+- **Status:** planned | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
+- **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
+- **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
+- **Out of scope:** other command changes.
+- **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
+- **Notes:** small; can be picked up any time.
+
 ### S-010 Building templates and sites
 - **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
@@ -158,12 +137,47 @@ Story template:
 ## Later (not yet stories)
 - **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
 - **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
+- **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
 - **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
 - **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
 - **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-015 Workplaces
+- **Status:** done | **Branch:** feature/workplaces | **PR:** #16 | **Depends on:** S-009
+- **Goal:** a unit gets a job by being hired at a workplace building of that job's kind (CLAUDE.md, Workplaces).
+- **Scope:**
+  - **The lumberjack hut**, a workplace block placed directly for now (like the town hall). It can only be placed inside your own claim, belongs to that settlement (which records it), and has a stock inventory protected like settlement storage. Right-clicking opens the stock.
+  - **Workplace data:** `data/<ns>/kingdomrts/workplace/<block>.json` gives the occupation its workers get and the worker capacity (default 1).
+  - **Hiring:** `WorkplaceOps.hire` gives an unemployed settler of the hut's settlement the hut's occupation, up to capacity. Firing, leaving the settlement, death, removing the hut, or the settlement dissolving end the job. Units that were unloaded catch up when they load.
+  - **Commands:** `/kingdomrts unit hire <units> <workplace>` and `unit fire <units>`. `spawnunit` no longer hands out jobs, only soldiers or no occupation.
+  - Soldiers are exempt.
+- **Out of scope:** the hut panel (S-017), building levels, work areas (S-014), the build tool, worker supply.
+- **Test:**
+  - Unit tests: the hiring rule, and the workplace entry's defaults and validation.
+  - GameTests:
+    - the hut is recorded on its settlement, with placement only in your own claim;
+    - hiring up to capacity;
+    - only unemployed settlers can be hired (not outsiders or soldiers);
+    - firing and leaving the settlement end the job;
+    - removing the hut unemploys its workers, including one that was unloaded;
+    - a dead worker leaves its workplace;
+    - the hut and its workers pass with the settlement on capture;
+    - other factions can't break the hut;
+    - the hire, fire and spawn commands, run for real.
+  - The lumberjack GameTests now hire their lumberjack at a hut.
+  - Manual: placing the hut (look, creative tab, refused outside your claim), opening its stock.
+- **Notes:**
+  - **Split:** the hut panel (worker list, hire and fire buttons, stock button) is its own story, S-017, to keep this PR small. Until then, hiring is by command. The owner's feedback on this story also added unit names (S-018) and job seeking (S-019).
+  - **Shared container block:** storage and workplaces share `SettlementContainerBlock` (own-claim placement, owner-only access, explosion-proof, no automation). Subclasses only say how they're recorded and what they're called. `WorkplaceBlockEntity` extends the storage block entity for the stock. `SettlementOps.ownClaimProblem` is the shared placement rule.
+  - **Workers live on the settlement:** they're recorded in `SettlementData` (`Workplace`: position, type, workers with the name they had when hired), not on the hut's block entity, so they're known even while the hut's chunk is unloaded. The unit stores its workplace position.
+  - **Pure rule:** `WorkplaceRules.hireProblem`. A unit belongs to the workplace's settlement, has no occupation yet (this also rules out soldiers), and the workplace has room.
+  - **Catch-up** (`WorkplaceOps.catchUp`, run with the settlement catch-up when a unit loads or its settlement changes hands or dissolves): a unit whose workplace no longer lists it loses its job.
+  - **Losing a job:** a unit that loses its job goes back to having no occupation and keeping near its post. Its job goals are removed.
+  - **Hut look:** fletching-table textures, as a placeholder.
+  - **Sabotage checks** that fail the matching tests: ignoring capacity; no catch-up on load.
 
 ### S-009 Lumberjack fells trees
 - **Status:** done | **Branch:** feature/lumberjack | **PR:** #15 | **Depends on:** S-007, S-008

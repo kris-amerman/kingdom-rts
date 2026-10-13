@@ -18,7 +18,6 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
@@ -136,18 +135,14 @@ public class KingdomRtsCommands {
             return 0;
         }
         unit.moveTo(spawnPos.x, spawnPos.y, spawnPos.z, source.getRotation().y, 0.0f);
-        unit.setup(faction != null ? faction.id() : null, post, occupation);
-        // Testing aid: every unit has the same skin, so show its faction and occupation as a name
-        // tag. It isn't updated if the faction is renamed later.
-        String factionText = faction != null ? faction.name() : "no faction";
-        String occupationText = occupation != null ? occupation.getPath() : "no occupation";
-        unit.setCustomName(Component.literal(factionText + " " + occupationText)
-                .withStyle(faction != null ? ChatFormatting.WHITE : ChatFormatting.GRAY));
-        unit.setCustomNameVisible(true);
+        unit.setup(faction != null ? faction.id() : null, post, occupation); // also gives it a name
         level.addFreshEntity(unit);
 
+        String factionText = faction != null ? faction.name() : "no faction";
+        String occupationText = occupation != null ? occupation.getPath() : "no occupation";
         String postText = townHallPos != null ? "town hall at " + post.toShortString() : post.toShortString();
-        source.sendSuccess(() -> Component.literal("Spawned unit (" + factionText + ", " + occupationText + "), posted at " + postText), true);
+        source.sendSuccess(() -> Component.literal("Spawned " + unit.getName().getString() + " (" + factionText + ", "
+                + occupationText + "), posted at " + postText), true);
         return 1;
     }
 }

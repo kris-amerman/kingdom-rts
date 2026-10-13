@@ -15,6 +15,7 @@ import net.minecraft.core.Holder;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -131,6 +132,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     // Called once when the unit is created (e.g. by the spawn command), before it's added to the
     // world. occupationId may be null for a unit with no occupation.
     public void setup(@Nullable UUID factionId, BlockPos post, @Nullable ResourceLocation occupationId) {
+        giveNameIfNone();
         this.factionId = factionId;
         setPost(post);
         this.occupationId = occupationId;
@@ -315,6 +317,15 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         InventoryCarrier.pickUpItem(this, this, itemEntity);
     }
 
+    // Every unit has a name (see UnitNames), kept as vanilla's custom name, so it's saved with the
+    // unit and shown when a player looks at it (CustomNameVisible stays off: no names floating over
+    // every unit in a crowd).
+    private void giveNameIfNone() {
+        if (!hasCustomName()) {
+            setCustomName(Component.literal(UnitNames.pick()));
+        }
+    }
+
     // ---- Vanilla behavior ----
 
     // Advances the arm-swing animation timer each tick (on both server and client). Vanilla only
@@ -353,6 +364,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     public void onAddedToLevel() {
         super.onAddedToLevel();
         if (level() instanceof ServerLevel serverLevel) {
+            giveNameIfNone(); // units from before names existed
             SettlementOps.catchUp(serverLevel, this);
         }
     }

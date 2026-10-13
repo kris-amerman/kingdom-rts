@@ -159,7 +159,7 @@ Suggested first set: medicinal herb, tin, and one prestige good. Uncertain: iron
 - Shortages shown as visible demand (on the workplace panel, perhaps a settlement overview), so the player can see what's missing and why.
 
 ## Units
-- Population grows as units appear in a settlement. Citizens have names, health, hunger and an inventory, and are vulnerable to hostile mobs and units.
+- **Population: wanderers (open).** A settlement grows as new units arrive now and then as wanderers: unemployed and unhoused, they then find jobs through automatic hiring, and homes once housing exists. It's a slow trickle whose rate scales with the settlement's capacity (housing, jobs, perhaps happiness and attractiveness). The formula is open; Cities: Skylines' demand for residents and workers is one place to look. Buildings such as an Inn draw travellers more often, a way to speed up growth. Citizens have names, health, hunger and an inventory, and are vulnerable to hostile mobs and units.
 - Units, occupations, buildings and materials are data, so the community and modpacks can add their own.
 - Special units come from vanilla capabilities: a unit that converts others to its faction, a cloaked unit, archers with special bows and enchantment huts, mounted knights modeled as one unit on horseback.
 - The faction skin set is accepted and not yet wired in.
@@ -184,6 +184,7 @@ Sources: [CC:CBC](https://modrinth.com/mod/cc-cbc), [Create Big Cannons: Ballist
 - Money details: tax rate, permit fees, whether lots are leased, payment timing, subsidies, how the mint works, state wages, daily needs, prices inside a settlement, and sinks (see How money flows).
 - How severe material shortages are.
 - Workplaces: how many workers each can employ (building level?), and how worker supply works (markets, shops, couriers; see Workplaces and supply).
+- Population: how fast wanderers arrive and what capacity means (housing, jobs, happiness?); see Units.
 - Surrender: does it end hostility, transfer units, settle the war? Military units stay hostile after capture until then.
 - How claims expand. What naturally generated settlements look like (later).
 - What happens when a faction damages another's territory at peace, and how repairs are triggered.
