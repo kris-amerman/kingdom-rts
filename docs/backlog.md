@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-017 Hut panel
-- **Status:** in review | **Branch:** feature/hut-panel | **PR:** - | **Depends on:** S-018
+- **Status:** in review | **Branch:** feature/hut-panel | **PR:** #18 | **Depends on:** S-018
 - **Goal:** right-clicking a workplace opens a panel to see and manage it, like MineColonies' hut screens.
 - **Scope:**
   - Right-clicking the hut opens the panel instead of the stock. Only the owning faction (and creative operators) can open it.
