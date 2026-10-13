@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-014 Lumberjack works from its hut
-- **Status:** in review | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-017
+- **Status:** in review | **Branch:** feature/lumberjack-hut | **PR:** #20 | **Depends on:** S-017
 - **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
 - **Scope:**
   - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
