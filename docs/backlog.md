@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-019 Job seeking
-- **Status:** in review | **Branch:** feature/job-seeking | **PR:** - | **Depends on:** S-017
+- **Status:** in review | **Branch:** feature/job-seeking | **PR:** #19 | **Depends on:** S-017
 - **Goal:** unemployed settlers take jobs at huts with openings by themselves.
 - **Scope:**
   - **Automatic hiring:** a toggle per hut, on by default (as in MineColonies). Firing someone from the panel switches the hut to manual, so the unit isn't re-hired straight away.
