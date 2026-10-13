@@ -22,41 +22,8 @@ Story template:
 
 ## Current: Units MVP
 
-### S-017 Hut panel
-- **Status:** in review | **Branch:** feature/hut-panel | **PR:** #18 | **Depends on:** S-018
-- **Goal:** right-clicking a workplace opens a panel to see and manage it, like MineColonies' hut screens.
-- **Scope:**
-  - Right-clicking the hut opens the panel instead of the stock. Only the owning faction (and creative operators) can open it.
-  - **It shows:** the workplace's name, settlement, job, workers N/capacity, and the list of workers, each with a Fire button.
-  - **Hiring:** the settlement's unemployed settlers are listed with Hire buttons, nearest first, with simple paging.
-  - **Stock:** a button opens the stock (the chest screen), which has a Back button to the panel.
-- **Out of scope:** automatic hiring (S-019), job settings (S-014, S-016), building levels.
-- **Test:** GameTests with real button clicks: right-clicking opens the panel; Hire and Fire work; candidates leave out soldiers, the employed, and other settlements' units; the Stock button opens the chest; outsiders are refused. Manual: the panel's look. Checked by the owner.
-- **Notes:**
-  - Candidates are loaded units only, since an unloaded settler's occupation isn't known.
-  - **Built as:** `WorkplaceMenu` + `WorkplaceScreen`, following the town hall menu.
-    - The server sends a `WorkplaceInfo` snapshot: type, settlement, job, capacity, workers, and the current page of candidates.
-    - Buttons go through `clickMenuButton` ids (Stock, previous/next page, Hire *i*, Fire *i*). After a hire or fire, the panel simply reopens with a fresh snapshot.
-  - **Opening:** right-clicking a workplace opens the panel instead of the stock (`SettlementContainerBlock.open` is now a hook that `WorkplaceBlock` overrides). The panel closes if the hut is gone, the player walks away, or they lose access.
-  - **Firing an unloaded worker:** `WorkplaceOps.fire(level, workplace, id)` takes it off the list, and the unit loses its job when it loads.
-  - **The Hire button** is disabled when the hut is full. The server refuses too, with a message.
-  - **Owner feedback:**
-    - **Back button:** the stock now opens as `WorkplaceStockMenu` (vanilla's chest menu under its own menu type), whose screen adds a Back button.
-    - **Cursor jump:** paging, hiring and firing moved the cursor to the middle of the panel. Each refresh reopens the menu, and by default the server first tells the client to close the old screen, which re-centres the mouse. `SwitchingMenuProvider` opens menus in place instead (NeoForge's `shouldTriggerClientSideContainerClosingOnOpen`). It's used for refreshes and for the panel ↔ stock switch, and GameTests check that no close packet is sent.
-  - **Other changes:** the occupation display name moved to `client/DisplayNames`, shared by the unit and hut panels. `TestSupport.lastOpenedScreen` rebuilds the client's copy of any opened menu for tests.
-  - GameTests added:
-    - the panel's details, with candidates nearest first (no workers, soldiers or outsiders);
-    - the Hire and Fire buttons, with the panel refreshing;
-    - the Hire button respects capacity;
-    - firing an unloaded worker;
-    - paging;
-    - the Stock button opens the chest;
-    - outsiders can't open it.
-
-    Sabotage checks (candidates include the employed; firing an unloaded worker doesn't update the list; switching closes the screen first) fail the matching tests.
-
 ### S-019 Job seeking
-- **Status:** planned | **Branch:** feature/job-seeking | **PR:** - | **Depends on:** S-017
+- **Status:** in review | **Branch:** feature/job-seeking | **PR:** #19 | **Depends on:** S-017
 - **Goal:** unemployed settlers take jobs at huts with openings by themselves.
 - **Scope:**
   - **Automatic hiring:** a toggle per hut, on by default (as in MineColonies). Firing someone from the panel switches the hut to manual, so the unit isn't re-hired straight away.
@@ -70,8 +37,15 @@ Story template:
     - firing from the panel switches the hut to manual;
     - the nearest hut wins;
     - soldiers and outsiders don't seek jobs.
-  - Manual: the toggle in the panel.
-- **Notes:** -
+  - Manual: the toggle in the panel. Checked by the owner.
+- **Notes:**
+  - **Data:** `Workplace.autoHire` is saved, and defaults to on, including for huts saved before this existed.
+  - **Panel:** an "Automatic hiring: On/Off" button with a tooltip. Its Fire buttons switch the hut to manual before firing.
+  - **Choosing (pure, `WorkplaceRules.chooseWorkplace`):** the nearest workplace with room and automatic hiring on.
+  - **Seeking (`WorkplaceOps.seekJob`):** runs from `Unit.aiStep` for units with no occupation and a settlement, every `JOB_SEEK_INTERVAL_TICKS` (200), offset by each unit's UUID so checks are spread across ticks. It only looks at its settlement's own workplaces.
+  - Soldiers don't seek (they have an occupation), and neither do units with no settlement.
+  - **Live panel (owner feedback):** an open hut panel didn't show hires made by automatic hiring until it was reopened. `WorkplaceMenu.broadcastChanges` now checks once a second whether the panel is out of date: the workers, the toggle, or the set of settlers looking for work. If so, it reopens in place (no cursor jump). Settlers are compared as a set, not in order, so ones wandering about don't make it refresh constantly.
+  - **Tests:** GameTests run 3 times in a row without flakes. Job seeking now runs during every test with unemployed settlers near a hut, and none of the existing tests depended on them staying unemployed. GameTests for the live panel: it updates when someone is hired automatically, and stays put when settlers only move about (the nearest and farthest swap places). Sabotage checks (ignoring the auto-hire flag; no seeking; no live refresh; comparing settlers in order) fail the matching tests.
 
 ### S-014 Lumberjack works from its hut
 - **Status:** planned | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-017
@@ -148,6 +122,39 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-017 Hut panel
+- **Status:** done | **Branch:** feature/hut-panel | **PR:** #18 | **Depends on:** S-018
+- **Goal:** right-clicking a workplace opens a panel to see and manage it, like MineColonies' hut screens.
+- **Scope:**
+  - Right-clicking the hut opens the panel instead of the stock. Only the owning faction (and creative operators) can open it.
+  - **It shows:** the workplace's name, settlement, job, workers N/capacity, and the list of workers, each with a Fire button.
+  - **Hiring:** the settlement's unemployed settlers are listed with Hire buttons, nearest first, with simple paging.
+  - **Stock:** a button opens the stock (the chest screen), which has a Back button to the panel.
+- **Out of scope:** automatic hiring (S-019), job settings (S-014, S-016), building levels.
+- **Test:** GameTests with real button clicks: right-clicking opens the panel; Hire and Fire work; candidates leave out soldiers, the employed, and other settlements' units; the Stock button opens the chest; outsiders are refused. Manual: the panel's look. Checked by the owner.
+- **Notes:**
+  - Candidates are loaded units only, since an unloaded settler's occupation isn't known.
+  - **Built as:** `WorkplaceMenu` + `WorkplaceScreen`, following the town hall menu.
+    - The server sends a `WorkplaceInfo` snapshot: type, settlement, job, capacity, workers, and the current page of candidates.
+    - Buttons go through `clickMenuButton` ids (Stock, previous/next page, Hire *i*, Fire *i*). After a hire or fire, the panel simply reopens with a fresh snapshot.
+  - **Opening:** right-clicking a workplace opens the panel instead of the stock (`SettlementContainerBlock.open` is now a hook that `WorkplaceBlock` overrides). The panel closes if the hut is gone, the player walks away, or they lose access.
+  - **Firing an unloaded worker:** `WorkplaceOps.fire(level, workplace, id)` takes it off the list, and the unit loses its job when it loads.
+  - **The Hire button** is disabled when the hut is full. The server refuses too, with a message.
+  - **Owner feedback:**
+    - **Back button:** the stock now opens as `WorkplaceStockMenu` (vanilla's chest menu under its own menu type), whose screen adds a Back button.
+    - **Cursor jump:** paging, hiring and firing moved the cursor to the middle of the panel. Each refresh reopens the menu, and by default the server first tells the client to close the old screen, which re-centres the mouse. `SwitchingMenuProvider` opens menus in place instead (NeoForge's `shouldTriggerClientSideContainerClosingOnOpen`). It's used for refreshes and for the panel ↔ stock switch, and GameTests check that no close packet is sent.
+  - **Other changes:** the occupation display name moved to `client/DisplayNames`, shared by the unit and hut panels. `TestSupport.lastOpenedScreen` rebuilds the client's copy of any opened menu for tests.
+  - GameTests added:
+    - the panel's details, with candidates nearest first (no workers, soldiers or outsiders);
+    - the Hire and Fire buttons, with the panel refreshing;
+    - the Hire button respects capacity;
+    - firing an unloaded worker;
+    - paging;
+    - the Stock button opens the chest;
+    - outsiders can't open it.
+
+    Sabotage checks (candidates include the employed; firing an unloaded worker doesn't update the list; switching closes the screen first) fail the matching tests.
 
 ### S-018 Unit names
 - **Status:** done | **Branch:** feature/unit-names | **PR:** #17 | **Depends on:** S-015
