@@ -127,7 +127,7 @@ public class SettlementUnitGameTests {
         Settlement settlement = found(helper, HALL, blue);
         String units = "@e[type=kingdomrts:unit,distance=..1]";
 
-        expectOutput(helper, CIVILIAN, "kingdomrts spawnunit occupation none faction " + blue.name(), "Spawned unit");
+        expectOutput(helper, CIVILIAN, "kingdomrts spawnunit occupation none faction " + blue.name(), "Spawned ");
         expectOutput(helper, CIVILIAN, "kingdomrts unit join " + units + " " + settlement.name(), "1 unit(s) joined " + settlement.name());
         helper.assertTrue(current(helper, settlement).units().size() == 1, "Expected the settlement to have 1 unit");
         expectOutput(helper, HALL, "kingdomrts settlement here", settlement.name() + " (" + blue.name() + "), 1 units");

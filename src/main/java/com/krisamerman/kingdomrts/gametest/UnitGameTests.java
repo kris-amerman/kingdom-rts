@@ -11,6 +11,7 @@ import static com.krisamerman.kingdomrts.gametest.TestSupport.removeHall;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.setWar;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.unit;
 
+import java.util.List;
 import java.util.UUID;
 
 import com.krisamerman.kingdomrts.KingdomRts;
@@ -20,6 +21,7 @@ import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.MilitaryOccupation;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
+import com.krisamerman.kingdomrts.unit.UnitNames;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -28,6 +30,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
@@ -136,5 +139,31 @@ public class UnitGameTests {
                     helper.assertTrue(unit.getInventory().countItem(Items.OAK_LOG) == 0, "A full unit shouldn't take more items");
                 })
                 .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE)
+    public static void everyUnitHasAName(GameTestHelper helper) {
+        Unit unit = unit(helper, SPOT, null, false);
+        String[] parts = unit.getName().getString().split(" ");
+        helper.assertTrue(unit.hasCustomName() && parts.length == 2
+                        && UnitNames.firstNames().contains(parts[0]) && UnitNames.lastNames().contains(parts[1]),
+                "Expected a first and last name from the pools, got " + unit.getName().getString());
+        helper.assertFalse(unit.isCustomNameVisible(), "The name should only show when the unit is looked at");
+
+        Unit loaded = KingdomRts.UNIT.get().create(helper.getLevel());
+        loaded.load(unit.saveWithoutId(new CompoundTag()));
+        helper.assertTrue(loaded.getName().getString().equals(unit.getName().getString()), "The name should survive saving and loading");
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE)
+    public static void spawnCommandReportsTheName(GameTestHelper helper) {
+        List<String> output = TestSupport.runCommand(helper, SPOT, "kingdomrts spawnunit occupation none");
+        List<Unit> units = helper.getLevel().getEntitiesOfClass(Unit.class, new AABB(helper.absolutePos(SPOT)).inflate(1));
+        helper.assertTrue(units.size() == 1, "Expected one spawned unit, found " + units.size());
+        String name = units.get(0).getName().getString();
+        helper.assertTrue(output.stream().anyMatch(line -> line.startsWith("Spawned " + name + " (")),
+                "Expected the spawn message to name " + name + ", got " + output);
+        helper.succeed();
     }
 }
