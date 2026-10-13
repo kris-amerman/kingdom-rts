@@ -1,5 +1,6 @@
 package com.krisamerman.kingdomrts.unit;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -12,6 +13,10 @@ import javax.annotation.Nullable;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
+import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
+import com.krisamerman.kingdomrts.settlement.WorkplaceBlockEntity;
+import com.krisamerman.kingdomrts.settlement.Workplace;
+import com.krisamerman.kingdomrts.settlement.WorkArea;
 import com.krisamerman.kingdomrts.unit.job.Job;
 import com.krisamerman.kingdomrts.unit.job.JobStep;
 import com.krisamerman.kingdomrts.unit.job.WaitStep;
@@ -24,6 +29,7 @@ import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
@@ -31,20 +37,32 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.phys.AABB;
 
-// The lumberjack's job, as explicit steps:
-//   find a tree in the settlement's claim -> walk next to it -> fell it (logs go into the inventory)
-//   -> repeat.
+// The lumberjack's job, as explicit steps, working from its hut:
+//   find a tree in the hut's work area -> walk next to it -> fell it (logs go into the inventory)
+//   -> clear its canopy (the leaves the tree leaves behind, with their saplings, sticks and apples)
+//   -> pick up anything still lying around -> repeat, until its inventory is nearly full or there
+//   are no trees left -> walk back to the hut -> put everything except its axes in the hut's stock
+//   (taking an axe from the stock if it has none).
 // When something goes wrong it recovers instead of stalling: a tree it can't reach is skipped for a
 // while, a tree that disappears on the way is simply replaced by the next one, and with no
-// settlement, no trees or no room for logs it waits and checks again later.
-// (Taking the logs to settlement storage comes next, in S-014.)
+// workplace, no trees, or nowhere to put what it carries (its inventory and the stock both full) it
+// waits and checks again later.
 public final class LumberjackJob implements Job {
     // Claim columns checked per tick while searching, so a search is spread over several ticks.
     private static final int COLUMNS_PER_TICK = 128;
     // Candidate trees checked (with a flood fill) per tick once the columns are scanned.
     private static final int TREES_CHECKED_PER_TICK = 4;
     private static final double REACH = 3.0;
+    // How far around a felled tree it looks for drops to collect, and for how long at most.
+    private static final int COLLECT_RADIUS = 8;
+    private static final int COLLECT_TICKS = 20 * 5;
+    // It goes back to the hut when fewer slots than this are empty (room for one more big tree).
+    private static final int MIN_FREE_SLOTS = 2;
+    // How close to the hut it must be to use its stock.
+    private static final double HUT_REACH = 4.0;
     private static final int WALK_TIMEOUT_TICKS = 20 * 60;
     // Waits: no settlement / no room for logs, no tree found, and after a failed attempt.
     private static final int IDLE_TICKS = 100;
@@ -59,6 +77,11 @@ public final class LumberjackJob implements Job {
     private TreeRules.Tree tree;
     // Trees it couldn't reach (by base position), and the game time until which they're skipped.
     private final Map<BlockPos, Long> skipUntil = new HashMap<>();
+    // The current walks, to tell a walk to a tree from a walk to the hut.
+    @Nullable
+    private JobStep treeWalk;
+    @Nullable
+    private JobStep hutWalk;
 
     public LumberjackJob(LumberjackOccupation settings) {
         this.settings = settings;
@@ -66,29 +89,90 @@ public final class LumberjackJob implements Job {
 
     @Override
     public JobStep next(Unit unit, @Nullable JobStep previous, boolean succeeded) {
-        if (previous instanceof WalkToStep && !succeeded && tree != null && treeStillThere(unit)) {
+        if (previous == treeWalk && previous != null && !succeeded && tree != null && treeStillThere(unit)) {
             KingdomRts.LOGGER.debug("Lumberjack {} couldn't reach the tree at {}; skipping it for a while", unit.getUUID(), tree.base().toShortString());
             skipUntil.put(tree.base(), unit.level().getGameTime() + SKIP_FAILED_TREE_TICKS); // unreachable
         }
         if (settlementOf(unit) == null) {
             return new WaitStep(IDLE_TICKS, "no settlement");
         }
-        if (!hasRoomForLogs(unit.getInventory())) {
-            return new WaitStep(IDLE_TICKS, "no room for logs");
+        Workplace workplace = workplaceOf(unit);
+        if (workplace == null) {
+            return new WaitStep(IDLE_TICKS, "no workplace");
+        }
+        if (previous != null && previous == hutWalk) {
+            return succeeded ? new HutStep(workplace.pos()) : new WaitStep(RETRY_TICKS, "retrying the walk to the hut");
+        }
+        if (previous instanceof HutStep) {
+            return succeeded ? new FindTreeStep() : new WaitStep(IDLE_TICKS, "no room in the hut's stock");
         }
         if (previous instanceof FindTreeStep) {
             if (!succeeded || tree == null) {
-                return new WaitStep(NO_TREE_TICKS, "no trees in the claim");
+                return hasThingsToDeposit(unit) ? walkToHut(workplace) : new WaitStep(NO_TREE_TICKS, "no trees in the work area");
             }
-            return WalkToStep.near(tree.base(), WALK_TIMEOUT_TICKS, () -> treeStillThere(unit));
+            treeWalk = WalkToStep.near(tree.base(), WALK_TIMEOUT_TICKS, () -> treeStillThere(unit));
+            return treeWalk;
         }
-        if (previous instanceof WalkToStep && succeeded) {
-            return new ChopStep();
+        if (previous != null && previous == treeWalk) {
+            return succeeded ? new ChopStep() : new WaitStep(RETRY_TICKS, "retrying");
         }
-        if (previous instanceof WalkToStep || (previous instanceof ChopStep && !succeeded)) {
-            return new WaitStep(RETRY_TICKS, "retrying");
+        if (previous instanceof ChopStep) {
+            return new ClearCanopyStep();
         }
-        return new FindTreeStep();
+        if (previous instanceof ClearCanopyStep) {
+            return new CollectStep();
+        }
+        // Starting out, after a tree, or after waiting: go to the hut if it's nearly full (or has an
+        // axe waiting there and none of its own); otherwise on to the next tree.
+        return shouldDeposit(unit.getInventory()) || (!HutStep.hasAxe(unit) && hutHasAxe(unit, workplace))
+                ? walkToHut(workplace) : new FindTreeStep();
+    }
+
+    private JobStep walkToHut(Workplace workplace) {
+        hutWalk = WalkToStep.near(workplace.pos(), WALK_TIMEOUT_TICKS, () -> true);
+        return hutWalk;
+    }
+
+    @Nullable
+    private static Workplace workplaceOf(Unit unit) {
+        return unit.level() instanceof ServerLevel level ? WorkplaceOps.workplaceOf(level, unit) : null;
+    }
+
+    // Whether the hut's stock has an axe (only checked if its chunk is loaded).
+    private static boolean hutHasAxe(Unit unit, Workplace workplace) {
+        return unit.level().isLoaded(workplace.pos()) && unit.level().getBlockEntity(workplace.pos()) instanceof WorkplaceBlockEntity stock
+                && stock.hasAnyMatching(stack -> stack.is(ItemTags.AXES));
+    }
+
+    // Pure: whether it's time to take its load to the hut: fewer than MIN_FREE_SLOTS slots are empty,
+    // or there's no room for another log. (Walking back after every tree would waste most of its day.)
+    public static boolean shouldDeposit(SimpleContainer inventory) {
+        int empty = 0;
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            if (inventory.getItem(i).isEmpty()) {
+                empty++;
+            }
+        }
+        return empty < MIN_FREE_SLOTS || !hasRoomForLogs(inventory);
+    }
+
+    // Pure: a leaf left behind by a felled tree, which vanilla would let decay: natural (not placed
+    // by a player) and with no log within 6 leaves (distance 7).
+    public static boolean isOrphanedLeaf(BlockState state) {
+        return state.getBlock() instanceof LeavesBlock && !state.getValue(LeavesBlock.PERSISTENT)
+                && state.getValue(LeavesBlock.DISTANCE) == LeavesBlock.DECAY_DISTANCE;
+    }
+
+    // Anything besides axes: what it brings back to the hut.
+    static boolean hasThingsToDeposit(Unit unit) {
+        SimpleContainer inventory = unit.getInventory();
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            ItemStack stack = inventory.getItem(i);
+            if (!stack.isEmpty() && !stack.is(ItemTags.AXES)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Nullable
@@ -135,7 +219,7 @@ public final class LumberjackJob implements Job {
         return TreeRules.Kind.OTHER;
     }
 
-    // Finds the nearest tree in the claim. First it scans the claim's columns, a batch per tick:
+    // Finds the nearest tree in the work area. First it scans the area's columns, a batch per tick:
     // the highest non-leaf block of each column (a heightmap lookup, no digging through the world)
     // is a log at the top of a trunk or branch. Then it checks those candidates, nearest first,
     // with the tree rules.
@@ -146,14 +230,25 @@ public final class LumberjackJob implements Job {
         private boolean scanned;
         // Where the unit was when the search started; the nearest tree to here wins.
         private BlockPos from = BlockPos.ZERO;
+        // The work area: within radius of the hut (and inside the claim).
+        private BlockPos hut = BlockPos.ZERO;
+        private int radius;
 
         @Override
         public void start(Unit unit) {
             tree = null;
             from = unit.blockPosition();
             Settlement settlement = settlementOf(unit);
-            if (settlement != null) {
-                chunks.addAll(settlement.chunks());
+            Workplace workplace = workplaceOf(unit);
+            if (settlement != null && workplace != null) {
+                hut = workplace.pos();
+                radius = workplace.workRadius();
+                // Only claim chunks that reach into the work area.
+                for (ChunkPos chunk : settlement.chunks()) {
+                    if (WorkArea.touchesChunk(hut, radius, chunk.getMinBlockX(), chunk.getMinBlockZ(), chunk.getMaxBlockX(), chunk.getMaxBlockZ())) {
+                        chunks.add(chunk);
+                    }
+                }
             }
             long now = unit.level().getGameTime();
             skipUntil.values().removeIf(until -> until <= now);
@@ -187,6 +282,9 @@ public final class LumberjackJob implements Job {
                 }
                 int x = chunk.getMinBlockX() + (column % 256) / 16;
                 int z = chunk.getMinBlockZ() + column % 16;
+                if (!WorkArea.contains(hut, radius, x, z)) {
+                    continue;
+                }
                 BlockPos top = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
                 if (level.getBlockState(top).is(BlockTags.LOGS)) {
                     candidates.add(top);
@@ -355,6 +453,199 @@ public final class LumberjackJob implements Job {
         @Override
         public String describe() {
             return "fell the tree at " + (tree != null ? tree.base().toShortString() : "?");
+        }
+    }
+
+    // At the hut: puts everything it carries except axes into the hut's stock, as much as fits, and
+    // takes the stock's best axe if it has none. Fails if it still has no room for logs afterwards
+    // (the stock is full), so the job waits instead of felling trees it can't carry.
+    private static final class HutStep implements JobStep {
+        private final BlockPos hut;
+
+        HutStep(BlockPos hut) {
+            this.hut = hut;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.position().distanceTo(hut.getCenter()) > HUT_REACH
+                    || !(unit.level().getBlockEntity(hut) instanceof WorkplaceBlockEntity stock)) {
+                return Status.FAILED;
+            }
+            SimpleContainer inventory = unit.getInventory();
+            for (int i = 0; i < inventory.getContainerSize(); i++) {
+                ItemStack stack = inventory.getItem(i);
+                if (!stack.isEmpty() && !stack.is(ItemTags.AXES)) {
+                    inventory.setItem(i, Stock.insert(stock, stack));
+                }
+            }
+            if (!hasAxe(unit)) {
+                takeBestAxe(stock, inventory);
+            }
+            return hasRoomForLogs(inventory) ? Status.DONE : Status.FAILED;
+        }
+
+        static boolean hasAxe(Unit unit) {
+            return unit.getMainHandItem().is(ItemTags.AXES) || unit.getInventory().hasAnyMatching(stack -> stack.is(ItemTags.AXES));
+        }
+
+        private void takeBestAxe(WorkplaceBlockEntity stock, SimpleContainer inventory) {
+            BlockState log = Blocks.OAK_LOG.defaultBlockState();
+            int best = -1;
+            for (int i = 0; i < stock.getContainerSize(); i++) {
+                ItemStack stack = stock.getItem(i);
+                if (stack.is(ItemTags.AXES) && (best < 0 || stack.getDestroySpeed(log) > stock.getItem(best).getDestroySpeed(log))) {
+                    best = i;
+                }
+            }
+            if (best >= 0 && inventory.canAddItem(stock.getItem(best))) {
+                inventory.addItem(stock.removeItem(best, 1));
+            }
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "use the hut's stock";
+        }
+    }
+
+    // Collects the drops lying around the felled tree (logs, saplings, sticks, apples: whatever it
+    // wants and has room for), walking over to each so vanilla's pickup takes it. Done when there's
+    // nothing left to collect nearby, or after COLLECT_TICKS. (Leaves decay slowly after the logs are
+    // gone; what they drop later is picked up as it passes, or on a later visit.)
+    private final class CollectStep implements JobStep {
+        private static final int RETARGET_TICKS = 10;
+        private BlockPos center = BlockPos.ZERO;
+        private int ticks;
+
+        @Override
+        public void start(Unit unit) {
+            center = tree != null ? tree.base() : unit.blockPosition();
+            ticks = 0;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (ticks++ % RETARGET_TICKS != 0) {
+                return Status.RUNNING;
+            }
+            AABB area = new AABB(center).inflate(COLLECT_RADIUS, 4, COLLECT_RADIUS);
+            List<ItemEntity> drops = unit.level().getEntitiesOfClass(ItemEntity.class, area,
+                    item -> item.isAlive() && !item.getItem().isEmpty() && unit.wantsToPickUp(item.getItem()));
+            if (drops.isEmpty()) {
+                return Status.DONE;
+            }
+            ItemEntity nearest = drops.stream().min(Comparator.comparingDouble(unit::distanceToSqr)).get();
+            unit.getNavigation().moveTo(nearest, 1.0);
+            return Status.RUNNING;
+        }
+
+        @Override
+        public void stop(Unit unit) {
+            unit.getNavigation().stop();
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return COLLECT_TICKS;
+        }
+
+        @Override
+        public String describe() {
+            return "collect the drops";
+        }
+    }
+
+    // Clears the felled tree's canopy, the way vanilla's leaf decay would, only sooner. Vanilla keeps
+    // each natural leaf's distance to the nearest log, and a leaf with no log within 6 (distance 7)
+    // decays on a random tick, which can take minutes. So: wait a few ticks for vanilla to update the
+    // distances after the last log went, then decay every such leaf around the tree, with the drops
+    // its loot table gives (saplings, sticks, apples) going into the inventory.
+    //
+    // Leaves that are still within 6 of another tree's log keep a smaller distance and stay, so a
+    // dense forest whose canopies touch is handled by vanilla's own rule, with no search through the
+    // forest. The work is bounded: only the felled tree's bounds plus vanilla's 6-block leaf range are
+    // scanned, a batch per tick, and a few leaves are removed per tick so the canopy falls away
+    // visibly rather than vanishing.
+    private final class ClearCanopyStep implements JobStep {
+        private static final int LEAF_SETTLE_TICKS = 10;
+        private static final int SCANNED_PER_TICK = 512;
+        private static final int CLEARED_PER_TICK = 4;
+
+        private final ArrayDeque<BlockPos> toClear = new ArrayDeque<>();
+        @Nullable
+        private BoundingBox box;
+        private int settle;
+        private long scanned;
+        private long volume;
+
+        @Override
+        public void start(Unit unit) {
+            box = tree != null ? TreeRules.canopyBox(tree.logs(), LeavesBlock.DECAY_DISTANCE - 1) : null;
+            volume = box != null ? (long) box.getXSpan() * box.getYSpan() * box.getZSpan() : 0;
+            settle = LEAF_SETTLE_TICKS;
+            scanned = 0;
+            toClear.clear();
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (box == null) {
+                return Status.DONE;
+            }
+            if (settle > 0) {
+                settle--;
+                return Status.RUNNING;
+            }
+            ServerLevel level = (ServerLevel) unit.level();
+            for (int i = 0; i < SCANNED_PER_TICK && scanned < volume; i++, scanned++) {
+                BlockPos pos = posAt(scanned);
+                if (level.isLoaded(pos) && isOrphanedLeaf(level.getBlockState(pos))) {
+                    toClear.add(pos);
+                }
+            }
+            for (int i = 0; i < CLEARED_PER_TICK && !toClear.isEmpty(); i++) {
+                clear(level, unit, toClear.poll());
+            }
+            return scanned >= volume && toClear.isEmpty() ? Status.DONE : Status.RUNNING;
+        }
+
+        // The index-th block of the box, so the scan can resume where it stopped last tick.
+        private BlockPos posAt(long index) {
+            int x = (int) (index % box.getXSpan());
+            int z = (int) ((index / box.getXSpan()) % box.getZSpan());
+            int y = (int) (index / ((long) box.getXSpan() * box.getZSpan()));
+            return new BlockPos(box.minX() + x, box.minY() + y, box.minZ() + z);
+        }
+
+        private void clear(ServerLevel level, Unit unit, BlockPos pos) {
+            BlockState state = level.getBlockState(pos);
+            if (!isOrphanedLeaf(state)) {
+                return; // changed since it was found
+            }
+            List<ItemStack> drops = Block.getDrops(state, level, pos, null); // what decaying would drop
+            level.destroyBlock(pos, false); // particles and sound, no item entities
+            for (ItemStack drop : drops) {
+                ItemStack left = unit.getInventory().addItem(drop);
+                if (!left.isEmpty()) {
+                    unit.spawnAtLocation(left);
+                }
+            }
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 20 * 30;
+        }
+
+        @Override
+        public String describe() {
+            return "clear the canopy";
         }
     }
 }

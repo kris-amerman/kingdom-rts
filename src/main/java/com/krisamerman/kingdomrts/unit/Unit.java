@@ -340,7 +340,9 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         // Job seeking (see WorkplaceOps#seekJob). The offset spreads units' checks across ticks.
         if (occupationId == null && settlementId != null && level() instanceof ServerLevel serverLevel
                 && (tickCount + Math.floorMod(getUUID().hashCode(), JOB_SEEK_INTERVAL_TICKS)) % JOB_SEEK_INTERVAL_TICKS == 0) {
+            serverLevel.getProfiler().push("kingdomrts:job_seeking");
             WorkplaceOps.seekJob(serverLevel, this);
+            serverLevel.getProfiler().pop();
         }
     }
 

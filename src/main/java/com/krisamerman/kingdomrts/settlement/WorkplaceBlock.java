@@ -49,7 +49,7 @@ public class WorkplaceBlock extends SettlementContainerBlock {
     @Override
     protected void open(ServerPlayer player, SettlementStorageBlockEntity storage) {
         if (storage instanceof WorkplaceBlockEntity stock) {
-            WorkplaceMenu.open(player, stock, 0);
+            WorkplaceMenu.open(player, stock, WorkplaceMenu.View.OVERVIEW, 0);
         }
     }
 }

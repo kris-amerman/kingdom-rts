@@ -40,7 +40,7 @@ public class WorkplaceStockMenu extends ChestMenu {
     @Override
     public boolean clickMenuButton(Player player, int id) {
         if (id == BACK_BUTTON && stock != null && player instanceof ServerPlayer serverPlayer) {
-            WorkplaceMenu.open(serverPlayer, stock, 0);
+            WorkplaceMenu.open(serverPlayer, stock, WorkplaceMenu.View.OVERVIEW, 0);
             return true;
         }
         return false;

@@ -48,7 +48,11 @@ class WorkplaceRulesTest {
     void workplaceEntryDecodesWithOneWorkerByDefault() {
         WorkplaceType type = WorkplaceType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("""
                 { "occupation": "kingdomrts:lumberjack" }""")).getOrThrow();
-        assertEquals(new WorkplaceType(ResourceLocation.fromNamespaceAndPath("kingdomrts", "lumberjack"), 1), type);
+        assertEquals(new WorkplaceType(ResourceLocation.fromNamespaceAndPath("kingdomrts", "lumberjack"), 1,
+                WorkplaceType.DEFAULT_WORK_RADIUS, WorkplaceType.DEFAULT_MAX_WORK_RADIUS), type);
+        assertTrue(WorkplaceType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("""
+                { "occupation": "kingdomrts:lumberjack", "work_radius": 40, "max_work_radius": 20 }""")).isError(),
+                "The starting work area can't be bigger than the maximum");
         assertTrue(WorkplaceType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("""
                 { "occupation": "kingdomrts:lumberjack", "workers": 0 }""")).isError());
     }

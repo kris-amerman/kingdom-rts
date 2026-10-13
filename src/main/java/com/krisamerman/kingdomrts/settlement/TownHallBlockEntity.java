@@ -137,6 +137,18 @@ public class TownHallBlockEntity extends BlockEntity {
         if (level.getGameTime() % CHECK_INTERVAL_TICKS != 0 || !(level instanceof ServerLevel serverLevel)) {
             return;
         }
+        // A profiler section, so Minecraft's profiler (and tools like Spark) show what capture costs.
+        serverLevel.getProfiler().push("kingdomrts:capture");
+        try {
+            checkCapture(serverLevel, pos, townHall);
+        } finally {
+            serverLevel.getProfiler().pop();
+        }
+    }
+
+    // One capture check (every CHECK_INTERVAL_TICKS).
+    private static void checkCapture(ServerLevel serverLevel, BlockPos pos, TownHallBlockEntity townHall) {
+        Level level = serverLevel;
         FactionData factions = FactionData.get(serverLevel);
         Settlement settlement = townHall.getSettlement();
 

@@ -30,7 +30,10 @@ public class JobGoal extends Goal {
 
     @Override
     public void tick() {
+        // A profiler section, so Minecraft's profiler (and tools like Spark) show what jobs cost.
+        unit.level().getProfiler().push("kingdomrts:job");
         runner.tick(unit);
+        unit.level().getProfiler().pop();
     }
 
     @Override

@@ -36,11 +36,12 @@ public final class WorkplaceOps {
             return null;
         }
         ResourceLocation type = BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock());
-        if (WorkplaceType.get(level, type).isEmpty()) {
+        Optional<WorkplaceType> entry = WorkplaceType.get(level, type);
+        if (entry.isEmpty()) {
             KingdomRts.LOGGER.warn("No workplace entry '{}'; the block at {} won't employ anyone", type, pos.toShortString());
             return null;
         }
-        return SettlementData.get(level).addWorkplace(settlement, pos, type);
+        return SettlementData.get(level).addWorkplace(settlement, pos, type, entry.get().workRadius());
     }
 
     // The workplace block was removed: its workers lose their jobs (loaded ones now, unloaded ones
@@ -132,6 +133,22 @@ public final class WorkplaceOps {
         }
     }
 
+    // Sets how far from the workplace its workers work, kept within WorkArea.MIN_RADIUS and the
+    // workplace type's maximum. Returns the radius it ended up with.
+    public static int setWorkRadius(ServerLevel level, Workplace workplace, int radius) {
+        int max = WorkplaceType.get(level, workplace.type()).map(WorkplaceType::maxWorkRadius).orElse(WorkplaceType.DEFAULT_MAX_WORK_RADIUS);
+        int clamped = WorkArea.clampRadius(radius, max);
+        SettlementData.get(level).setWorkRadius(workplace, clamped);
+        return clamped;
+    }
+
+    // The workplace a unit is employed at, if any.
+    @Nullable
+    public static Workplace workplaceOf(ServerLevel level, Unit unit) {
+        Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+        return settlement != null && unit.getWorkplace() != null ? settlement.workplaceAt(unit.getWorkplace()) : null;
+    }
+
     // Turns a workplace's automatic hiring on or off.
     public static void setAutoHire(ServerLevel level, Workplace workplace, boolean autoHire) {
         SettlementData.get(level).setAutoHire(workplace, autoHire);
@@ -160,12 +177,6 @@ public final class WorkplaceOps {
     // How a workplace is named in messages: "lumberjack hut" for kingdomrts:lumberjack_hut.
     public static String name(Workplace workplace) {
         return workplace.type().getPath().replace('_', ' ');
-    }
-
-    @Nullable
-    private static Workplace workplaceOf(ServerLevel level, Unit unit) {
-        Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
-        return settlement != null && unit.getWorkplace() != null ? settlement.workplaceAt(unit.getWorkplace()) : null;
     }
 
     private static void unemploy(Unit unit) {

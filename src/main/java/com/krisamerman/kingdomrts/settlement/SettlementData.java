@@ -140,8 +140,8 @@ public class SettlementData extends SavedData {
         }
     }
 
-    Workplace addWorkplace(Settlement settlement, BlockPos pos, ResourceLocation type) {
-        Workplace workplace = new Workplace(pos, type);
+    Workplace addWorkplace(Settlement settlement, BlockPos pos, ResourceLocation type, int workRadius) {
+        Workplace workplace = new Workplace(pos, type, workRadius);
         if (settlement.addWorkplace(workplace)) {
             setDirty();
             return workplace;
@@ -151,6 +151,12 @@ public class SettlementData extends SavedData {
 
     void removeWorkplace(Settlement settlement, BlockPos pos) {
         if (settlement.removeWorkplace(pos)) {
+            setDirty();
+        }
+    }
+
+    void setWorkRadius(Workplace workplace, int workRadius) {
+        if (workplace.setWorkRadius(workRadius)) {
             setDirty();
         }
     }
