@@ -22,33 +22,8 @@ Story template:
 
 ## Current: Units MVP
 
-### S-019 Job seeking
-- **Status:** in review | **Branch:** feature/job-seeking | **PR:** #19 | **Depends on:** S-017
-- **Goal:** unemployed settlers take jobs at huts with openings by themselves.
-- **Scope:**
-  - **Automatic hiring:** a toggle per hut, on by default (as in MineColonies). Firing someone from the panel switches the hut to manual, so the unit isn't re-hired straight away.
-  - **Seeking:** an unemployed settler checks about every 10 seconds (staggered per unit) for the nearest hut in its settlement with room and automatic hiring on, and is hired there. It only looks at its settlement's few workplaces, so it's cheap.
-- **Out of scope:** worker skills and job preferences (deferred).
-- **Test:**
-  - Unit test: choosing the workplace.
-  - GameTests:
-    - an opening is filled automatically;
-    - a manual hut isn't filled;
-    - firing from the panel switches the hut to manual;
-    - the nearest hut wins;
-    - soldiers and outsiders don't seek jobs.
-  - Manual: the toggle in the panel. Checked by the owner.
-- **Notes:**
-  - **Data:** `Workplace.autoHire` is saved, and defaults to on, including for huts saved before this existed.
-  - **Panel:** an "Automatic hiring: On/Off" button with a tooltip. Its Fire buttons switch the hut to manual before firing.
-  - **Choosing (pure, `WorkplaceRules.chooseWorkplace`):** the nearest workplace with room and automatic hiring on.
-  - **Seeking (`WorkplaceOps.seekJob`):** runs from `Unit.aiStep` for units with no occupation and a settlement, every `JOB_SEEK_INTERVAL_TICKS` (200), offset by each unit's UUID so checks are spread across ticks. It only looks at its settlement's own workplaces.
-  - Soldiers don't seek (they have an occupation), and neither do units with no settlement.
-  - **Live panel (owner feedback):** an open hut panel didn't show hires made by automatic hiring until it was reopened. `WorkplaceMenu.broadcastChanges` now checks once a second whether the panel is out of date: the workers, the toggle, or the set of settlers looking for work. If so, it reopens in place (no cursor jump). Settlers are compared as a set, not in order, so ones wandering about don't make it refresh constantly.
-  - **Tests:** GameTests run 3 times in a row without flakes. Job seeking now runs during every test with unemployed settlers near a hut, and none of the existing tests depended on them staying unemployed. GameTests for the live panel: it updates when someone is hired automatically, and stays put when settlers only move about (the nearest and farthest swap places). Sabotage checks (ignoring the auto-hire flag; no seeking; no live refresh; comparing settlers in order) fail the matching tests.
-
 ### S-014 Lumberjack works from its hut
-- **Status:** planned | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-017
+- **Status:** in review | **Branch:** feature/lumberjack-hut | **PR:** - | **Depends on:** S-017
 - **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
 - **Scope:**
   - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
@@ -56,8 +31,37 @@ Story template:
   - It deposits what it collected into the hut's stock after each tree or when full, and takes axes from the stock.
   - Without room in the stock it keeps its logs and waits.
 - **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
-- **Test:** GameTests: trees outside the work area are ignored; logs and other drops end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait. Manual: the work-area setting in the panel.
-- **Notes:** replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
+- **Test:** GameTests: trees outside the work area are ignored; logs and other drops end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait; it clears a felled tree's canopy but leaves neighbouring canopies standing; it fells several trees before going back. Manual: the work-area setting in the panel. Checked by the owner, with the full loop.
+- **Notes:**
+  - Replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
+  - **The loop** (revised after owner feedback):
+    1. Find a tree in the work area; walk beside it; fell it.
+    2. Clear its canopy (below).
+    3. Collect anything wanted still lying within 8 blocks, for up to 5 s.
+    4. Repeat. It goes back to the hut only when it should deposit (pure rule `LumberjackJob.shouldDeposit`: fewer than 2 empty slots, or no room for logs), when there are no trees left and it's carrying something, or when it has no axe and the hut's stock has one. Walking back after every tree wasted most of its time.
+    5. At the hut: deposit everything except axes (`Stock.insert` tops up stacks, then fills empty slots), and take the stock's best axe if it has none.
+    6. If the stock was full and it still has no room for logs, it waits and tries again.
+  - **Clearing the canopy (owner feedback: most drops were missed, because leaves take minutes to decay):**
+    - **How vanilla works:** every natural leaf stores its distance to the nearest log. After a log is removed, distances update over a few ticks, and a leaf with no log within 6 (distance 7) decays, but only on a random tick, which is the slow part.
+    - **What the lumberjack does** (`ClearCanopyStep`): waits 10 ticks for the distances to settle, then decays every such leaf around the tree itself. Drops come from the leaf's own loot table, so saplings, sticks and apples arrive at vanilla's chances, straight into its inventory. It clears 4 per tick, so the canopy falls away over a second or two. The pure check is `isOrphanedLeaf`.
+    - **Dense forests:** leaves still within 6 of another tree's log keep a lower distance and stay, so canopies that touch are handled by vanilla's own rule. No search through the connected forest is needed.
+    - **Bounded work:** it scans only the felled tree's bounds plus vanilla's 6-block leaf range (`TreeRules.canopyBox`), 512 blocks per tick, once per tree.
+  - **Work area:**
+    - `Workplace.workRadius` is saved per workplace. Its starting value and maximum come from the workplace data (`work_radius` 16 and `max_work_radius` 48 for the lumberjack hut), and data with a starting radius above the maximum is rejected.
+    - The hut panel has a "Work area" row with −/+ buttons, in steps of 4 down to a minimum of 4. Being on the workplace, it's ready for every job.
+    - The search keeps only claim chunks that reach into the area (`WorkArea.touchesChunk`), then only columns within the radius (`WorkArea.contains`), measured across the ground.
+  - **Drops:** lumberjacks pick up logs, saplings, sticks and apples, and nothing else. The saplings are kept for replanting (S-016).
+  - **Hut panel layout (owner feedback: the panel ran off the screen):** it's now two pages of one fixed, vanilla-sized panel, like MineColonies' hut windows.
+    - **Overview:** details, the work area with −/+, and buttons for automatic hiring, "Workers (n/m)…" and Stock.
+    - **Workers:** one paged list (6 rows a page) of "Working here" with Fire and "Looking for work" with Hire, then Back and paging.
+    - The current page (`WorkplaceInfo.view`) is sent by the server, so hiring, firing and the live refresh keep the player on the workers page.
+    - Settlers looking for work are sent in full (up to 64) and paged by the shared `WorkplaceInfo.rows()`.
+    - Text isn't scaled down: Minecraft's pixel font blurs when shrunk.
+  - **Profiler sections** (`kingdomrts:job`, `kingdomrts:job_seeking`, `kingdomrts:capture`) show our share of the tick in Minecraft's profiler (`/debug start`/`/debug stop`) and tools like Spark.
+  - Existing lumberjack GameTests now count logs carried plus logs in the hut's stock. "Doesn't chop with no room" became "waits when it and its hut are full".
+  - **Flakes:** GameTests run 3 times in a row without flakes.
+  - **Sabotage checks:** no depositing; logs-only pickup; not taking the hut's axe; no work-area filtering; skipping the canopy step; clearing leaves whatever their distance (the shared-canopy test); depositing after every tree. Each fails the matching tests.
+    - The work-area GameTest can only reliably catch both filters disabled together. Whether the far tree's chunk touches the area depends on where the test sits on the chunk grid. The column filter on its own is covered by `WorkAreaTest`.
 
 ### S-016 Lumberjack hut settings
 - **Status:** planned | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
@@ -76,6 +80,18 @@ Story template:
 - **Out of scope:** other command changes.
 - **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
 - **Notes:** small; can be picked up any time.
+
+### S-021 Stress testing
+- **Status:** planned | **Branch:** feature/stress-test | **PR:** - | **Depends on:** S-014
+- **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
+- **Scope:**
+  - A stress scenario (a GameTest batch or a command) that sets up settlements with huts and N workers in a generated forest (e.g. 50, 100, 200 lumberjacks) and records the average tick time (`MinecraftServer.getAverageTickTimeNanos`), plus our profiler sections, per worker count.
+  - It isn't part of the normal CI run: it runs on demand, and periodically (a scheduled workflow or a manual step before releases).
+  - Results go in `docs/perf.md`, so changes over time are visible.
+  - Agree a budget with the owner, e.g. our systems under a few ms per tick at 100 workers.
+- **Out of scope:** optimising anything (follow-up stories, driven by the numbers).
+- **Test:** the scenario itself, run once to record the baseline.
+- **Notes:** the profiler sections were added in S-014.
 
 ### S-010 Building templates and sites
 - **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
@@ -122,6 +138,31 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-019 Job seeking
+- **Status:** done | **Branch:** feature/job-seeking | **PR:** #19 | **Depends on:** S-017
+- **Goal:** unemployed settlers take jobs at huts with openings by themselves.
+- **Scope:**
+  - **Automatic hiring:** a toggle per hut, on by default (as in MineColonies). Firing someone from the panel switches the hut to manual, so the unit isn't re-hired straight away.
+  - **Seeking:** an unemployed settler checks about every 10 seconds (staggered per unit) for the nearest hut in its settlement with room and automatic hiring on, and is hired there. It only looks at its settlement's few workplaces, so it's cheap.
+- **Out of scope:** worker skills and job preferences (deferred).
+- **Test:**
+  - Unit test: choosing the workplace.
+  - GameTests:
+    - an opening is filled automatically;
+    - a manual hut isn't filled;
+    - firing from the panel switches the hut to manual;
+    - the nearest hut wins;
+    - soldiers and outsiders don't seek jobs.
+  - Manual: the toggle in the panel. Checked by the owner.
+- **Notes:**
+  - **Data:** `Workplace.autoHire` is saved, and defaults to on, including for huts saved before this existed.
+  - **Panel:** an "Automatic hiring: On/Off" button with a tooltip. Its Fire buttons switch the hut to manual before firing.
+  - **Choosing (pure, `WorkplaceRules.chooseWorkplace`):** the nearest workplace with room and automatic hiring on.
+  - **Seeking (`WorkplaceOps.seekJob`):** runs from `Unit.aiStep` for units with no occupation and a settlement, every `JOB_SEEK_INTERVAL_TICKS` (200), offset by each unit's UUID so checks are spread across ticks. It only looks at its settlement's own workplaces.
+  - Soldiers don't seek (they have an occupation), and neither do units with no settlement.
+  - **Live panel (owner feedback):** an open hut panel didn't show hires made by automatic hiring until it was reopened. `WorkplaceMenu.broadcastChanges` now checks once a second whether the panel is out of date: the workers, the toggle, or the set of settlers looking for work. If so, it reopens in place (no cursor jump). Settlers are compared as a set, not in order, so ones wandering about don't make it refresh constantly.
+  - **Tests:** GameTests run 3 times in a row without flakes. Job seeking now runs during every test with unemployed settlers near a hut, and none of the existing tests depended on them staying unemployed. GameTests for the live panel: it updates when someone is hired automatically, and stays put when settlers only move about (the nearest and farthest swap places). Sabotage checks (ignoring the auto-hire flag; no seeking; no live refresh; comparing settlers in order) fail the matching tests.
 
 ### S-017 Hut panel
 - **Status:** done | **Branch:** feature/hut-panel | **PR:** #18 | **Depends on:** S-018

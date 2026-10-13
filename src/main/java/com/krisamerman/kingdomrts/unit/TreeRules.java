@@ -12,6 +12,7 @@ import java.util.function.Function;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // What counts as a tree a lumberjack may fell: logs connected to each other (diagonals included, so
 // branches count), with natural leaves touching them. Leaves a player places are marked persistent
@@ -82,5 +83,12 @@ public final class TreeRules {
             }
         }
         return leaves.size();
+    }
+
+    // The box around a tree's logs, grown by margin on every side: where its leaves can be (vanilla
+    // leaves reach at most 6 blocks from a log).
+    public static BoundingBox canopyBox(List<BlockPos> logs, int margin) {
+        BoundingBox box = BoundingBox.encapsulatingPositions(logs).orElseThrow();
+        return box.inflatedBy(margin);
     }
 }

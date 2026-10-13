@@ -23,6 +23,7 @@ public final class Workplace {
     private static final String ID_TAG = "id";
     private static final String NAME_TAG = "name";
     private static final String AUTO_HIRE_TAG = "auto_hire";
+    private static final String WORK_RADIUS_TAG = "work_radius";
 
     private final BlockPos pos;
     private final ResourceLocation type;
@@ -30,10 +31,13 @@ public final class Workplace {
     // Automatic hiring: unemployed settlers fill its openings by themselves (see WorkplaceOps#seekJob).
     // On by default; firing someone from the hut panel turns it off.
     private boolean autoHire = true;
+    // How far from the workplace its workers work, in blocks (see WorkArea). Set from the panel.
+    private int workRadius = WorkplaceType.DEFAULT_WORK_RADIUS;
 
-    Workplace(BlockPos pos, ResourceLocation type) {
+    Workplace(BlockPos pos, ResourceLocation type, int workRadius) {
         this.pos = pos.immutable();
         this.type = type;
+        this.workRadius = workRadius;
     }
 
     public BlockPos pos() {
@@ -47,6 +51,16 @@ public final class Workplace {
     // Worker unit UUIDs, in hiring order, with their names.
     public Map<UUID, String> workers() {
         return Collections.unmodifiableMap(workers);
+    }
+
+    public int workRadius() {
+        return workRadius;
+    }
+
+    boolean setWorkRadius(int workRadius) {
+        boolean changed = this.workRadius != workRadius;
+        this.workRadius = workRadius;
+        return changed;
     }
 
     public boolean autoHire() {
@@ -80,11 +94,13 @@ public final class Workplace {
         });
         tag.put(WORKERS_TAG, list);
         tag.putBoolean(AUTO_HIRE_TAG, autoHire);
+        tag.putInt(WORK_RADIUS_TAG, workRadius);
         return tag;
     }
 
     static Workplace load(CompoundTag tag) {
-        Workplace workplace = new Workplace(BlockPos.of(tag.getLong(POS_TAG)), ResourceLocation.parse(tag.getString(TYPE_TAG)));
+        Workplace workplace = new Workplace(BlockPos.of(tag.getLong(POS_TAG)), ResourceLocation.parse(tag.getString(TYPE_TAG)),
+                tag.contains(WORK_RADIUS_TAG) ? tag.getInt(WORK_RADIUS_TAG) : WorkplaceType.DEFAULT_WORK_RADIUS);
         for (Tag t : tag.getList(WORKERS_TAG, Tag.TAG_COMPOUND)) {
             CompoundTag worker = (CompoundTag) t;
             workplace.workers.put(worker.getUUID(ID_TAG), worker.getString(NAME_TAG));

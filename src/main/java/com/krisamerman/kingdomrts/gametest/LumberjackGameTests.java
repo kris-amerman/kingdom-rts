@@ -15,6 +15,7 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.gametest.TestSupport.RecordingPlayer;
 import com.krisamerman.kingdomrts.settlement.Settlement;
+import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.BreakTime;
@@ -25,13 +26,16 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
@@ -56,8 +60,8 @@ public class LumberjackGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT,
-                            "Expected the " + TREE_HEIGHT + " logs in its inventory, got " + lumberjack.getInventory().countItem(Items.OAK_LOG));
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT,
+                            "Expected the " + TREE_HEIGHT + " logs, got " + logsCollected(helper, lumberjack));
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -102,8 +106,8 @@ public class LumberjackGameTests {
                 })
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, OTHER_TREE) == 0, "Waiting for it to fell the other tree"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT,
-                            "Expected only the other tree's logs, got " + lumberjack.getInventory().countItem(Items.OAK_LOG));
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT,
+                            "Expected only the other tree's logs, got " + logsCollected(helper, lumberjack));
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -126,17 +130,94 @@ public class LumberjackGameTests {
                 .thenSucceed();
     }
 
-    @GameTest(template = TEMPLATE, batch = "lumberjack_full", timeoutTicks = 300)
-    public static void stopsWhenItHasNoRoom(GameTestHelper helper) {
+    @GameTest(template = TEMPLATE, batch = "lumberjack_full", timeoutTicks = 400)
+    public static void waitsWhenItAndItsHutAreFull(GameTestHelper helper) {
         Unit lumberjack = setUp(helper);
+        Container stock = stock(helper);
+        for (int i = 0; i < stock.getContainerSize(); i++) {
+            stock.setItem(i, new ItemStack(Items.DIRT, 64));
+        }
         for (int i = 0; i < Unit.INVENTORY_SIZE; i++) {
             lumberjack.getInventory().setItem(i, new ItemStack(Items.DIRT, 64));
         }
         tree(helper, TREE);
         helper.startSequence()
-                .thenIdle(200)
+                .thenIdle(300)
                 .thenExecute(() -> {
-                    helper.assertTrue(logsLeft(helper, TREE) == TREE_HEIGHT, "A lumberjack with no room shouldn't chop");
+                    helper.assertTrue(logsLeft(helper, TREE) == TREE_HEIGHT, "With nowhere to put logs, it shouldn't chop");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    // ---- Working from the hut ----
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_deposit", timeoutTicks = 900)
+    public static void bringsItsLogsToTheHut(GameTestHelper helper) {
+        Unit lumberjack = setUp(helper);
+        tree(helper, TREE);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(stock(helper).countItem(Items.OAK_LOG) == TREE_HEIGHT,
+                        "Waiting for the logs to reach the hut's stock; it has " + stock(helper).countItem(Items.OAK_LOG)))
+                .thenExecute(() -> {
+                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == 0, "It should have handed over every log");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_work_area", timeoutTicks = 1100)
+    public static void staysInsideItsWorkArea(GameTestHelper helper) {
+        Unit lumberjack = setUp(helper);
+        Settlement settlement = SettlementData.get(helper.getLevel()).byId(lumberjack.getSettlementId());
+        WorkplaceOps.setWorkRadius(helper.getLevel(), settlement.workplaceAt(helper.absolutePos(HUT)), 6);
+        BlockPos near = HUT.west(4); // inside 6 blocks of the hut
+        tree(helper, TREE);          // about 14 blocks away: outside
+        tree(helper, near);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, near) == 0, "Waiting for it to fell the tree in its work area"))
+                // Long enough to go back to the hut, search again, walk to the other tree and chop a log
+                // (60 ticks by hand), if it were allowed to.
+                .thenIdle(400)
+                .thenExecute(() -> {
+                    helper.assertTrue(logsLeft(helper, TREE) == TREE_HEIGHT, "It went outside its work area");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_hut_axe", timeoutTicks = 800)
+    public static void takesAnAxeFromTheHut(GameTestHelper helper) {
+        Unit lumberjack = setUp(helper);
+        stock(helper).setItem(5, new ItemStack(Items.IRON_AXE));
+        tree(helper, TREE);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(lumberjack.getMainHandItem().is(Items.IRON_AXE), "Waiting for it to chop with the hut's axe"))
+                .thenExecute(() -> helper.assertTrue(stock(helper).countItem(Items.IRON_AXE) == 0, "The axe should have left the stock"))
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
+                .thenExecute(() -> removeHall(helper, HALL))
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_drops", timeoutTicks = 1000)
+    public static void collectsTreeDropsForTheHut(GameTestHelper helper) {
+        setUp(helper);
+        tree(helper, TREE);
+        // What leaves drop as they decay, lying around the tree, plus something it doesn't want.
+        helper.spawnItem(Items.OAK_SAPLING, Vec3.atBottomCenterOf(TREE.offset(2, 0, 1)));
+        helper.spawnItem(Items.STICK, Vec3.atBottomCenterOf(TREE.offset(1, 0, 2)));
+        helper.spawnItem(Items.APPLE, Vec3.atBottomCenterOf(TREE.offset(2, 0, 2)));
+        helper.spawnItem(Items.DIRT, Vec3.atBottomCenterOf(TREE.offset(-2, 0, 0)));
+        helper.startSequence()
+                .thenWaitUntil(() -> {
+                    Container stock = stock(helper);
+                    // At least: the canopy may add some more of its own.
+                    helper.assertTrue(stock.countItem(Items.OAK_SAPLING) >= 1 && stock.countItem(Items.STICK) >= 1
+                            && stock.countItem(Items.APPLE) >= 1 && stock.countItem(Items.OAK_LOG) == TREE_HEIGHT,
+                            "Waiting for the logs, sapling, stick and apple to reach the hut");
+                })
+                .thenExecute(() -> {
+                    helper.assertItemEntityPresent(Items.DIRT, TREE.offset(-2, 0, 0), 2.0); // left alone
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -186,7 +267,7 @@ public class LumberjackGameTests {
                         "Too fast for bare hands: " + logsLeft(helper, TREE) + " logs left after 100 ticks"))
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected the logs");
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected the logs");
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -200,7 +281,7 @@ public class LumberjackGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(lumberjack.getMainHandItem().is(Items.IRON_AXE), "Waiting for it to take its axe"))
                 // An iron axe takes 10 ticks per oak log, instead of 60 by hand.
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
-                .thenExecute(() -> helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected the logs"))
+                .thenExecute(() -> helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected the logs"))
                 .thenWaitUntil(() -> helper.assertTrue(lumberjack.getMainHandItem().isEmpty(), "Waiting for it to put the axe away"))
                 .thenExecute(() -> {
                     ItemStack axe = lumberjack.getInventory().getItem(3);
@@ -222,7 +303,7 @@ public class LumberjackGameTests {
                 .thenExecute(() -> {
                     helper.assertTrue(lumberjack.getInventory().countItem(Items.IRON_AXE) == 0 && lumberjack.getMainHandItem().isEmpty(),
                             "Expected the axe to have broken");
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected all the logs");
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected all the logs");
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -245,7 +326,7 @@ public class LumberjackGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected the logs");
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected the logs");
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -260,7 +341,7 @@ public class LumberjackGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected the logs");
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected the logs");
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -283,7 +364,7 @@ public class LumberjackGameTests {
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0, "Waiting for the tree to be felled"))
                 .thenExecute(() -> {
-                    helper.assertTrue(lumberjack.getInventory().countItem(Items.OAK_LOG) == TREE_HEIGHT, "Expected the logs");
+                    helper.assertTrue(logsCollected(helper, lumberjack) == TREE_HEIGHT, "Expected the logs");
                     removeHall(helper, HALL);
                 })
                 .thenSucceed();
@@ -313,6 +394,68 @@ public class LumberjackGameTests {
                     helper.assertTrue(logsLeft(helper, walledTree) == TREE_HEIGHT, "It got to the walled-off tree");
                     removeHall(helper, HALL);
                 })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_canopy", timeoutTicks = 800)
+    public static void clearsTheCanopyOfAFelledTree(GameTestHelper helper) {
+        Unit lumberjack = setUpNextToTree(helper);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0 && leavesAround(helper, TREE) == 0,
+                        "Waiting for the tree and its canopy to go; " + leavesAround(helper, TREE) + " leaves left"))
+                .thenExecute(() -> {
+                    // Whatever the leaves dropped went to the lumberjack, not the ground.
+                    for (var item : new Item[] {Items.OAK_SAPLING, Items.STICK, Items.APPLE}) {
+                        helper.assertItemEntityNotPresent(item, TREE, 8.0);
+                    }
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    // Two canopies touching, as in a dense forest: felling one tree must leave the leaves that are
+    // still within reach of the other's logs. The other "tree" here is a bare log pillar (too few
+    // natural leaves to count as a tree, so it isn't felled), joined to the first by a bridge leaf.
+    @GameTest(template = TEMPLATE, batch = "lumberjack_shared_canopy", timeoutTicks = 800)
+    public static void leavesNeighbouringCanopiesStanding(GameTestHelper helper) {
+        setUpNextToTree(helper);
+        BlockPos top = TREE.above(TREE_HEIGHT - 1);
+        BlockPos pillar = TREE.east(3);
+        for (int y = 0; y < TREE_HEIGHT; y++) {
+            helper.setBlock(pillar.above(y), Blocks.OAK_LOG);
+        }
+        BlockState leaves = Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.DISTANCE, 1);
+        BlockPos bridge = top.east(2); // touches the tree's east leaf and the pillar
+        helper.setBlock(bridge, leaves);
+        BlockPos nearPillar = top.east(); // the tree's own east leaf, 2 from the pillar through the bridge
+        BlockPos farSide = top.west();    // the tree's west leaf, with no way to the pillar
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0 && helper.getBlockState(farSide).isAir(),
+                        "Waiting for the tree to be felled and its own canopy cleared"))
+                .thenExecute(() -> {
+                    helper.assertBlockPresent(Blocks.OAK_LEAVES, nearPillar);
+                    helper.assertBlockPresent(Blocks.OAK_LEAVES, bridge);
+                    helper.assertTrue(logsLeft(helper, pillar) == TREE_HEIGHT, "The pillar isn't a tree and should stand");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_full_trips", timeoutTicks = 1600)
+    public static void fellsSeveralTreesBeforeGoingBack(GameTestHelper helper) {
+        Unit lumberjack = setUp(helper);
+        tree(helper, TREE);
+        tree(helper, OTHER_TREE);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0 || logsLeft(helper, OTHER_TREE) == 0,
+                        "Waiting for the first tree"))
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0 && logsLeft(helper, OTHER_TREE) == 0,
+                        "Waiting for the second tree"))
+                .thenExecute(() -> helper.assertTrue(stock(helper).countItem(Items.OAK_LOG) == 0,
+                        "It went back to the hut between trees, with room to spare"))
+                .thenWaitUntil(() -> helper.assertTrue(stock(helper).countItem(Items.OAK_LOG) == 2 * TREE_HEIGHT,
+                        "Waiting for both trees' logs to reach the hut at once"))
+                .thenExecute(() -> removeHall(helper, HALL))
                 .thenSucceed();
     }
 
@@ -366,6 +509,27 @@ public class LumberjackGameTests {
                 }
             }
         }
+    }
+
+    // The hut's stock.
+    private static Container stock(GameTestHelper helper) {
+        return (Container) helper.getBlockEntity(HUT);
+    }
+
+    // Logs the lumberjack has collected so far: carried, or already in the hut's stock.
+    private static int logsCollected(GameTestHelper helper, Unit lumberjack) {
+        return lumberjack.getInventory().countItem(Items.OAK_LOG) + stock(helper).countItem(Items.OAK_LOG);
+    }
+
+    // Oak leaves left in the small tree's canopy area.
+    private static int leavesAround(GameTestHelper helper, BlockPos base) {
+        int count = 0;
+        for (BlockPos pos : BlockPos.betweenClosed(base.offset(-1, 0, -1), base.offset(1, TREE_HEIGHT, 1))) {
+            if (helper.getBlockState(pos).is(Blocks.OAK_LEAVES)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static int logsLeft(GameTestHelper helper, BlockPos base) {

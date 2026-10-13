@@ -8,6 +8,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 // The lumberjack occupation (type "kingdomrts:lumberjack"): fells trees in its settlement's claim
 // and keeps the logs (see LumberjackJob). Its settings come from the JSON entry, e.g.
@@ -30,9 +31,10 @@ public record LumberjackOccupation(double movementSpeed) implements Occupation {
         unit.addOccupationGoal(false, 2, new JobGoal(unit, new LumberjackJob(this)));
     }
 
-    // Only logs: it shouldn't fill up on the saplings and sticks a felled tree leaves behind.
+    // What trees drop: logs, saplings, sticks and apples (it brings them all back to its hut).
+    // Other things lying around are left alone, so it doesn't fill up on trash.
     @Override
     public boolean wantsToPickUp(ItemStack stack) {
-        return stack.is(ItemTags.LOGS);
+        return stack.is(ItemTags.LOGS) || stack.is(ItemTags.SAPLINGS) || stack.is(Items.STICK) || stack.is(Items.APPLE);
     }
 }

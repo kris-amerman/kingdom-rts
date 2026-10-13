@@ -1,4 +1,6 @@
 {
   "occupation": "kingdomrts:lumberjack",
-  "workers": 1
+  "workers": 1,
+  "work_radius": 16,
+  "max_work_radius": 48
 }

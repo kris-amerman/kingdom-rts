@@ -21,9 +21,11 @@ import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.gametest.TestSupport.RecordingPlayer;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
+import com.krisamerman.kingdomrts.settlement.WorkArea;
 import com.krisamerman.kingdomrts.settlement.WorkplaceMenu;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceStockMenu;
+import com.krisamerman.kingdomrts.settlement.WorkplaceType;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
@@ -86,19 +88,24 @@ public class WorkplacePanelGameTests {
         Unit settler = settler(helper, settlement, blue, HUT.east(2));
         RecordingPlayer player = ownerAtHut(helper, blue);
         try {
-            rightClick(helper, player);
+            helper.assertTrue(rightClick(helper, player).getInfo().view() == WorkplaceMenu.View.OVERVIEW, "The panel opens on its overview");
+            press(player, WorkplaceMenu.SHOW_WORKERS_BUTTON);
+            helper.assertTrue(clientMenu(helper, player).getInfo().view() == WorkplaceMenu.View.WORKERS, "The Workers button opens the workers page");
             press(player, WorkplaceMenu.HIRE_BUTTON); // the first candidate
             helper.assertTrue(Occupation.LUMBERJACK.equals(settler.getOccupationId()), "The Hire button should hire the settler");
             assertNoScreenClosed(helper, player);
             WorkplaceMenu refreshed = clientMenu(helper, player);
             helper.assertTrue(refreshed.getInfo().workers().size() == 1 && refreshed.getInfo().candidates().isEmpty(),
                     "The panel should refresh to show the new worker");
+            helper.assertTrue(refreshed.getInfo().view() == WorkplaceMenu.View.WORKERS, "Hiring should keep the workers page open");
 
             press(player, WorkplaceMenu.FIRE_BUTTON);
             helper.assertTrue(settler.getOccupationId() == null, "The Fire button should fire the worker");
             WorkplaceMenu.WorkplaceInfo afterFiring = clientMenu(helper, player).getInfo();
             helper.assertTrue(afterFiring.workers().isEmpty(), "The panel should refresh to show nobody working");
             helper.assertFalse(afterFiring.autoHire(), "Firing from the panel should switch the hut to manual hiring");
+            press(player, WorkplaceMenu.SHOW_OVERVIEW_BUTTON);
+            helper.assertTrue(clientMenu(helper, player).getInfo().view() == WorkplaceMenu.View.OVERVIEW, "Back returns to the overview");
         } finally {
             leave(helper, player);
         }
@@ -181,6 +188,30 @@ public class WorkplacePanelGameTests {
                 .thenSucceed();
     }
 
+    @GameTest(template = TEMPLATE, batch = "hut_panel_work_area")
+    public static void workAreaButtons(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        Settlement settlement = found(helper, HALL, blue);
+        lumberjackHut(helper, HUT);
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        try {
+            WorkplaceMenu.WorkplaceInfo info = rightClick(helper, player).getInfo();
+            helper.assertTrue(info.workRadius() == WorkplaceType.DEFAULT_WORK_RADIUS, "Expected the starting work area from data");
+            press(player, WorkplaceMenu.LARGER_AREA_BUTTON);
+            helper.assertTrue(clientMenu(helper, player).getInfo().workRadius() == info.workRadius() + WorkArea.RADIUS_STEP, "+ should grow it");
+            for (int i = 0; i < 20; i++) {
+                press(player, WorkplaceMenu.SMALLER_AREA_BUTTON);
+            }
+            helper.assertTrue(clientMenu(helper, player).getInfo().workRadius() == WorkArea.MIN_RADIUS, "- should stop at the minimum");
+            helper.assertTrue(current(helper, settlement).workplaceAt(helper.absolutePos(HUT)).workRadius() == WorkArea.MIN_RADIUS,
+                    "The hut should remember its work area");
+        } finally {
+            leave(helper, player);
+        }
+        removeHall(helper, HALL);
+        helper.succeed();
+    }
+
     @GameTest(template = TEMPLATE, batch = "hut_panel_full")
     public static void hireButtonRespectsCapacity(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
@@ -231,17 +262,24 @@ public class WorkplacePanelGameTests {
         Faction blue = faction(helper, "Blue");
         Settlement settlement = found(helper, HALL, blue);
         lumberjackHut(helper, HUT);
-        for (int i = 0; i < WorkplaceMenu.CANDIDATES_PER_PAGE + 2; i++) {
+        for (int i = 0; i < 6; i++) {
             settler(helper, settlement, blue, new BlockPos(10 + i % 3, FLOOR_Y + 1, 10 + i / 3));
         }
         RecordingPlayer player = ownerAtHut(helper, blue);
         try {
-            WorkplaceMenu.WorkplaceInfo first = rightClick(helper, player).getInfo();
-            helper.assertTrue(first.candidates().size() == WorkplaceMenu.CANDIDATES_PER_PAGE && first.pages() == 2, "Page 1: " + first);
+            rightClick(helper, player);
+            press(player, WorkplaceMenu.SHOW_WORKERS_BUTTON);
+            WorkplaceMenu.WorkplaceInfo first = clientMenu(helper, player).getInfo();
+            // 2 section titles + "nobody yet" + 6 settlers = 9 rows: two pages.
+            helper.assertTrue(first.candidates().size() == 6 && first.pages() == 2 && first.page() == 0
+                    && first.pageRows().size() == WorkplaceMenu.ROWS_PER_PAGE, "Page 1: " + first);
             press(player, WorkplaceMenu.NEXT_PAGE_BUTTON);
             assertNoScreenClosed(helper, player);
             WorkplaceMenu.WorkplaceInfo second = clientMenu(helper, player).getInfo();
-            helper.assertTrue(second.candidates().size() == 2 && second.page() == 1, "Page 2: " + second);
+            helper.assertTrue(second.page() == 1 && second.pageRows().size() == 3 && second.view() == WorkplaceMenu.View.WORKERS,
+                    "Page 2, still on the workers page: " + second);
+            press(player, WorkplaceMenu.NEXT_PAGE_BUTTON);
+            helper.assertTrue(clientMenu(helper, player).getInfo().page() == 1, "There's no page 3");
         } finally {
             leave(helper, player);
         }
