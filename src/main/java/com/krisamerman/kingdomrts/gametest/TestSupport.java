@@ -22,6 +22,7 @@ import com.mojang.authlib.GameProfile;
 import io.netty.channel.embedded.EmbeddedChannel;
 import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
+import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -32,6 +33,10 @@ import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketFlow;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.neoforged.neoforge.network.payload.AdvancedOpenScreenPayload;
+import net.neoforged.neoforge.network.connection.ConnectionType;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.CommonListenerCookie;
@@ -198,6 +203,22 @@ final class TestSupport {
     }
 
     private static final AtomicInteger RECORDING_PLAYERS = new AtomicInteger();
+
+    // The last menu a recording player was sent: its window id and extra data, read the way the
+    // client reads them (see NeoForge's ClientPayloadHandler). Tests build the client's copy of the
+    // menu from this, so they check what actually reached the player.
+    record OpenedScreen(int windowId, RegistryFriendlyByteBuf data) {
+    }
+
+    static OpenedScreen lastOpenedScreen(GameTestHelper helper, RecordingPlayer player) {
+        for (int i = player.sent.size() - 1; i >= 0; i--) {
+            if (player.sent.get(i) instanceof ClientboundCustomPayloadPacket custom && custom.payload() instanceof AdvancedOpenScreenPayload open) {
+                return new OpenedScreen(open.windowId(), new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(open.additionalData()),
+                        helper.getLevel().registryAccess(), ConnectionType.NEOFORGE));
+            }
+        }
+        throw new GameTestAssertException("No menu was opened for " + player.getName().getString());
+    }
 
     static final class RecordingPlayer extends ServerPlayer {
         final List<String> actionBar = new ArrayList<>();

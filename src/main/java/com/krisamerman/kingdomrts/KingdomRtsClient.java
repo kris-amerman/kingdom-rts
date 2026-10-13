@@ -1,6 +1,8 @@
 package com.krisamerman.kingdomrts;
 
 import com.krisamerman.kingdomrts.settlement.TownHallScreen;
+import com.krisamerman.kingdomrts.settlement.WorkplaceScreen;
+import com.krisamerman.kingdomrts.settlement.WorkplaceStockScreen;
 import com.krisamerman.kingdomrts.unit.UnitRenderer;
 import com.krisamerman.kingdomrts.unit.UnitScreen;
 
@@ -26,5 +28,7 @@ public class KingdomRtsClient {
     static void onRegisterMenuScreens(RegisterMenuScreensEvent event) {
         event.register(KingdomRts.TOWN_HALL_MENU.get(), TownHallScreen::new);
         event.register(KingdomRts.UNIT_MENU.get(), UnitScreen::new);
+        event.register(KingdomRts.WORKPLACE_MENU.get(), WorkplaceScreen::new);
+        event.register(KingdomRts.WORKPLACE_STOCK_MENU.get(), WorkplaceStockScreen::new);
     }
 }

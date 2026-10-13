@@ -102,6 +102,15 @@ public final class WorkplaceOps {
         return true;
     }
 
+    // Fires a worker by id, whether or not it's loaded: an unloaded worker loses its job when it
+    // next loads (see catchUp), since the workplace no longer lists it.
+    public static void fire(ServerLevel level, Workplace workplace, UUID worker) {
+        if (level.getEntity(worker) instanceof Unit unit && fire(level, unit)) {
+            return;
+        }
+        SettlementData.get(level).removeWorker(workplace, worker);
+    }
+
     // A unit died or was discarded: its workplace forgets it.
     public static void unitRemoved(ServerLevel level, Unit unit) {
         Workplace workplace = workplaceOf(level, unit);
