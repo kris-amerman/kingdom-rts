@@ -1,5 +1,6 @@
 package com.krisamerman.kingdomrts.settlement;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -129,6 +130,31 @@ public final class WorkplaceOps {
         if (workplace == null || !workplace.workers().containsKey(unit.getUUID())) {
             unemploy(unit);
         }
+    }
+
+    // Turns a workplace's automatic hiring on or off.
+    public static void setAutoHire(ServerLevel level, Workplace workplace, boolean autoHire) {
+        SettlementData.get(level).setAutoHire(workplace, autoHire);
+    }
+
+    // An unemployed settler looks for work: it's hired at the nearest workplace of its settlement
+    // that has room and hires automatically, if there is one. Cheap: it only looks at its own
+    // settlement's few workplaces. Returns whether it found a job.
+    public static boolean seekJob(ServerLevel level, Unit unit) {
+        if (unit.getOccupationId() != null) {
+            return false; // employed, or a soldier
+        }
+        Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+        if (settlement == null || !settlement.dimension().equals(level.dimension())) {
+            return false;
+        }
+        List<WorkplaceRules.Opening> openings = new ArrayList<>();
+        for (Workplace workplace : settlement.workplaces()) {
+            WorkplaceType.get(level, workplace.type()).ifPresent(type -> openings.add(
+                    new WorkplaceRules.Opening(workplace.pos(), workplace.workers().size(), type.workers(), workplace.autoHire())));
+        }
+        BlockPos chosen = WorkplaceRules.chooseWorkplace(openings, unit.blockPosition());
+        return chosen != null && hire(level, unit, chosen) == null;
     }
 
     // How a workplace is named in messages: "lumberjack hut" for kingdomrts:lumberjack_hut.

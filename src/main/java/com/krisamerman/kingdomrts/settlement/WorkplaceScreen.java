@@ -5,13 +5,15 @@ import com.krisamerman.kingdomrts.client.GuiDraw;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
 // Client only. Draws the hut panel in the vanilla style: the workplace's details as label/value
 // rows, then who works here (each with a Fire button), then the settlement's unemployed settlers
-// (each with a Hire button, a page at a time), and a button for the stock.
+// (each with a Hire button, a page at a time), the automatic-hiring toggle, and a button for the
+// stock.
 public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
     private static final int TEXT_COLOR = 0xFF404040;
     private static final int LABEL_COLOR = 0xFF707070;
@@ -29,6 +31,7 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
     private final int candidatesTitleY;
     private final int candidatesY;
     private final int pagingY;
+    private final int autoHireY;
     private final int stockY;
 
     public WorkplaceScreen(WorkplaceMenu menu, Inventory inventory, Component title) {
@@ -40,7 +43,8 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
         candidatesTitleY = workersY + Math.max(1, info.workers().size()) * PERSON_HEIGHT + 6;
         candidatesY = candidatesTitleY + 12;
         pagingY = candidatesY + Math.max(1, info.candidates().size()) * PERSON_HEIGHT;
-        stockY = pagingY + (info.pages() > 1 ? PERSON_HEIGHT + 2 : 2);
+        autoHireY = pagingY + (info.pages() > 1 ? PERSON_HEIGHT + 2 : 2);
+        stockY = autoHireY + 22;
         imageHeight = stockY + 20 + 8;
     }
 
@@ -60,6 +64,12 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
             addRenderableWidget(Button.builder(Component.literal(">"), button -> click(WorkplaceMenu.NEXT_PAGE_BUTTON))
                     .bounds(leftPos + RIGHT - 20, topPos + pagingY, 20, BUTTON_HEIGHT).build()).active = info.page() < info.pages() - 1;
         }
+        addRenderableWidget(Button.builder(Component.literal("Automatic hiring: " + (info.autoHire() ? "On" : "Off")),
+                        button -> click(WorkplaceMenu.AUTO_HIRE_BUTTON))
+                .bounds(leftPos + LEFT, topPos + autoHireY, WIDTH - 2 * LEFT, 20)
+                .tooltip(Tooltip.create(Component.literal("When on, unemployed settlers take this hut's openings by themselves. "
+                        + "Firing someone here turns it off.")))
+                .build());
         addRenderableWidget(Button.builder(Component.literal("Stock"), button -> click(WorkplaceMenu.STOCK_BUTTON))
                 .bounds(leftPos + LEFT, topPos + stockY, WIDTH - 2 * LEFT, 20).build());
     }

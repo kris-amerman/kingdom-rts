@@ -22,10 +22,14 @@ public final class Workplace {
     private static final String WORKERS_TAG = "workers";
     private static final String ID_TAG = "id";
     private static final String NAME_TAG = "name";
+    private static final String AUTO_HIRE_TAG = "auto_hire";
 
     private final BlockPos pos;
     private final ResourceLocation type;
     private final Map<UUID, String> workers = new LinkedHashMap<>();
+    // Automatic hiring: unemployed settlers fill its openings by themselves (see WorkplaceOps#seekJob).
+    // On by default; firing someone from the hut panel turns it off.
+    private boolean autoHire = true;
 
     Workplace(BlockPos pos, ResourceLocation type) {
         this.pos = pos.immutable();
@@ -43,6 +47,16 @@ public final class Workplace {
     // Worker unit UUIDs, in hiring order, with their names.
     public Map<UUID, String> workers() {
         return Collections.unmodifiableMap(workers);
+    }
+
+    public boolean autoHire() {
+        return autoHire;
+    }
+
+    boolean setAutoHire(boolean autoHire) {
+        boolean changed = this.autoHire != autoHire;
+        this.autoHire = autoHire;
+        return changed;
     }
 
     boolean addWorker(UUID unit, String name) {
@@ -65,6 +79,7 @@ public final class Workplace {
             list.add(worker);
         });
         tag.put(WORKERS_TAG, list);
+        tag.putBoolean(AUTO_HIRE_TAG, autoHire);
         return tag;
     }
 
@@ -74,6 +89,7 @@ public final class Workplace {
             CompoundTag worker = (CompoundTag) t;
             workplace.workers.put(worker.getUUID(ID_TAG), worker.getString(NAME_TAG));
         }
+        workplace.autoHire = !tag.contains(AUTO_HIRE_TAG) || tag.getBoolean(AUTO_HIRE_TAG); // on for huts saved before this existed
         return workplace;
     }
 }

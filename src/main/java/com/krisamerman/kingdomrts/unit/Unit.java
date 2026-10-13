@@ -9,6 +9,7 @@ import javax.annotation.Nullable;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
+import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -54,6 +55,8 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     // How far from its post the unit may wander. Behavior tuning, not a per-occupation stat.
     public static final int HOLD_RADIUS = 6;
     public static final int INVENTORY_SIZE = 9;
+    // How often an unemployed settler looks for work (10 seconds), each unit at its own moment.
+    public static final int JOB_SEEK_INTERVAL_TICKS = 200;
     // How often a unit looks for items on the ground to pick up (vanilla mobs look every tick).
     private static final int PICKUP_INTERVAL_TICKS = 10;
 
@@ -334,6 +337,11 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     public void aiStep() {
         updateSwingTime();
         super.aiStep();
+        // Job seeking (see WorkplaceOps#seekJob). The offset spreads units' checks across ticks.
+        if (occupationId == null && settlementId != null && level() instanceof ServerLevel serverLevel
+                && (tickCount + Math.floorMod(getUUID().hashCode(), JOB_SEEK_INTERVAL_TICKS)) % JOB_SEEK_INTERVAL_TICKS == 0) {
+            WorkplaceOps.seekJob(serverLevel, this);
+        }
     }
 
     // Units are tracked individually and must not despawn like ordinary mobs.

@@ -155,6 +155,12 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void setAutoHire(Workplace workplace, boolean autoHire) {
+        if (workplace.setAutoHire(autoHire)) {
+            setDirty();
+        }
+    }
+
     void addWorker(Workplace workplace, UUID unit, String name) {
         if (workplace.addWorker(unit, name)) {
             setDirty();

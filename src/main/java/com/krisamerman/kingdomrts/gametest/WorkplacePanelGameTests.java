@@ -34,11 +34,13 @@ import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
+import net.neoforged.neoforge.network.payload.AdvancedOpenScreenPayload;
 
 // The hut panel, used the way a player uses it: right-click the hut, read the panel the client was
 // sent, and press its buttons. Each test founds a settlement, so each has its own batch.
@@ -94,12 +96,89 @@ public class WorkplacePanelGameTests {
 
             press(player, WorkplaceMenu.FIRE_BUTTON);
             helper.assertTrue(settler.getOccupationId() == null, "The Fire button should fire the worker");
-            helper.assertTrue(clientMenu(helper, player).getInfo().workers().isEmpty(), "The panel should refresh to show nobody working");
+            WorkplaceMenu.WorkplaceInfo afterFiring = clientMenu(helper, player).getInfo();
+            helper.assertTrue(afterFiring.workers().isEmpty(), "The panel should refresh to show nobody working");
+            helper.assertFalse(afterFiring.autoHire(), "Firing from the panel should switch the hut to manual hiring");
         } finally {
             leave(helper, player);
         }
         removeHall(helper, HALL);
         helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "hut_panel_auto_hire")
+    public static void automaticHiringToggle(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        Settlement settlement = found(helper, HALL, blue);
+        lumberjackHut(helper, HUT);
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        try {
+            helper.assertTrue(rightClick(helper, player).getInfo().autoHire(), "Huts hire automatically by default");
+            press(player, WorkplaceMenu.AUTO_HIRE_BUTTON);
+            helper.assertFalse(clientMenu(helper, player).getInfo().autoHire(), "The toggle should switch it off");
+            helper.assertFalse(current(helper, settlement).workplaceAt(helper.absolutePos(HUT)).autoHire(), "...and the hut should remember");
+            press(player, WorkplaceMenu.AUTO_HIRE_BUTTON);
+            helper.assertTrue(clientMenu(helper, player).getInfo().autoHire(), "...and back on");
+        } finally {
+            leave(helper, player);
+        }
+        removeHall(helper, HALL);
+        helper.succeed();
+    }
+
+    // The panel is left open while a settler takes the job by automatic hiring: the panel updates by
+    // itself, without the viewer pressing anything, and without closing the screen first.
+    @GameTest(template = TEMPLATE, batch = "hut_panel_live", timeoutTicks = Unit.JOB_SEEK_INTERVAL_TICKS + 100)
+    public static void openPanelUpdatesWhenSomeoneIsHiredAutomatically(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        Settlement settlement = found(helper, HALL, blue);
+        lumberjackHut(helper, HUT);
+        Unit settler = settler(helper, settlement, blue, HUT.east(3));
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        helper.assertTrue(rightClick(helper, player).getInfo().workers().isEmpty(), "Nobody works here yet");
+        player.sent.clear();
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(settler.getOccupationId() != null, "Waiting for automatic hiring"))
+                .thenWaitUntil(() -> helper.assertTrue(clientMenu(helper, player).getInfo().workers().size() == 1,
+                        "Waiting for the open panel to show the new worker"))
+                .thenExecute(() -> {
+                    assertNoScreenClosed(helper, player);
+                    leave(helper, player);
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    // Settlers moving about (so their nearest-first order changes) don't make an open panel re-open
+    // itself when nothing it shows has changed. The nearest and farthest settlers swap places midway.
+    @GameTest(template = TEMPLATE, batch = "hut_panel_quiet", timeoutTicks = 200)
+    public static void openPanelStaysPutWhenNothingChanges(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        Settlement settlement = found(helper, HALL, blue);
+        lumberjackHut(helper, HUT);
+        WorkplaceOps.setAutoHire(helper.getLevel(), current(helper, settlement).workplaceAt(helper.absolutePos(HUT)), false);
+        Unit nearest = settler(helper, settlement, blue, HUT.east(2));
+        settler(helper, settlement, blue, HUT.east(5));
+        Unit farthest = settler(helper, settlement, blue, HUT.east(8));
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        rightClick(helper, player);
+        player.sent.clear();
+        helper.startSequence()
+                .thenIdle(2 * WorkplaceMenu.REFRESH_CHECK_TICKS)
+                .thenExecute(() -> {
+                    Vec3 a = nearest.position();
+                    Vec3 b = farthest.position();
+                    nearest.teleportTo(b.x, b.y, b.z);
+                    farthest.teleportTo(a.x, a.y, a.z);
+                })
+                .thenIdle(3 * WorkplaceMenu.REFRESH_CHECK_TICKS)
+                .thenExecute(() -> {
+                    helper.assertFalse(player.sent.stream().anyMatch(packet -> packet instanceof ClientboundCustomPayloadPacket custom
+                            && custom.payload() instanceof AdvancedOpenScreenPayload), "The panel re-opened although nothing it shows changed");
+                    leave(helper, player);
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
     }
 
     @GameTest(template = TEMPLATE, batch = "hut_panel_full")

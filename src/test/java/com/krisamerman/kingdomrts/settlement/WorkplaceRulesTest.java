@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 
 class WorkplaceRulesTest {
@@ -49,5 +51,25 @@ class WorkplaceRulesTest {
         assertEquals(new WorkplaceType(ResourceLocation.fromNamespaceAndPath("kingdomrts", "lumberjack"), 1), type);
         assertTrue(WorkplaceType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString("""
                 { "occupation": "kingdomrts:lumberjack", "workers": 0 }""")).isError());
+    }
+
+    @Test
+    void jobSeekersPickTheNearestHutWithRoomThatHiresAutomatically() {
+        BlockPos near = new BlockPos(2, 0, 0);
+        BlockPos far = new BlockPos(20, 0, 0);
+        List<WorkplaceRules.Opening> huts = List.of(new WorkplaceRules.Opening(far, 0, 1, true), new WorkplaceRules.Opening(near, 0, 1, true));
+        assertEquals(near, WorkplaceRules.chooseWorkplace(huts, BlockPos.ZERO));
+    }
+
+    @Test
+    void fullOrManualHutsAreSkipped() {
+        BlockPos full = new BlockPos(1, 0, 0);
+        BlockPos manual = new BlockPos(2, 0, 0);
+        BlockPos open = new BlockPos(30, 0, 0);
+        assertEquals(open, WorkplaceRules.chooseWorkplace(List.of(
+                new WorkplaceRules.Opening(full, 1, 1, true),
+                new WorkplaceRules.Opening(manual, 0, 1, false),
+                new WorkplaceRules.Opening(open, 0, 1, true)), BlockPos.ZERO));
+        assertNull(WorkplaceRules.chooseWorkplace(List.of(new WorkplaceRules.Opening(full, 1, 1, true)), BlockPos.ZERO));
     }
 }
