@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-018 Unit names
-- **Status:** in review | **Branch:** feature/unit-names | **PR:** - | **Depends on:** S-015
+- **Status:** in review | **Branch:** feature/unit-names | **PR:** #17 | **Depends on:** S-015
 - **Goal:** every unit has a name.
 - **Scope:**
   - Name pools as data: `data/<ns>/kingdomrts/unit_names/*.json` with `first` and `last` lists, merged across files (loaded like settlement names).
