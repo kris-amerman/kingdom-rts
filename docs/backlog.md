@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-010 Building templates and sites
-- **Status:** in progress | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
+- **Status:** in review | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
 - **Scope:**
   - **Templates:**
