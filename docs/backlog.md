@@ -30,8 +30,86 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
+### S-011 Construction sites
+- **Status:** in progress | **Branch:** feature/construction-sites | **PR:** - | **Depends on:** S-010
+- **Goal:** a commissioned building has a core block on site that holds its materials and shows its progress.
+- **Scope:**
+  - **Core blocks:** every building template contains exactly one `kingdomrts:building_core` block. Commissioning places it right away, at its (rotated) spot, and refuses templates without one. The core has a stock, protected like the settlement's other containers.
+  - **The site panel** (right-click the core): progress (blocks placed of the total), blocks in the way, and materials still needed with how many are already on site. A Materials page lists them all; a Stock button opens the site's stock.
+  - **Breaking the core** (owner only) cancels the site, and `building cancel` removes the core.
+- **Out of scope:** builders (S-024), the work loop (S-025), huts as cores, repair.
+- **Test:** unit tests for finding a template's core and the core's cost; GameTests for the core being placed on commission, core-less templates being refused, breaking and cancelling, and the panel (progress, on-site counts, live refresh, stock, paging). Manual: the panel's look.
+- **Notes:**
+  - **Owner's design (while planning S-011):**
+    - There's no builder's hut. A settlement has a pool of builders, hired at the town hall for now.
+    - Builders are assigned to construction sites and set up shop there until the building is done, with materials pooled on site.
+    - The core block is the building's way in, like MineColonies' hut block: the site panel now, repair later.
+    - Builders always fetch materials themselves (couriers are on hold), later buying from shops.
+  - The old "Builder job" story is split into S-011, S-024, S-023 (Structurize spike) and S-025.
+
+### S-024 Builders
+- **Status:** planned | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
+- **Goal:** a settlement has builders, hired at its town hall and assigned to construction sites.
+- **Scope:**
+  - **The builder occupation** (`kingdomrts:builder`, data). Builders have no workplace.
+  - **Town hall panel, Builders page:** hire unemployed settlers as builders, and fire builders.
+  - **Site panel, Builders section:** assign idle builders, unassign assigned ones. A site takes up to `max_builders` (building data, default 2; the right number is open).
+  - **Commands:** `unit hire <units> builder`, `building assign <pos> <units>`, `building unassign <pos> <units>`.
+  - **Where builders go:** assigned builders walk to their site and wait by the core. Unassigned builders idle at their post. A builder whose site is finished or cancelled goes back to the pool.
+- **Out of scope:** building anything (S-025).
+- **Test:** GameTests for hiring and firing at the hall, assigning and unassigning at the site (and the limit), builders going to the site, and returning to the pool on cancel. Manual: the panels.
+- **Notes:** -
+
+### S-023 Structurize spike
+- **Status:** planned | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011
+- **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
+- **Scope:** a time-boxed look (a throwaway branch is fine) at:
+  - **its licence:** GPL-3.0, while this mod is "All Rights Reserved". Depending on it likely means a GPL-compatible licence for this mod; the owner decides.
+  - **its API:** loading blueprints; placement handlers per block (doors, beds, fluids); required items; using it without its GUI from our builders;
+  - **its build tool** as our placement preview;
+  - **NeoForge 1.21.1 support,** dependency size, and the cost per tick of placement.
+  - **The outcome:** a recommendation and the owner's decision in design.md (Build tools), plus a follow-up story if adopted.
+- **Out of scope:** adopting it.
+- **Test:** none (a decision document).
+- **Notes:** done before S-025, because block placement is where Structurize would plug in. Our template code is all behind `BuildingTemplates` and `BuildingRules`, so swapping stays contained.
+
+### S-025 Builder job
+- **Status:** planned | **Branch:** feature/builder-job | **PR:** - | **Depends on:** S-024, S-023
+- **Goal:** assigned builders build their site until it matches its template.
+- **Scope:**
+  - **The work loop:** clear what's in the way inside the footprint (breaking like a player would, keeping the drops in the site stock), then place missing blocks in build order (bottom up, only where they can stay, e.g. a torch after its wall). Placement speed is set in data.
+  - **Supply, as needed** (recommended to the owner):
+    - At most one builder per site fetches at a time; the others keep building from the site stock.
+    - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later shops). It deposits them into the site stock.
+    - What can't be found is skipped. Builders build what they can, then wait.
+  - **Splitting the work:** builders split the site's blocks without placing the same block twice (reservations in memory).
+  - **When the site is finished:** the building is marked built, and its builders return to the pool.
+  - **Performance:** the stress scenario gains a builder and a site per town, and the stress test is run before merging.
+- **Out of scope:** couriers, gold and shops, levelling or filling below the site, repair.
+- **Test:** GameTests: one builder finishes the shed; two builders finish without duplicates; a builder fetches from storage; a builder waits without crashing when materials are missing, then carries on when they appear; an obstruction is cleared. Manual: watch it build.
+- **Notes:** the site's list of outstanding materials is the demand signal markets can read later.
+
+### S-012 Unit needs (design first)
+- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-025, S-014
+- **Goal:** units have hunger and happiness, drawn from real things in the world.
+- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
+- **Out of scope:** revolts, taxes.
+- **Test:** decided with the design.
+- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
+
+## Later (not yet stories)
+- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
+- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
+- **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
+- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
+- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
 ### S-010 Building templates and sites
-- **Status:** in review | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
+- **Status:** done | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
 - **Scope:**
   - **Templates:**
@@ -76,39 +154,6 @@ Story template:
     - an outline or preview of a site;
     - damage detection (built buildings compared with their template);
     - evaluating Structurize for the build tool.
-
-### S-011 Builder job
-- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015
-- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
-- **Scope:**
-  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
-  - Materials are used up as blocks are placed.
-  - Several builders can work one site without placing the same block twice.
-  - Placement speed is set in data.
-- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
-- **Test:**
-  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
-  - Manual: watch it build.
-- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
-
-### S-012 Unit needs (design first)
-- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-011, S-014
-- **Goal:** units have hunger and happiness, drawn from real things in the world.
-- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
-- **Out of scope:** revolts, taxes.
-- **Test:** decided with the design.
-- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
-
-## Later (not yet stories)
-- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
-- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
-- **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
-- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
-- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
-- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
-- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
-
-## Done
 
 ### S-020 spawnunit defaults to no occupation
 - **Status:** done | **Branch:** feature/spawnunit-default | **PR:** #23 | **Depends on:** -
