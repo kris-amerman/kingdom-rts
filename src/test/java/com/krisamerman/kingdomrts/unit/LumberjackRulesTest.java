@@ -45,4 +45,14 @@ class LumberjackRulesTest {
         BoundingBox box = TreeRules.canopyBox(List.of(new BlockPos(0, 64, 0), new BlockPos(0, 67, 0), new BlockPos(1, 68, 0)), 6);
         assertEquals(new BoundingBox(-6, 58, -6, 7, 74, 6), box);
     }
+
+    @Test
+    void plantsFromTheSlotHoldingTheSapling() {
+        SimpleContainer inventory = new SimpleContainer(Unit.INVENTORY_SIZE);
+        assertEquals(-1, LumberjackJob.saplingSlot(inventory, Items.OAK_SAPLING), "No sapling: nothing to plant");
+        inventory.setItem(0, new ItemStack(Items.BIRCH_SAPLING));
+        inventory.setItem(3, new ItemStack(Items.OAK_SAPLING, 2));
+        assertEquals(3, LumberjackJob.saplingSlot(inventory, Items.OAK_SAPLING));
+        assertEquals(-1, LumberjackJob.saplingSlot(inventory, Items.SPRUCE_SAPLING), "Only a sapling of the tree's own wood");
+    }
 }

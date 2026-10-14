@@ -23,18 +23,22 @@ import com.krisamerman.kingdomrts.unit.job.WaitStep;
 import com.krisamerman.kingdomrts.unit.job.WalkToStep;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
@@ -43,13 +47,14 @@ import net.minecraft.world.phys.AABB;
 // The lumberjack's job, as explicit steps, working from its hut:
 //   find a tree in the hut's work area -> walk next to it -> fell it (logs go into the inventory)
 //   -> clear its canopy (the leaves the tree leaves behind, with their saplings, sticks and apples)
-//   -> pick up anything still lying around -> repeat, until its inventory is nearly full or there
+//   -> replant it, if its hut says to -> pick up anything still lying around -> repeat, until its inventory is nearly full or there
 //   are no trees left -> walk back to the hut -> put everything except its axes in the hut's stock
 //   (taking an axe from the stock if it has none).
 // When something goes wrong it recovers instead of stalling: a tree it can't reach is skipped for a
 // while, a tree that disappears on the way is simply replaced by the next one, and with no
 // workplace, no trees, or nowhere to put what it carries (its inventory and the stock both full) it
-// waits and checks again later.
+// waits and checks again later. Its hut's settings say whether it replants, and which woods it
+// leaves standing.
 public final class LumberjackJob implements Job {
     // Claim columns checked per tick while searching, so a search is spread over several ticks.
     private static final int COLUMNS_PER_TICK = 128;
@@ -75,6 +80,9 @@ public final class LumberjackJob implements Job {
     // The tree being felled, once one is found.
     @Nullable
     private TreeRules.Tree tree;
+    // The tree's wood: the block of its lowest log, what a replant is chosen by.
+    @Nullable
+    private Block wood;
     // Trees it couldn't reach (by base position), and the game time until which they're skipped.
     private final Map<BlockPos, Long> skipUntil = new HashMap<>();
     // The current walks, to tell a walk to a tree from a walk to the hut.
@@ -120,6 +128,9 @@ public final class LumberjackJob implements Job {
             return new ClearCanopyStep();
         }
         if (previous instanceof ClearCanopyStep) {
+            return workplace.replant() ? new ReplantStep() : new CollectStep();
+        }
+        if (previous instanceof ReplantStep) {
             return new CollectStep();
         }
         // Starting out, after a tree, or after waiting: go to the hut if it's nearly full (or has an
@@ -161,6 +172,21 @@ public final class LumberjackJob implements Job {
     public static boolean isOrphanedLeaf(BlockState state) {
         return state.getBlock() instanceof LeavesBlock && !state.getValue(LeavesBlock.PERSISTENT)
                 && state.getValue(LeavesBlock.DISTANCE) == LeavesBlock.DECAY_DISTANCE;
+    }
+
+    // Pure: the inventory slot holding the sapling it plants, or -1 if it has none.
+    public static int saplingSlot(SimpleContainer inventory, Item sapling) {
+        for (int i = 0; i < inventory.getContainerSize(); i++) {
+            if (inventory.getItem(i).is(sapling)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    // Whether the hut lets it fell trees of this log block.
+    private static boolean fells(@Nullable Workplace workplace, Block log) {
+        return workplace == null || workplace.fells(BuiltInRegistries.BLOCK.getKey(log));
     }
 
     // Anything besides axes: what it brings back to the hut.
@@ -233,13 +259,16 @@ public final class LumberjackJob implements Job {
         // The work area: within radius of the hut (and inside the claim).
         private BlockPos hut = BlockPos.ZERO;
         private int radius;
+        @Nullable
+        private Workplace workplace;
 
         @Override
         public void start(Unit unit) {
             tree = null;
+            wood = null;
             from = unit.blockPosition();
             Settlement settlement = settlementOf(unit);
-            Workplace workplace = workplaceOf(unit);
+            workplace = workplaceOf(unit);
             if (settlement != null && workplace != null) {
                 hut = workplace.pos();
                 radius = workplace.workRadius();
@@ -264,8 +293,12 @@ public final class LumberjackJob implements Job {
             for (int i = 0; i < TREES_CHECKED_PER_TICK && !candidates.isEmpty(); i++) {
                 Optional<TreeRules.Tree> found = TreeRules.find(candidates.remove(0), pos -> kindAt(level, pos));
                 if (found.isPresent() && !skipUntil.containsKey(found.get().base())) {
-                    tree = found.get();
-                    return Status.DONE;
+                    Block base = level.getBlockState(found.get().base()).getBlock();
+                    if (fells(workplace, base)) { // a branch of another wood can't sneak a skipped tree in
+                        tree = found.get();
+                        wood = base;
+                        return Status.DONE;
+                    }
                 }
             }
             return candidates.isEmpty() ? Status.FAILED : Status.RUNNING;
@@ -286,7 +319,8 @@ public final class LumberjackJob implements Job {
                     continue;
                 }
                 BlockPos top = new BlockPos(x, level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1, z);
-                if (level.getBlockState(top).is(BlockTags.LOGS)) {
+                BlockState state = level.getBlockState(top);
+                if (state.is(BlockTags.LOGS) && fells(workplace, state.getBlock())) { // skipped woods aren't even checked
                     candidates.add(top);
                 }
             }
@@ -511,6 +545,49 @@ public final class LumberjackJob implements Job {
         @Override
         public String describe() {
             return "use the hut's stock";
+        }
+    }
+
+    // Plants a sapling of the felled tree's wood (see TreeWood) where its trunk stood, from its
+    // inventory: usually one the canopy just dropped. Skipped if it has none, the wood isn't known,
+    // or the spot can't hold a sapling (the ground isn't soil, or something else is there now).
+    // Only one, so trees that need four saplings to grow (dark oak, giant spruce and jungle) don't
+    // grow back.
+    private final class ReplantStep implements JobStep {
+        @Override
+        public Status tick(Unit unit) {
+            if (tree == null || wood == null) {
+                return Status.DONE;
+            }
+            ServerLevel level = (ServerLevel) unit.level();
+            BlockPos spot = tree.base();
+            Optional<Block> sapling = TreeWood.saplingFor(wood);
+            int slot = sapling.map(block -> saplingSlot(unit.getInventory(), block.asItem())).orElse(-1);
+            if (slot < 0 || unit.position().distanceTo(spot.getBottomCenter()) > REACH + 3) {
+                KingdomRts.LOGGER.debug("Lumberjack {} can't replant at {} (no sapling, or too far)", unit.getUUID(), spot.toShortString());
+                return Status.DONE;
+            }
+            BlockState planted = sapling.get().defaultBlockState();
+            if (!level.getBlockState(spot).canBeReplaced() || !planted.canSurvive(level, spot)) {
+                return Status.DONE;
+            }
+            unit.getLookControl().setLookAt(spot.getX() + 0.5, spot.getY(), spot.getZ() + 0.5);
+            unit.swing(InteractionHand.MAIN_HAND);
+            level.setBlockAndUpdate(spot, planted);
+            SoundType sound = planted.getSoundType(level, spot, unit);
+            level.playSound(null, spot, sound.getPlaceSound(), SoundSource.BLOCKS, (sound.getVolume() + 1.0f) / 2.0f, sound.getPitch() * 0.8f);
+            unit.getInventory().removeItem(slot, 1);
+            return Status.DONE;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "replant the tree";
         }
     }
 

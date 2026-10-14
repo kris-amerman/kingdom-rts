@@ -22,6 +22,7 @@ import com.krisamerman.kingdomrts.gametest.TestSupport.RecordingPlayer;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.WorkArea;
+import com.krisamerman.kingdomrts.settlement.Workplace;
 import com.krisamerman.kingdomrts.settlement.WorkplaceMenu;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceStockMenu;
@@ -31,10 +32,13 @@ import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerClosePacket;
@@ -205,6 +209,41 @@ public class WorkplacePanelGameTests {
             helper.assertTrue(clientMenu(helper, player).getInfo().workRadius() == WorkArea.MIN_RADIUS, "- should stop at the minimum");
             helper.assertTrue(current(helper, settlement).workplaceAt(helper.absolutePos(HUT)).workRadius() == WorkArea.MIN_RADIUS,
                     "The hut should remember its work area");
+        } finally {
+            leave(helper, player);
+        }
+        removeHall(helper, HALL);
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "hut_panel_job_settings")
+    public static void jobSettingsButtons(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        Settlement settlement = found(helper, HALL, blue);
+        lumberjackHut(helper, HUT);
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        ResourceLocation oak = BuiltInRegistries.BLOCK.getKey(Blocks.OAK_LOG);
+        try {
+            helper.assertTrue(rightClick(helper, player).getInfo().jobSettings(), "A lumberjack hut should offer job settings");
+            press(player, WorkplaceMenu.SHOW_SETTINGS_BUTTON);
+            assertNoScreenClosed(helper, player);
+            WorkplaceMenu.WorkplaceInfo info = clientMenu(helper, player).getInfo();
+            helper.assertTrue(info.view() == WorkplaceMenu.View.SETTINGS && info.replant(), "Expected the settings page, replanting on");
+            List<ResourceLocation> woods = info.woods().stream().map(WorkplaceMenu.Wood::id).toList();
+            helper.assertTrue(woods.contains(oak) && woods.contains(BuiltInRegistries.BLOCK.getKey(Blocks.CHERRY_LOG))
+                    && info.woods().stream().allMatch(WorkplaceMenu.Wood::felled), "Expected every known wood, all felled: " + info.woods());
+
+            press(player, WorkplaceMenu.REPLANT_BUTTON);
+            press(player, WorkplaceMenu.WOOD_BUTTON + woods.indexOf(oak));
+            info = clientMenu(helper, player).getInfo();
+            helper.assertTrue(info.view() == WorkplaceMenu.View.SETTINGS && !info.replant(), "Replanting should be off, on the same page");
+            helper.assertFalse(info.woods().get(woods.indexOf(oak)).felled(), "Oak should be left standing");
+            Workplace workplace = current(helper, settlement).workplaceAt(helper.absolutePos(HUT));
+            helper.assertTrue(!workplace.replant() && !workplace.fells(oak) && workplace.fells(BuiltInRegistries.BLOCK.getKey(Blocks.BIRCH_LOG)),
+                    "The hut should remember its settings (and only oak is skipped)");
+
+            press(player, WorkplaceMenu.WOOD_BUTTON + woods.indexOf(oak));
+            helper.assertTrue(current(helper, settlement).workplaceAt(helper.absolutePos(HUT)).fells(oak), "Pressing again fells oak again");
         } finally {
             leave(helper, player);
         }

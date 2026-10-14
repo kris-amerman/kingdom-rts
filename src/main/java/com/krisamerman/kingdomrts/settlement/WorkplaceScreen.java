@@ -2,6 +2,8 @@ package com.krisamerman.kingdomrts.settlement;
 
 import java.util.List;
 
+import javax.annotation.Nullable;
+
 import com.krisamerman.kingdomrts.client.DisplayNames;
 import com.krisamerman.kingdomrts.client.GuiDraw;
 
@@ -9,15 +11,20 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
 
-// Client only. Draws the hut panel in the vanilla style, as two pages of the same fixed size (so it
-// fits any screen, however many settlers there are), like MineColonies' hut windows:
+// Client only. Draws the hut panel in the vanilla style, as pages of the same fixed size (so it fits
+// any screen, however many settlers there are), like MineColonies' hut windows:
 //   - Overview: the workplace's details (settlement, job, workers, work area with -/+), then buttons
-//     for automatic hiring, the workers page and the stock.
+//     for automatic hiring, the workers page, the stock and (for jobs that have them) job settings.
 //   - Workers: who works here (each with a Fire button) and who's looking for work (each with a
 //     Hire button, hidden when the hut is full), a page of rows at a time, with Back and paging.
+//   - Job settings (lumberjack huts): replanting on or off, and each known wood with a Fell/Skip
+//     switch, paged the same way.
 // Which page shows comes from the server (WorkplaceInfo.view), so refreshes keep the player where
 // they were.
 public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
@@ -42,7 +49,8 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
     private static final int OVERVIEW_DIVIDER_Y = WORK_AREA_Y + SMALL_BUTTON + 6;
     private static final int AUTO_HIRE_Y = OVERVIEW_DIVIDER_Y + 6;
     private static final int WORKERS_BUTTON_Y = AUTO_HIRE_Y + WIDE_BUTTON_HEIGHT + 4;
-    private static final int STOCK_Y = WORKERS_BUTTON_Y + WIDE_BUTTON_HEIGHT + 4;
+    private static final int SETTINGS_BUTTON_Y = WORKERS_BUTTON_Y + WIDE_BUTTON_HEIGHT + 4;
+    private static final int HALF_BUTTON_WIDTH = (WIDTH - 2 * LEFT - 4) / 2;
     // Workers layout.
     private static final int LIST_DIVIDER_Y = TOP + WorkplaceMenu.ROWS_PER_PAGE * LIST_ROW + 4;
     private static final int BOTTOM_BAR_Y = LIST_DIVIDER_Y + 4;
@@ -57,15 +65,16 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
         return menu.getInfo();
     }
 
-    private boolean onWorkersPage() {
-        return info().view() == WorkplaceMenu.View.WORKERS;
+    // The workers and settings pages are both paged lists of rows.
+    private boolean onListPage() {
+        return info().view() != WorkplaceMenu.View.OVERVIEW;
     }
 
     @Override
     protected void init() {
         super.init(); // centers the panel
-        if (onWorkersPage()) {
-            initWorkers();
+        if (onListPage()) {
+            initList();
         } else {
             initOverview();
         }
@@ -83,21 +92,36 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
                 .build()).active = info.workRadius() < info.maxWorkRadius();
         wideButton("Automatic hiring: " + (info.autoHire() ? "On" : "Off"), AUTO_HIRE_Y, WorkplaceMenu.AUTO_HIRE_BUTTON,
                 "When on, unemployed settlers take this hut's openings by themselves. Firing someone here turns it off.");
-        wideButton("Workers (" + info.workers().size() + "/" + info.capacity() + ")...", WORKERS_BUTTON_Y,
+        button("Workers (" + info.workers().size() + "/" + info.capacity() + ")", LEFT, WORKERS_BUTTON_Y, HALF_BUTTON_WIDTH,
                 WorkplaceMenu.SHOW_WORKERS_BUTTON, "See who works here, and hire or fire");
-        wideButton("Stock", STOCK_Y, WorkplaceMenu.STOCK_BUTTON, null);
+        button("Stock", RIGHT - HALF_BUTTON_WIDTH, WORKERS_BUTTON_Y, HALF_BUTTON_WIDTH, WorkplaceMenu.STOCK_BUTTON, null);
+        if (info.jobSettings()) {
+            wideButton("Job settings...", SETTINGS_BUTTON_Y, WorkplaceMenu.SHOW_SETTINGS_BUTTON, "Replanting, and which woods to fell");
+        }
     }
 
-    private void initWorkers() {
+    private void initList() {
         WorkplaceMenu.WorkplaceInfo info = info();
         List<WorkplaceMenu.Row> rows = info.pageRows();
         for (int i = 0; i < rows.size(); i++) {
             WorkplaceMenu.Row row = rows.get(i);
             int y = TOP + i * LIST_ROW;
-            if (row.kind() == WorkplaceMenu.Row.Kind.WORKER) {
-                personButton("Fire", y, WorkplaceMenu.FIRE_BUTTON + row.index());
-            } else if (row.kind() == WorkplaceMenu.Row.Kind.CANDIDATE && !info.isFull()) {
-                personButton("Hire", y, WorkplaceMenu.HIRE_BUTTON + row.index());
+            switch (row.kind()) {
+                case WORKER -> personButton("Fire", y, WorkplaceMenu.FIRE_BUTTON + row.index(), null);
+                case CANDIDATE -> {
+                    if (!info.isFull()) {
+                        personButton("Hire", y, WorkplaceMenu.HIRE_BUTTON + row.index(), null);
+                    }
+                }
+                case REPLANT -> personButton(info.replant() ? "On" : "Off", y, WorkplaceMenu.REPLANT_BUTTON,
+                        "When on, workers plant a sapling where each tree they fell stood");
+                case WOOD -> {
+                    WorkplaceMenu.Wood wood = info.woods().get(row.index());
+                    personButton(wood.felled() ? "Fell" : "Skip", y, WorkplaceMenu.WOOD_BUTTON + row.index(),
+                            wood.felled() ? "Felled; click to leave these trees standing" : "Left standing; click to fell these trees");
+                }
+                default -> {
+                }
             }
         }
         addRenderableWidget(Button.builder(Component.literal("< Back"), button -> click(WorkplaceMenu.SHOW_OVERVIEW_BUTTON))
@@ -110,18 +134,27 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
         }
     }
 
-    private void wideButton(String label, int y, int id, String tooltip) {
+    private void wideButton(String label, int y, int id, @Nullable String tooltip) {
+        button(label, LEFT, y, WIDTH - 2 * LEFT, id, tooltip);
+    }
+
+    private void button(String label, int x, int y, int width, int id, @Nullable String tooltip) {
         Button.Builder builder = Button.builder(Component.literal(label), button -> click(id))
-                .bounds(leftPos + LEFT, topPos + y, WIDTH - 2 * LEFT, WIDE_BUTTON_HEIGHT);
+                .bounds(leftPos + x, topPos + y, width, WIDE_BUTTON_HEIGHT);
         if (tooltip != null) {
             builder.tooltip(Tooltip.create(Component.literal(tooltip)));
         }
         addRenderableWidget(builder.build());
     }
 
-    private void personButton(String label, int rowY, int id) {
-        addRenderableWidget(Button.builder(Component.literal(label), button -> click(id))
-                .bounds(leftPos + RIGHT - PERSON_BUTTON_WIDTH, topPos + rowY, PERSON_BUTTON_WIDTH, BUTTON_HEIGHT).build());
+    // The small button at the end of a list row.
+    private void personButton(String label, int rowY, int id, @Nullable String tooltip) {
+        Button.Builder builder = Button.builder(Component.literal(label), button -> click(id))
+                .bounds(leftPos + RIGHT - PERSON_BUTTON_WIDTH, topPos + rowY, PERSON_BUTTON_WIDTH, BUTTON_HEIGHT);
+        if (tooltip != null) {
+            builder.tooltip(Tooltip.create(Component.literal(tooltip)));
+        }
+        addRenderableWidget(builder.build());
     }
 
     // Tells the server a button was pressed (it runs WorkplaceMenu#clickMenuButton).
@@ -138,15 +171,15 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
         GuiDraw.panel(graphics, leftPos, topPos, imageWidth, imageHeight);
-        int dividerY = topPos + (onWorkersPage() ? LIST_DIVIDER_Y : OVERVIEW_DIVIDER_Y);
+        int dividerY = topPos + (onListPage() ? LIST_DIVIDER_Y : OVERVIEW_DIVIDER_Y);
         graphics.fill(leftPos + LEFT, dividerY, leftPos + RIGHT, dividerY + 1, DIVIDER_COLOR);
     }
 
     @Override
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, title, LEFT, 6, TEXT_COLOR, false);
-        if (onWorkersPage()) {
-            renderWorkers(graphics);
+        if (onListPage()) {
+            renderList(graphics);
         } else {
             renderOverview(graphics);
         }
@@ -163,9 +196,9 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
         graphics.drawString(font, area, RIGHT - 2 * SMALL_BUTTON - 6 - font.width(area), areaTextY, TEXT_COLOR, false);
     }
 
-    private void renderWorkers(GuiGraphics graphics) {
+    private void renderList(GuiGraphics graphics) {
         WorkplaceMenu.WorkplaceInfo info = info();
-        String subtitle = "Workers";
+        String subtitle = info.view() == WorkplaceMenu.View.SETTINGS ? "Job settings" : "Workers";
         graphics.drawString(font, subtitle, RIGHT - font.width(subtitle), 6, LABEL_COLOR, false);
         List<WorkplaceMenu.Row> rows = info.pageRows();
         for (int i = 0; i < rows.size(); i++) {
@@ -179,6 +212,9 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
                         info.isFull() && !info.candidates().isEmpty() ? "hut is full" : "");
                 case CANDIDATE -> person(graphics, textY, info.candidates().get(row.index()).name(), !info.isFull());
                 case NO_CANDIDATES -> graphics.drawString(font, "No unemployed settlers nearby", LEFT, textY, LABEL_COLOR, false);
+                case REPLANT -> graphics.drawString(font, "Replant felled trees", LEFT, textY, TEXT_COLOR, false);
+                case WOODS_TITLE -> sectionTitle(graphics, textY, "Woods", "");
+                case WOOD -> wood(graphics, TOP + i * LIST_ROW, textY, info.woods().get(row.index()));
             }
         }
         if (info.pages() > 1) {
@@ -196,6 +232,13 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
     private void sectionTitle(GuiGraphics graphics, int y, String title, String note) {
         graphics.drawString(font, title, LEFT, y, TEXT_COLOR, false);
         graphics.drawString(font, note, RIGHT - font.width(note), y, LABEL_COLOR, false);
+    }
+
+    // A wood: its log's icon and name, greyed out when it's left standing.
+    private void wood(GuiGraphics graphics, int rowY, int textY, WorkplaceMenu.Wood wood) {
+        Block log = BuiltInRegistries.BLOCK.get(wood.id());
+        graphics.renderItem(new ItemStack(log), LEFT + 6, rowY);
+        graphics.drawString(font, log.getName(), LEFT + 6 + 20, textY, wood.felled() ? TEXT_COLOR : LABEL_COLOR, false);
     }
 
     // A name, cut short with "..." if it would run into its button.

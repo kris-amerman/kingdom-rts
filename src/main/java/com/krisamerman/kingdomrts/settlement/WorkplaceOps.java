@@ -154,6 +154,16 @@ public final class WorkplaceOps {
         SettlementData.get(level).setAutoHire(workplace, autoHire);
     }
 
+    // Job settings: whether the workplace's workers replant what they fell, and whether they fell
+    // trees of a given wood (a log block id).
+    public static void setReplant(ServerLevel level, Workplace workplace, boolean replant) {
+        SettlementData.get(level).setReplant(workplace, replant);
+    }
+
+    public static void setFells(ServerLevel level, Workplace workplace, ResourceLocation wood, boolean fells) {
+        SettlementData.get(level).setFells(workplace, wood, fells);
+    }
+
     // An unemployed settler looks for work: it's hired at the nearest workplace of its settlement
     // that has room and hires automatically, if there is one. Cheap: it only looks at its own
     // settlement's few workplaces. Returns whether it found a job.
