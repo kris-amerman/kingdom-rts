@@ -47,7 +47,7 @@ public class KingdomRtsCommands {
                 // /kingdomrts unit join|leave|hire|fire|info ...
                 .then(UnitCommands.build())
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
-                .then(spawnOptions(Commands.literal("spawnunit"), ctx -> Occupation.SOLDIER)
+                .then(spawnOptions(Commands.literal("spawnunit"), ctx -> null)
                         .then(Commands.literal("occupation")
                                 .then(spawnOptions(Commands.literal("none"), ctx -> null))
                                 .then(spawnOptions(Commands.argument("occupation", ResourceLocationArgument.id())
@@ -100,8 +100,8 @@ public class KingdomRtsCommands {
     }
 
     // Spawns a unit at the command user's position (run it via /execute positioned ... to spawn
-    // somewhere else). Occupation defaults to kingdomrts:soldier; "none" gives a unit with no
-    // occupation. Town hall and faction are both optional and independent:
+    // somewhere else). With no occupation given (or "none") the unit has none; "occupation
+    // kingdomrts:soldier" gives a soldier. Town hall and faction are both optional and independent:
     // - town hall given: the unit's post is the town hall; otherwise its post is where it spawned.
     // - faction given: the unit belongs to it; otherwise the unit is factionless. (It does not
     //   inherit the town hall's owner.)

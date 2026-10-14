@@ -28,7 +28,10 @@ Story template:
 - **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
 - **Out of scope:** other command changes.
 - **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
-- **Notes:** small; can be picked up any time.
+- **Notes:**
+  - Done as scoped: the default is now null (no occupation). `occupation none` still works, and a job id is still refused ("is a job").
+  - The existing tests already spelled out `occupation none` or an id, so none relied on the old default.
+  - **Sabotage check:** putting the soldier default back fails `spawnCommandDefaultsToNoOccupation`.
 
 ### S-022 In-game stress and perf commands
 - **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
