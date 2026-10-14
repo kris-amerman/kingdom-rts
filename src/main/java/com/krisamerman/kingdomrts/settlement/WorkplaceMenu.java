@@ -10,6 +10,9 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
+import com.krisamerman.kingdomrts.unit.LumberjackOccupation;
+import com.krisamerman.kingdomrts.unit.Occupation;
+import com.krisamerman.kingdomrts.unit.TreeWood;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
@@ -29,7 +32,8 @@ import net.minecraft.world.level.ChunkPos;
 // The hut panel, opened by right-clicking a workplace (owners only, like its stock): what the
 // workplace is, who works there, and the settlement's unemployed settlers who could. Its buttons
 // hire and fire, page through the settlers, switch automatic hiring on or off, set the work area (how
-// far from the hut its workers go), and open the stock.
+// far from the hut its workers go), open the stock, and change the job's settings (for a lumberjack
+// hut: replanting, and which woods to fell).
 //
 // Like TownHallMenu, the server builds a snapshot (WorkplaceInfo) when the panel opens and sends it
 // along; after a hire or a fire it simply opens the panel again with a fresh snapshot.
@@ -45,6 +49,10 @@ public class WorkplaceMenu extends AbstractContainerMenu {
     public static final int FIRE_BUTTON = 1000;
     public static final int SHOW_WORKERS_BUTTON = 6;
     public static final int SHOW_OVERVIEW_BUTTON = 7;
+    public static final int SHOW_SETTINGS_BUTTON = 8;
+    public static final int REPLANT_BUTTON = 9;
+    // Toggling wood i (fell it or leave it standing) is button WOOD_BUTTON + i.
+    public static final int WOOD_BUTTON = 2000;
     // The workers page lists this many rows (section titles included) per page.
     public static final int ROWS_PER_PAGE = 6;
     // At most this many settlers looking for work are listed.
@@ -64,21 +72,35 @@ public class WorkplaceMenu extends AbstractContainerMenu {
         }
     }
 
-    // The panel's two pages: the overview (details and settings) and the workers page (hiring and
-    // firing). Which one is showing is part of what the server sends, so a refresh after hiring or
-    // firing keeps the player on the workers page.
-    public enum View { OVERVIEW, WORKERS }
+    // A wood type (a log block id, see TreeWood) and whether the workers fell it.
+    public record Wood(ResourceLocation id, boolean felled) {
+        void write(FriendlyByteBuf buf) {
+            buf.writeResourceLocation(id);
+            buf.writeBoolean(felled);
+        }
 
-    // A row of the workers page: a section title, a worker or candidate (by index), or an "empty"
-    // line under a section with nobody in it.
-    public record Row(Kind kind, int index) {
-        public enum Kind { WORKERS_TITLE, WORKER, NO_WORKERS, CANDIDATES_TITLE, CANDIDATE, NO_CANDIDATES }
+        static Wood read(FriendlyByteBuf buf) {
+            return new Wood(buf.readResourceLocation(), buf.readBoolean());
+        }
     }
 
-    // What the panel shows: the workplace's details and settings, everyone working there, and the
-    // settlement's unemployed settlers (nearest first, up to MAX_CANDIDATES).
+    // The panel's pages: the overview (details and settings), the workers page (hiring and firing)
+    // and the job settings page. Which one is showing is part of what the server sends, so a refresh
+    // after a click keeps the player on the same page.
+    public enum View { OVERVIEW, WORKERS, SETTINGS }
+
+    // A row of the workers or settings page: a section title, a worker, candidate or wood (by index),
+    // an "empty" line under a section with nobody in it, or the replanting switch.
+    public record Row(Kind kind, int index) {
+        public enum Kind { WORKERS_TITLE, WORKER, NO_WORKERS, CANDIDATES_TITLE, CANDIDATE, NO_CANDIDATES, REPLANT, WOODS_TITLE, WOOD }
+    }
+
+    // What the panel shows: the workplace's details and settings, everyone working there, the
+    // settlement's unemployed settlers (nearest first, up to MAX_CANDIDATES), and the job settings
+    // (only for jobs that have them, i.e. lumberjacks: replanting and the known woods).
     public record WorkplaceInfo(ResourceLocation type, String settlementName, String occupation, int capacity, boolean autoHire,
-            int workRadius, int maxWorkRadius, List<Person> workers, List<Person> candidates, View view, int page) {
+            int workRadius, int maxWorkRadius, List<Person> workers, List<Person> candidates, boolean jobSettings, boolean replant,
+            List<Wood> woods, View view, int page) {
         void write(FriendlyByteBuf buf) {
             buf.writeResourceLocation(type);
             buf.writeUtf(settlementName);
@@ -89,38 +111,26 @@ public class WorkplaceMenu extends AbstractContainerMenu {
             buf.writeVarInt(maxWorkRadius);
             buf.writeCollection(workers, (b, person) -> person.write(b));
             buf.writeCollection(candidates, (b, person) -> person.write(b));
+            buf.writeBoolean(jobSettings);
+            buf.writeBoolean(replant);
+            buf.writeCollection(woods, (b, wood) -> wood.write(b));
             buf.writeEnum(view);
             buf.writeVarInt(page);
         }
 
         static WorkplaceInfo read(FriendlyByteBuf buf) {
             return new WorkplaceInfo(buf.readResourceLocation(), buf.readUtf(), buf.readUtf(), buf.readVarInt(), buf.readBoolean(),
-                    buf.readVarInt(), buf.readVarInt(), buf.readList(Person::read), buf.readList(Person::read), buf.readEnum(View.class),
-                    buf.readVarInt());
+                    buf.readVarInt(), buf.readVarInt(), buf.readList(Person::read), buf.readList(Person::read), buf.readBoolean(),
+                    buf.readBoolean(), buf.readList(Wood::read), buf.readEnum(View.class), buf.readVarInt());
         }
 
         public boolean isFull() {
             return workers.size() >= capacity;
         }
 
-        // Every row of the workers page, in order: who works here, then who's looking for work.
+        // Every row of the current page (workers or settings), in order.
         public List<Row> rows() {
-            List<Row> rows = new ArrayList<>();
-            rows.add(new Row(Row.Kind.WORKERS_TITLE, 0));
-            for (int i = 0; i < workers.size(); i++) {
-                rows.add(new Row(Row.Kind.WORKER, i));
-            }
-            if (workers.isEmpty()) {
-                rows.add(new Row(Row.Kind.NO_WORKERS, 0));
-            }
-            rows.add(new Row(Row.Kind.CANDIDATES_TITLE, 0));
-            for (int i = 0; i < candidates.size(); i++) {
-                rows.add(new Row(Row.Kind.CANDIDATE, i));
-            }
-            if (candidates.isEmpty()) {
-                rows.add(new Row(Row.Kind.NO_CANDIDATES, 0));
-            }
-            return rows;
+            return view == View.SETTINGS ? settingsRows(woods.size()) : workerRows(workers.size(), candidates.size());
         }
 
         public int pages() {
@@ -133,6 +143,37 @@ public class WorkplaceMenu extends AbstractContainerMenu {
             int from = Math.min(rows.size(), page * ROWS_PER_PAGE);
             return rows.subList(from, Math.min(rows.size(), from + ROWS_PER_PAGE));
         }
+    }
+
+    // The workers page: who works here, then who's looking for work.
+    static List<Row> workerRows(int workers, int candidates) {
+        List<Row> rows = new ArrayList<>();
+        rows.add(new Row(Row.Kind.WORKERS_TITLE, 0));
+        for (int i = 0; i < workers; i++) {
+            rows.add(new Row(Row.Kind.WORKER, i));
+        }
+        if (workers == 0) {
+            rows.add(new Row(Row.Kind.NO_WORKERS, 0));
+        }
+        rows.add(new Row(Row.Kind.CANDIDATES_TITLE, 0));
+        for (int i = 0; i < candidates; i++) {
+            rows.add(new Row(Row.Kind.CANDIDATE, i));
+        }
+        if (candidates == 0) {
+            rows.add(new Row(Row.Kind.NO_CANDIDATES, 0));
+        }
+        return rows;
+    }
+
+    // The settings page: the replanting switch, then each wood with a fell/skip switch.
+    static List<Row> settingsRows(int woods) {
+        List<Row> rows = new ArrayList<>();
+        rows.add(new Row(Row.Kind.REPLANT, 0));
+        rows.add(new Row(Row.Kind.WOODS_TITLE, 0));
+        for (int i = 0; i < woods; i++) {
+            rows.add(new Row(Row.Kind.WOOD, i));
+        }
+        return rows;
     }
 
     private static int pages(int rows) {
@@ -193,12 +234,20 @@ public class WorkplaceMenu extends AbstractContainerMenu {
         workplace.workers().forEach((id, name) -> workers.add(new Person(id, name)));
         List<Person> all = candidates(level, settlement, pos);
         List<Person> candidates = List.copyOf(all.subList(0, Math.min(all.size(), MAX_CANDIDATES)));
-        // Rows: two section titles, the workers (or an "empty" line), the candidates (or one).
-        int rows = 2 + Math.max(1, workers.size()) + Math.max(1, candidates.size());
+        boolean jobSettings = type != null && Occupation.get(level, type.occupation()).orElse(null) instanceof LumberjackOccupation;
+        List<Wood> woods = jobSettings ? woods(workplace) : List.of();
+        View shownView = view == View.SETTINGS && !jobSettings ? View.OVERVIEW : view;
+        int rows = (shownView == View.SETTINGS ? settingsRows(woods.size()) : workerRows(workers.size(), candidates.size())).size();
         int shownPage = Math.max(0, Math.min(page, pages(rows) - 1));
         return new WorkplaceInfo(workplace.type(), settlement.name(), type != null ? type.occupation().toString() : "",
                 type != null ? type.workers() : 0, workplace.autoHire(), workplace.workRadius(),
-                type != null ? type.maxWorkRadius() : WorkplaceType.DEFAULT_MAX_WORK_RADIUS, workers, candidates, view, shownPage);
+                type != null ? type.maxWorkRadius() : WorkplaceType.DEFAULT_MAX_WORK_RADIUS, workers, candidates, jobSettings,
+                workplace.replant(), woods, shownView, shownPage);
+    }
+
+    // Every known wood (see TreeWood), and whether the workplace's workers fell it.
+    private static List<Wood> woods(Workplace workplace) {
+        return TreeWood.woods().stream().map(id -> new Wood(id, workplace.fells(id))).toList();
     }
 
     // The settlement's loaded units with no occupation, nearest to the workplace first. (An unloaded
@@ -247,6 +296,7 @@ public class WorkplaceMenu extends AbstractContainerMenu {
         List<Person> workers = new ArrayList<>();
         workplace.workers().forEach((id, name) -> workers.add(new Person(id, name)));
         if (!workers.equals(info.workers()) || workplace.autoHire() != info.autoHire() || workplace.workRadius() != info.workRadius()
+                || workplace.replant() != info.replant() || (info.jobSettings() && !woods(workplace).equals(info.woods()))
                 || !candidateIds(level, stock.getBlockPos()).equals(candidateIds)) {
             open(viewer, stock, info.view(), info.page());
         }
@@ -262,8 +312,8 @@ public class WorkplaceMenu extends AbstractContainerMenu {
             WorkplaceStockMenu.open(viewer, stock);
             return true;
         }
-        if (id == SHOW_WORKERS_BUTTON || id == SHOW_OVERVIEW_BUTTON) {
-            open(viewer, stock, id == SHOW_WORKERS_BUTTON ? View.WORKERS : View.OVERVIEW, 0);
+        if (id == SHOW_WORKERS_BUTTON || id == SHOW_OVERVIEW_BUTTON || id == SHOW_SETTINGS_BUTTON) {
+            open(viewer, stock, id == SHOW_WORKERS_BUTTON ? View.WORKERS : id == SHOW_SETTINGS_BUTTON ? View.SETTINGS : View.OVERVIEW, 0);
             return true;
         }
         if (id == PREVIOUS_PAGE_BUTTON || id == NEXT_PAGE_BUTTON) {
@@ -279,6 +329,11 @@ public class WorkplaceMenu extends AbstractContainerMenu {
         } else if (id == SMALLER_AREA_BUTTON || id == LARGER_AREA_BUTTON) {
             int step = id == LARGER_AREA_BUTTON ? WorkArea.RADIUS_STEP : -WorkArea.RADIUS_STEP;
             WorkplaceOps.setWorkRadius(level, workplace, workplace.workRadius() + step);
+        } else if (id == REPLANT_BUTTON && info.jobSettings()) {
+            WorkplaceOps.setReplant(level, workplace, !workplace.replant());
+        } else if (id >= WOOD_BUTTON && id - WOOD_BUTTON < info.woods().size()) {
+            ResourceLocation wood = info.woods().get(id - WOOD_BUTTON).id();
+            WorkplaceOps.setFells(level, workplace, wood, !workplace.fells(wood));
         } else if (id >= FIRE_BUTTON && id - FIRE_BUTTON < info.workers().size()) {
             // Firing by hand switches the hut to manual hiring, so the unit isn't simply re-hired.
             WorkplaceOps.setAutoHire(level, workplace, false);

@@ -23,6 +23,7 @@ import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -32,6 +33,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -201,7 +203,9 @@ public class LumberjackGameTests {
 
     @GameTest(template = TEMPLATE, batch = "lumberjack_drops", timeoutTicks = 1000)
     public static void collectsTreeDropsForTheHut(GameTestHelper helper) {
-        setUp(helper);
+        Unit lumberjack = setUp(helper);
+        // Not replanting, so the sapling isn't planted instead (see replantsWhereTheTreeStood).
+        WorkplaceOps.setReplant(helper.getLevel(), WorkplaceOps.workplaceOf(helper.getLevel(), lumberjack), false);
         tree(helper, TREE);
         // What leaves drop as they decay, lying around the tree, plus something it doesn't want.
         helper.spawnItem(Items.OAK_SAPLING, Vec3.atBottomCenterOf(TREE.offset(2, 0, 1)));
@@ -459,6 +463,52 @@ public class LumberjackGameTests {
                 .thenSucceed();
     }
 
+    @GameTest(template = TEMPLATE, batch = "lumberjack_replant", timeoutTicks = 800)
+    public static void replantsWhereTheTreeStood(GameTestHelper helper) {
+        Unit lumberjack = setUpNextToTree(helper);
+        lumberjack.getInventory().addItem(new ItemStack(Items.OAK_SAPLING)); // in case the leaves drop none
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertBlockPresent(Blocks.OAK_SAPLING, TREE))
+                .thenExecute(() -> {
+                    helper.assertTrue(logsLeft(helper, TREE) == 0, "The sapling should go where the felled trunk stood");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_no_replant", timeoutTicks = 800)
+    public static void doesntReplantWhenTheHutSaysNot(GameTestHelper helper) {
+        Unit lumberjack = setUpNextToTree(helper);
+        WorkplaceOps.setReplant(helper.getLevel(), WorkplaceOps.workplaceOf(helper.getLevel(), lumberjack), false);
+        lumberjack.getInventory().addItem(new ItemStack(Items.OAK_SAPLING));
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(logsLeft(helper, TREE) == 0 && leavesAround(helper, TREE) == 0,
+                        "Waiting for the tree and its canopy to go"))
+                .thenIdle(40)
+                .thenExecute(() -> {
+                    helper.assertBlockNotPresent(Blocks.OAK_SAPLING, TREE);
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
+    @GameTest(template = TEMPLATE, batch = "lumberjack_skip_wood", timeoutTicks = 1200)
+    public static void leavesSkippedWoodStanding(GameTestHelper helper) {
+        Unit lumberjack = setUp(helper);
+        tree(helper, TREE, Blocks.OAK_LOG, Blocks.OAK_LEAVES);
+        tree(helper, OTHER_TREE, Blocks.BIRCH_LOG, Blocks.BIRCH_LEAVES);
+        WorkplaceOps.setFells(helper.getLevel(), WorkplaceOps.workplaceOf(helper.getLevel(), lumberjack),
+                BuiltInRegistries.BLOCK.getKey(Blocks.OAK_LOG), false);
+        helper.startSequence()
+                .thenWaitUntil(() -> helper.assertBlockNotPresent(Blocks.BIRCH_LOG, OTHER_TREE))
+                .thenIdle(200) // time to have gone for the oak, if it were going to
+                .thenExecute(() -> {
+                    helper.assertTrue(logsLeft(helper, TREE) == TREE_HEIGHT, "The oak should be left standing");
+                    removeHall(helper, HALL);
+                })
+                .thenSucceed();
+    }
+
     // A settlement and lumberjack, with a tree right next to it (so tests about chopping aren't
     // slowed down by walking).
     private static Unit setUpNextToTree(GameTestHelper helper) {
@@ -487,11 +537,16 @@ public class LumberjackGameTests {
     // A small natural oak at base: dirt under a 4-log trunk, with natural (non-persistent) leaves
     // around its top two logs and on top.
     private static void tree(GameTestHelper helper, BlockPos base) {
+        tree(helper, base, Blocks.OAK_LOG, Blocks.OAK_LEAVES);
+    }
+
+    // The same small tree, of another wood.
+    private static void tree(GameTestHelper helper, BlockPos base, Block logBlock, Block leafBlock) {
         helper.setBlock(base.below(), Blocks.DIRT);
         for (int y = 0; y < TREE_HEIGHT; y++) {
-            helper.setBlock(base.above(y), Blocks.OAK_LOG);
+            helper.setBlock(base.above(y), logBlock);
         }
-        BlockState leaves = Blocks.OAK_LEAVES.defaultBlockState().setValue(LeavesBlock.DISTANCE, 1);
+        BlockState leaves = leafBlock.defaultBlockState().setValue(LeavesBlock.DISTANCE, 1);
         for (int y = TREE_HEIGHT - 2; y < TREE_HEIGHT; y++) {
             BlockPos log = base.above(y);
             for (BlockPos leaf : new BlockPos[] {log.north(), log.south(), log.east(), log.west()}) {

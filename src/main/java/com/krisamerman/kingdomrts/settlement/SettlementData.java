@@ -167,6 +167,18 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void setReplant(Workplace workplace, boolean replant) {
+        if (workplace.setReplant(replant)) {
+            setDirty();
+        }
+    }
+
+    void setFells(Workplace workplace, ResourceLocation wood, boolean fells) {
+        if (workplace.setFells(wood, fells)) {
+            setDirty();
+        }
+    }
+
     void addWorker(Workplace workplace, UUID unit, String name) {
         if (workplace.addWorker(unit, name)) {
             setDirty();

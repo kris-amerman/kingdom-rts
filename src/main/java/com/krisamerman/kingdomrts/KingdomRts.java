@@ -14,6 +14,7 @@ import com.krisamerman.kingdomrts.settlement.WorkplaceStockMenu;
 import com.krisamerman.kingdomrts.settlement.WorkplaceType;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.OccupationType;
+import com.krisamerman.kingdomrts.unit.TreeWood;
 import com.krisamerman.kingdomrts.unit.Unit;
 import com.krisamerman.kingdomrts.unit.UnitMenu;
 import com.mojang.logging.LogUtils;
@@ -39,6 +40,7 @@ import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.DataPackRegistryEvent;
+import net.neoforged.neoforge.registries.datamaps.RegisterDataMapTypesEvent;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
 @Mod(KingdomRts.MODID)
@@ -131,6 +133,7 @@ public class KingdomRts {
         MENU_TYPES.register(modEventBus);
         modEventBus.addListener(this::registerEntityAttributes);
         modEventBus.addListener(this::registerDataPackRegistries);
+        modEventBus.addListener(this::registerDataMaps);
     }
 
     // Every living entity type needs its attributes (health, speed, ...) registered.
@@ -143,5 +146,10 @@ public class KingdomRts {
     private void registerDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {
         event.dataPackRegistry(Occupation.REGISTRY_KEY, OccupationType.OCCUPATION_CODEC);
         event.dataPackRegistry(WorkplaceType.REGISTRY_KEY, WorkplaceType.CODEC);
+    }
+
+    // Data maps attach data to existing registry entries (here, wood types to log blocks).
+    private void registerDataMaps(RegisterDataMapTypesEvent event) {
+        event.register(TreeWood.DATA_MAP);
     }
 }

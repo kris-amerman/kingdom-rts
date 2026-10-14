@@ -22,56 +22,26 @@ Story template:
 
 ## Current: Units MVP
 
-### S-014 Lumberjack works from its hut
-- **Status:** in review | **Branch:** feature/lumberjack-hut | **PR:** #20 | **Depends on:** S-017
-- **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
-- **Scope:**
-  - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
-  - It picks up tree drops (logs, saplings, sticks, apples), not only logs, and gathers the drops around a felled tree.
-  - It deposits what it collected into the hut's stock after each tree or when full, and takes axes from the stock.
-  - Without room in the stock it keeps its logs and waits.
-- **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
-- **Test:** GameTests: trees outside the work area are ignored; logs and other drops end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait; it clears a felled tree's canopy but leaves neighbouring canopies standing; it fells several trees before going back. Manual: the work-area setting in the panel. Checked by the owner, with the full loop.
-- **Notes:**
-  - Replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
-  - **The loop** (revised after owner feedback):
-    1. Find a tree in the work area; walk beside it; fell it.
-    2. Clear its canopy (below).
-    3. Collect anything wanted still lying within 8 blocks, for up to 5 s.
-    4. Repeat. It goes back to the hut only when it should deposit (pure rule `LumberjackJob.shouldDeposit`: fewer than 2 empty slots, or no room for logs), when there are no trees left and it's carrying something, or when it has no axe and the hut's stock has one. Walking back after every tree wasted most of its time.
-    5. At the hut: deposit everything except axes (`Stock.insert` tops up stacks, then fills empty slots), and take the stock's best axe if it has none.
-    6. If the stock was full and it still has no room for logs, it waits and tries again.
-  - **Clearing the canopy (owner feedback: most drops were missed, because leaves take minutes to decay):**
-    - **How vanilla works:** every natural leaf stores its distance to the nearest log. After a log is removed, distances update over a few ticks, and a leaf with no log within 6 (distance 7) decays, but only on a random tick, which is the slow part.
-    - **What the lumberjack does** (`ClearCanopyStep`): waits 10 ticks for the distances to settle, then decays every such leaf around the tree itself. Drops come from the leaf's own loot table, so saplings, sticks and apples arrive at vanilla's chances, straight into its inventory. It clears 4 per tick, so the canopy falls away over a second or two. The pure check is `isOrphanedLeaf`.
-    - **Dense forests:** leaves still within 6 of another tree's log keep a lower distance and stay, so canopies that touch are handled by vanilla's own rule. No search through the connected forest is needed.
-    - **Bounded work:** it scans only the felled tree's bounds plus vanilla's 6-block leaf range (`TreeRules.canopyBox`), 512 blocks per tick, once per tree.
-  - **Work area:**
-    - `Workplace.workRadius` is saved per workplace. Its starting value and maximum come from the workplace data (`work_radius` 16 and `max_work_radius` 48 for the lumberjack hut), and data with a starting radius above the maximum is rejected.
-    - The hut panel has a "Work area" row with −/+ buttons, in steps of 4 down to a minimum of 4. Being on the workplace, it's ready for every job.
-    - The search keeps only claim chunks that reach into the area (`WorkArea.touchesChunk`), then only columns within the radius (`WorkArea.contains`), measured across the ground.
-  - **Drops:** lumberjacks pick up logs, saplings, sticks and apples, and nothing else. The saplings are kept for replanting (S-016).
-  - **Hut panel layout (owner feedback: the panel ran off the screen):** it's now two pages of one fixed, vanilla-sized panel, like MineColonies' hut windows.
-    - **Overview:** details, the work area with −/+, and buttons for automatic hiring, "Workers (n/m)…" and Stock.
-    - **Workers:** one paged list (6 rows a page) of "Working here" with Fire and "Looking for work" with Hire, then Back and paging.
-    - The current page (`WorkplaceInfo.view`) is sent by the server, so hiring, firing and the live refresh keep the player on the workers page.
-    - Settlers looking for work are sent in full (up to 64) and paged by the shared `WorkplaceInfo.rows()`.
-    - Text isn't scaled down: Minecraft's pixel font blurs when shrunk.
-  - **Profiler sections** (`kingdomrts:job`, `kingdomrts:job_seeking`, `kingdomrts:capture`) show our share of the tick in Minecraft's profiler (`/debug start`/`/debug stop`) and tools like Spark.
-  - Existing lumberjack GameTests now count logs carried plus logs in the hut's stock. "Doesn't chop with no room" became "waits when it and its hut are full".
-  - **Flakes:** GameTests run 3 times in a row without flakes.
-  - **Sabotage checks:** no depositing; logs-only pickup; not taking the hut's axe; no work-area filtering; skipping the canopy step; clearing leaves whatever their distance (the shared-canopy test); depositing after every tree. Each fails the matching tests.
-    - The work-area GameTest can only reliably catch both filters disabled together. Whether the far tree's chunk touches the area depends on where the test sits on the chunk grid. The column filter on its own is covered by `WorkAreaTest`.
-
 ### S-016 Lumberjack hut settings
-- **Status:** planned | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
+- **Status:** in review | **Branch:** feature/lumberjack-settings | **PR:** #21 | **Depends on:** S-014
 - **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
 - **Scope:**
-  - **Replanting** (on/off): it keeps saplings from the felled tree (it picks them up, then) and plants one of the same type where the trunk stood.
-  - **Wood types:** a whitelist or blacklist of log types to fell.
-- **Out of scope:** tree farms, bone meal.
-- **Test:** GameTests: with replanting on, a sapling is planted at the base, and with it off none is; filtered wood types are left standing. Manual: the panel controls.
-- **Notes:** -
+  - **Replanting** (on/off, on by default): after clearing a felled tree's canopy, it plants a sapling of the tree's wood where the trunk stood, from its inventory (usually one the canopy just dropped).
+  - **Wood types:** each known wood can be set to Fell or Skip; skipped woods are left standing.
+  - **Hut panel:** a "Job settings..." button on the overview (lumberjack huts only) opens a third page: "Replant felled trees" On/Off, then each wood with its log icon and a Fell/Skip button, paged like the workers page. Workers and Stock now share one row on the overview.
+- **Out of scope:** tree farms, bone meal, 2x2 saplings for big trees, fetching saplings from the hut to replant.
+- **Test:** unit tests: the wood data decodes (full and short form); the settings survive saving, and huts saved before them replant and fell everything; the settings page rows; picking the sapling slot. GameTests: a sapling is planted where the tree stood; with replanting off none is; a skipped wood is left standing while another is felled; the panel's settings page, its buttons, and that the hut remembers them. Manual: the settings page's look.
+- **Notes:**
+  - **Wood types are data:** a NeoForge data map on blocks, `kingdomrts:tree_wood` (`data/kingdomrts/data_maps/block/tree_wood.json`), maps each trunk log to the sapling that replants it (`"minecraft:oak_log": { "sapling": "minecraft:oak_sapling" }`, or just the sapling id). The 8 vanilla overworld woods are listed. A data map attaches data to existing registry entries, so other mods or datapacks can add their woods without code.
+  - A tree's wood is the block of its lowest log. Unlisted woods (other mods' trees with no entry) are still felled, but can't be skipped or replanted.
+  - **Skip list, not a whitelist mode:** the hut stores the woods it skips (`Workplace.skippedWood`), so new woods are felled by default. A whitelist is the same thing with every other wood switched to Skip.
+  - **Cheap filtering:** the column scan drops skipped woods before checking the tree, so skipped trees cost no flood fill.
+  - **Replanting only plants what it carries.** If the canopy dropped no sapling and it has none of that wood, the spot stays empty. Oak and spruce canopies almost always drop one; jungle less often. Fetching saplings from the hut is a possible follow-up.
+  - **One sapling only:** dark oak (and giant spruce or jungle) need four saplings to grow, so those don't grow back.
+  - **Azalea trees** have oak logs, so they're replanted as oak.
+  - `collectsTreeDropsForTheHut` turns replanting off, so the sapling it checks for isn't planted instead.
+  - **Flakes:** GameTests run 3 times in a row without flakes.
+  - **Sabotage checks:** never planting (the replant test fails); ignoring the replant setting (the no-replant and drops tests fail); ignoring the wood filter (the skip test fails).
 
 ### S-020 spawnunit defaults to no occupation
 - **Status:** planned | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
@@ -138,6 +108,47 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-014 Lumberjack works from its hut
+- **Status:** done | **Branch:** feature/lumberjack-hut | **PR:** #20 | **Depends on:** S-017
+- **Goal:** a lumberjack works around its hut, brings its logs back to the hut's stock, and takes its axes from there.
+- **Scope:**
+  - **Work area:** a radius around the hut, intersected with the claim. It is set in the hut panel and capped by a maximum in data.
+  - It picks up tree drops (logs, saplings, sticks, apples), not only logs, and gathers the drops around a felled tree.
+  - It deposits what it collected into the hut's stock after each tree or when full, and takes axes from the stock.
+  - Without room in the stock it keeps its logs and waits.
+- **Out of scope:** replanting and wood filters (S-016), showing the work area, buying tools.
+- **Test:** GameTests: trees outside the work area are ignored; logs and other drops end up in the hut's stock; it takes an axe from the stock; a full stock makes it wait; it clears a felled tree's canopy but leaves neighbouring canopies standing; it fells several trees before going back. Manual: the work-area setting in the panel. Checked by the owner, with the full loop.
+- **Notes:**
+  - Replaces the earlier "Lumberjack hauls logs to storage": logs now go to the hut, not settlement storage.
+  - **The loop** (revised after owner feedback):
+    1. Find a tree in the work area; walk beside it; fell it.
+    2. Clear its canopy (below).
+    3. Collect anything wanted still lying within 8 blocks, for up to 5 s.
+    4. Repeat. It goes back to the hut only when it should deposit (pure rule `LumberjackJob.shouldDeposit`: fewer than 2 empty slots, or no room for logs), when there are no trees left and it's carrying something, or when it has no axe and the hut's stock has one. Walking back after every tree wasted most of its time.
+    5. At the hut: deposit everything except axes (`Stock.insert` tops up stacks, then fills empty slots), and take the stock's best axe if it has none.
+    6. If the stock was full and it still has no room for logs, it waits and tries again.
+  - **Clearing the canopy (owner feedback: most drops were missed, because leaves take minutes to decay):**
+    - **How vanilla works:** every natural leaf stores its distance to the nearest log. After a log is removed, distances update over a few ticks, and a leaf with no log within 6 (distance 7) decays, but only on a random tick, which is the slow part.
+    - **What the lumberjack does** (`ClearCanopyStep`): waits 10 ticks for the distances to settle, then decays every such leaf around the tree itself. Drops come from the leaf's own loot table, so saplings, sticks and apples arrive at vanilla's chances, straight into its inventory. It clears 4 per tick, so the canopy falls away over a second or two. The pure check is `isOrphanedLeaf`.
+    - **Dense forests:** leaves still within 6 of another tree's log keep a lower distance and stay, so canopies that touch are handled by vanilla's own rule. No search through the connected forest is needed.
+    - **Bounded work:** it scans only the felled tree's bounds plus vanilla's 6-block leaf range (`TreeRules.canopyBox`), 512 blocks per tick, once per tree.
+  - **Work area:**
+    - `Workplace.workRadius` is saved per workplace. Its starting value and maximum come from the workplace data (`work_radius` 16 and `max_work_radius` 48 for the lumberjack hut), and data with a starting radius above the maximum is rejected.
+    - The hut panel has a "Work area" row with −/+ buttons, in steps of 4 down to a minimum of 4. Being on the workplace, it's ready for every job.
+    - The search keeps only claim chunks that reach into the area (`WorkArea.touchesChunk`), then only columns within the radius (`WorkArea.contains`), measured across the ground.
+  - **Drops:** lumberjacks pick up logs, saplings, sticks and apples, and nothing else. The saplings are kept for replanting (S-016).
+  - **Hut panel layout (owner feedback: the panel ran off the screen):** it's now two pages of one fixed, vanilla-sized panel, like MineColonies' hut windows.
+    - **Overview:** details, the work area with −/+, and buttons for automatic hiring, "Workers (n/m)…" and Stock.
+    - **Workers:** one paged list (6 rows a page) of "Working here" with Fire and "Looking for work" with Hire, then Back and paging.
+    - The current page (`WorkplaceInfo.view`) is sent by the server, so hiring, firing and the live refresh keep the player on the workers page.
+    - Settlers looking for work are sent in full (up to 64) and paged by the shared `WorkplaceInfo.rows()`.
+    - Text isn't scaled down: Minecraft's pixel font blurs when shrunk.
+  - **Profiler sections** (`kingdomrts:job`, `kingdomrts:job_seeking`, `kingdomrts:capture`) show our share of the tick in Minecraft's profiler (`/debug start`/`/debug stop`) and tools like Spark.
+  - Existing lumberjack GameTests now count logs carried plus logs in the hut's stock. "Doesn't chop with no room" became "waits when it and its hut are full".
+  - **Flakes:** GameTests run 3 times in a row without flakes.
+  - **Sabotage checks:** no depositing; logs-only pickup; not taking the hut's axe; no work-area filtering; skipping the canopy step; clearing leaves whatever their distance (the shared-canopy test); depositing after every tree. Each fails the matching tests.
+    - The work-area GameTest can only reliably catch both filters disabled together. Whether the far tree's chunk touches the area depends on where the test sits on the chunk grid. The column filter on its own is covered by `WorkAreaTest`.
 
 ### S-019 Job seeking
 - **Status:** done | **Branch:** feature/job-seeking | **PR:** #19 | **Depends on:** S-017
