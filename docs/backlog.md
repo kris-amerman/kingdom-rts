@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-020 spawnunit defaults to no occupation
-- **Status:** in progress | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/spawnunit-default | **PR:** #23 | **Depends on:** -
 - **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
 - **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
 - **Out of scope:** other command changes.
