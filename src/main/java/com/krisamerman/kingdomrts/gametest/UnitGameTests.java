@@ -157,6 +157,24 @@ public class UnitGameTests {
     }
 
     @GameTest(template = TEMPLATE)
+    public static void spawnCommandDefaultsToNoOccupation(GameTestHelper helper) {
+        TestSupport.runCommand(helper, SPOT, "kingdomrts spawnunit");
+        List<Unit> units = helper.getLevel().getEntitiesOfClass(Unit.class, new AABB(helper.absolutePos(SPOT)).inflate(1));
+        helper.assertTrue(units.size() == 1, "Expected one spawned unit, found " + units.size());
+        helper.assertTrue(units.get(0).getOccupationId() == null, "Expected no occupation, got " + units.get(0).getOccupationId());
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE)
+    public static void spawnCommandGivesASoldierWhenAsked(GameTestHelper helper) {
+        TestSupport.runCommand(helper, SPOT, "kingdomrts spawnunit occupation kingdomrts:soldier");
+        List<Unit> units = helper.getLevel().getEntitiesOfClass(Unit.class, new AABB(helper.absolutePos(SPOT)).inflate(1));
+        helper.assertTrue(units.size() == 1, "Expected one spawned unit, found " + units.size());
+        helper.assertTrue(Occupation.SOLDIER.equals(units.get(0).getOccupationId()), "Expected a soldier, got " + units.get(0).getOccupationId());
+        helper.succeed();
+    }
+
+    @GameTest(template = TEMPLATE)
     public static void spawnCommandReportsTheName(GameTestHelper helper) {
         List<String> output = TestSupport.runCommand(helper, SPOT, "kingdomrts spawnunit occupation none");
         List<Unit> units = helper.getLevel().getEntitiesOfClass(Unit.class, new AABB(helper.absolutePos(SPOT)).inflate(1));
