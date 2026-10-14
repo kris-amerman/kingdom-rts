@@ -31,7 +31,7 @@ Story template:
 - **Notes:** small; can be picked up any time.
 
 ### S-021 Stress testing
-- **Status:** in progress | **Branch:** feature/stress-test | **PR:** - | **Depends on:** S-014
+- **Status:** in review | **Branch:** feature/stress-test | **PR:** #22 | **Depends on:** S-014
 - **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
 - **Scope:**
   - **`Perf`** times the hot paths (`kingdomrts:unit` (a unit's whole tick), `job`, `job_seeking`, `capture`), as profiler sections that also add up their time while recording. Recording is off outside the stress test.
