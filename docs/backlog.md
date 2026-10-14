@@ -22,17 +22,6 @@ Story template:
 
 ## Current: Units MVP
 
-### S-020 spawnunit defaults to no occupation
-- **Status:** in review | **Branch:** feature/spawnunit-default | **PR:** #23 | **Depends on:** -
-- **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
-- **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
-- **Out of scope:** other command changes.
-- **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
-- **Notes:**
-  - Done as scoped: the default is now null (no occupation). `occupation none` still works, and a job id is still refused ("is a job").
-  - The existing tests already spelled out `occupation none` or an id, so none relied on the old default.
-  - **Sabotage check:** putting the soldier default back fails `spawnCommandDefaultsToNoOccupation`.
-
 ### S-022 In-game stress and perf commands
 - **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
 - **Goal:** the stress scenario and live `Perf` numbers are available in a real world, for watching and profiling with Spark.
@@ -42,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-010 Building templates and sites
-- **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
+- **Status:** in progress | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
 - **Scope:**
   - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
@@ -86,6 +75,17 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-020 spawnunit defaults to no occupation
+- **Status:** done | **Branch:** feature/spawnunit-default | **PR:** #23 | **Depends on:** -
+- **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
+- **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
+- **Out of scope:** other command changes.
+- **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
+- **Notes:**
+  - Done as scoped: the default is now null (no occupation). `occupation none` still works, and a job id is still refused ("is a job").
+  - The existing tests already spelled out `occupation none` or an id, so none relied on the old default.
+  - **Sabotage check:** putting the soldier default back fails `spawnCommandDefaultsToNoOccupation`.
 
 ### S-021 Stress testing
 - **Status:** done | **Branch:** feature/stress-test | **PR:** #22 | **Depends on:** S-014
