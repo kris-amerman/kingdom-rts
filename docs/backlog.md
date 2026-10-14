@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-016 Lumberjack hut settings
-- **Status:** in progress | **Branch:** feature/lumberjack-settings | **PR:** - | **Depends on:** S-014
+- **Status:** in review | **Branch:** feature/lumberjack-settings | **PR:** #21 | **Depends on:** S-014
 - **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
 - **Scope:**
   - **Replanting** (on/off, on by default): after clearing a felled tree's canopy, it plants a sapling of the tree's wood where the trunk stood, from its inventory (usually one the canopy just dropped).
