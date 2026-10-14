@@ -62,13 +62,16 @@ final class TestSupport {
     static final BlockPos HALL = new BlockPos(8, FLOOR_Y + 1, 8);
 
     private static final AtomicInteger COUNTER = new AtomicInteger();
+    private static final String RUN = Long.toString(System.currentTimeMillis() % 1_679_616, 36); // 4 base-36 digits
 
     private TestSupport() {
     }
 
-    // A new faction with a unique name, e.g. "gt_Red_7".
+    // A new faction with a unique name, e.g. "gt_Red_7_k3x9". The last part differs per run: the
+    // test world is kept between local runs, and so are its factions, so commands that look a
+    // faction up by name must not find one left over from an earlier run.
     static Faction faction(GameTestHelper helper, String name) {
-        return FactionData.get(helper.getLevel()).create("gt_" + name + "_" + COUNTER.incrementAndGet(), null);
+        return FactionData.get(helper.getLevel()).create("gt_" + name + "_" + COUNTER.incrementAndGet() + "_" + RUN, null);
     }
 
     static void setWar(GameTestHelper helper, Faction a, Faction b, boolean atWar) {
