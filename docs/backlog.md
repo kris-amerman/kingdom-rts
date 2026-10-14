@@ -22,27 +22,6 @@ Story template:
 
 ## Current: Units MVP
 
-### S-016 Lumberjack hut settings
-- **Status:** in review | **Branch:** feature/lumberjack-settings | **PR:** #21 | **Depends on:** S-014
-- **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
-- **Scope:**
-  - **Replanting** (on/off, on by default): after clearing a felled tree's canopy, it plants a sapling of the tree's wood where the trunk stood, from its inventory (usually one the canopy just dropped).
-  - **Wood types:** each known wood can be set to Fell or Skip; skipped woods are left standing.
-  - **Hut panel:** a "Job settings..." button on the overview (lumberjack huts only) opens a third page: "Replant felled trees" On/Off, then each wood with its log icon and a Fell/Skip button, paged like the workers page. Workers and Stock now share one row on the overview.
-- **Out of scope:** tree farms, bone meal, 2x2 saplings for big trees, fetching saplings from the hut to replant.
-- **Test:** unit tests: the wood data decodes (full and short form); the settings survive saving, and huts saved before them replant and fell everything; the settings page rows; picking the sapling slot. GameTests: a sapling is planted where the tree stood; with replanting off none is; a skipped wood is left standing while another is felled; the panel's settings page, its buttons, and that the hut remembers them. Manual: the settings page's look.
-- **Notes:**
-  - **Wood types are data:** a NeoForge data map on blocks, `kingdomrts:tree_wood` (`data/kingdomrts/data_maps/block/tree_wood.json`), maps each trunk log to the sapling that replants it (`"minecraft:oak_log": { "sapling": "minecraft:oak_sapling" }`, or just the sapling id). The 8 vanilla overworld woods are listed. A data map attaches data to existing registry entries, so other mods or datapacks can add their woods without code.
-  - A tree's wood is the block of its lowest log. Unlisted woods (other mods' trees with no entry) are still felled, but can't be skipped or replanted.
-  - **Skip list, not a whitelist mode:** the hut stores the woods it skips (`Workplace.skippedWood`), so new woods are felled by default. A whitelist is the same thing with every other wood switched to Skip.
-  - **Cheap filtering:** the column scan drops skipped woods before checking the tree, so skipped trees cost no flood fill.
-  - **Replanting only plants what it carries.** If the canopy dropped no sapling and it has none of that wood, the spot stays empty. Oak and spruce canopies almost always drop one; jungle less often. Fetching saplings from the hut is a possible follow-up.
-  - **One sapling only:** dark oak (and giant spruce or jungle) need four saplings to grow, so those don't grow back.
-  - **Azalea trees** have oak logs, so they're replanted as oak.
-  - `collectsTreeDropsForTheHut` turns replanting off, so the sapling it checks for isn't planted instead.
-  - **Flakes:** GameTests run 3 times in a row without flakes.
-  - **Sabotage checks:** never planting (the replant test fails); ignoring the replant setting (the no-replant and drops tests fail); ignoring the wood filter (the skip test fails).
-
 ### S-020 spawnunit defaults to no occupation
 - **Status:** planned | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
 - **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
@@ -52,7 +31,7 @@ Story template:
 - **Notes:** small; can be picked up any time.
 
 ### S-021 Stress testing
-- **Status:** planned | **Branch:** feature/stress-test | **PR:** - | **Depends on:** S-014
+- **Status:** in progress | **Branch:** feature/stress-test | **PR:** - | **Depends on:** S-014
 - **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
 - **Scope:**
   - A stress scenario (a GameTest batch or a command) that sets up settlements with huts and N workers in a generated forest (e.g. 50, 100, 200 lumberjacks) and records the average tick time (`MinecraftServer.getAverageTickTimeNanos`), plus our profiler sections, per worker count.
@@ -108,6 +87,27 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-016 Lumberjack hut settings
+- **Status:** done | **Branch:** feature/lumberjack-settings | **PR:** #21 | **Depends on:** S-014
+- **Goal:** the hut panel controls replanting and which wood the lumberjack fells.
+- **Scope:**
+  - **Replanting** (on/off, on by default): after clearing a felled tree's canopy, it plants a sapling of the tree's wood where the trunk stood, from its inventory (usually one the canopy just dropped).
+  - **Wood types:** each known wood can be set to Fell or Skip; skipped woods are left standing.
+  - **Hut panel:** a "Job settings..." button on the overview (lumberjack huts only) opens a third page: "Replant felled trees" On/Off, then each wood with its log icon and a Fell/Skip button, paged like the workers page. Workers and Stock now share one row on the overview.
+- **Out of scope:** tree farms, bone meal, 2x2 saplings for big trees, fetching saplings from the hut to replant.
+- **Test:** unit tests: the wood data decodes (full and short form); the settings survive saving, and huts saved before them replant and fell everything; the settings page rows; picking the sapling slot. GameTests: a sapling is planted where the tree stood; with replanting off none is; a skipped wood is left standing while another is felled; the panel's settings page, its buttons, and that the hut remembers them. Manual: the settings page's look.
+- **Notes:**
+  - **Wood types are data:** a NeoForge data map on blocks, `kingdomrts:tree_wood` (`data/kingdomrts/data_maps/block/tree_wood.json`), maps each trunk log to the sapling that replants it (`"minecraft:oak_log": { "sapling": "minecraft:oak_sapling" }`, or just the sapling id). The 8 vanilla overworld woods are listed. A data map attaches data to existing registry entries, so other mods or datapacks can add their woods without code.
+  - A tree's wood is the block of its lowest log. Unlisted woods (other mods' trees with no entry) are still felled, but can't be skipped or replanted.
+  - **Skip list, not a whitelist mode:** the hut stores the woods it skips (`Workplace.skippedWood`), so new woods are felled by default. A whitelist is the same thing with every other wood switched to Skip.
+  - **Cheap filtering:** the column scan drops skipped woods before checking the tree, so skipped trees cost no flood fill.
+  - **Replanting only plants what it carries.** If the canopy dropped no sapling and it has none of that wood, the spot stays empty. Oak and spruce canopies almost always drop one; jungle less often. Fetching saplings from the hut is a possible follow-up.
+  - **One sapling only:** dark oak (and giant spruce or jungle) need four saplings to grow, so those don't grow back.
+  - **Azalea trees** have oak logs, so they're replanted as oak.
+  - `collectsTreeDropsForTheHut` turns replanting off, so the sapling it checks for isn't planted instead.
+  - **Flakes:** GameTests run 3 times in a row without flakes.
+  - **Sabotage checks:** never planting (the replant test fails); ignoring the replant setting (the no-replant and drops tests fail); ignoring the wood filter (the skip test fails).
 
 ### S-014 Lumberjack works from its hut
 - **Status:** done | **Branch:** feature/lumberjack-hut | **PR:** #20 | **Depends on:** S-017
