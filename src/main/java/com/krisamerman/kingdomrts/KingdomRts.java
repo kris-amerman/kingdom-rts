@@ -2,6 +2,7 @@ package com.krisamerman.kingdomrts;
 
 import org.slf4j.Logger;
 
+import com.krisamerman.kingdomrts.building.BuildingType;
 import com.krisamerman.kingdomrts.settlement.SettlementStorageBlock;
 import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
@@ -146,6 +147,7 @@ public class KingdomRts {
     private void registerDataPackRegistries(DataPackRegistryEvent.NewRegistry event) {
         event.dataPackRegistry(Occupation.REGISTRY_KEY, OccupationType.OCCUPATION_CODEC);
         event.dataPackRegistry(WorkplaceType.REGISTRY_KEY, WorkplaceType.CODEC);
+        event.dataPackRegistry(BuildingType.REGISTRY_KEY, BuildingType.CODEC);
     }
 
     // Data maps attach data to existing registry entries (here, wood types to log blocks).

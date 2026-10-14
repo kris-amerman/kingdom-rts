@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionCommands;
+import com.krisamerman.kingdomrts.settlement.BuildingCommands;
 import com.krisamerman.kingdomrts.settlement.SettlementCommands;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.Occupation;
@@ -46,6 +47,8 @@ public class KingdomRtsCommands {
                 .then(SettlementCommands.build())
                 // /kingdomrts unit join|leave|hire|fire|info ...
                 .then(UnitCommands.build())
+                // /kingdomrts building commission|list|remaining|cancel|finish ...
+                .then(BuildingCommands.build())
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
                 .then(spawnOptions(Commands.literal("spawnunit"), ctx -> null)
                         .then(Commands.literal("occupation")

@@ -34,14 +34,48 @@ Story template:
 - **Status:** in progress | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
 - **Scope:**
-  - **Templates:** vanilla structure NBT under `data/<ns>/kingdomrts/building/`, plus a small JSON definition (template, display name).
-  - **Commission:** a faction operation records a building site (template, position, rotation, settlement). It's refused outside your own claim or when it overlaps another building. Command: `/kingdomrts building commission`.
-  - **Remaining work:** a site can report which blocks are missing and the materials they need.
-- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair.
+  - **Templates:**
+    - vanilla structure files at `data/<ns>/structure/<path>.nbt`, loaded through the level's structure manager;
+    - a definition per building in the `kingdomrts:building` datapack registry (`data/<ns>/kingdomrts/building/<name>.json`: `structure` and `name`);
+    - the sample is `kingdomrts:storage_shed`.
+  - **Commission** (`BuildingOps.commission`, a faction operation): records a site (type, template corner, rotation, footprint) on the settlement. It's refused if:
+    - it isn't in a settlement's claim, or it's another faction's claim;
+    - it doesn't fit inside one claim, or not within build height;
+    - it overlaps another building, or covers the town hall, a workplace or a storage block.
+  - **Remaining work** (`BuildingOps.remaining`): blocks missing, blocks in the way, and the materials needed. It never loads chunks.
+  - **Commands:** `/kingdomrts building commission <type> <pos> [<rotation>] [faction <name>]`, `list`, `remaining <pos>`, `cancel <pos>`, and `finish <pos>` (a cheat that builds the site instantly, for testing).
+- **Out of scope:** the build tool UI and ghost preview (Direction), gold, damage repair, builders (S-011).
 - **Test:**
-  - Unit test: the missing-block and materials calculations.
-  - GameTests: commissioning is refused outside the claim; remaining work is correct after some blocks are placed by hand.
-- **Notes:** -
+  - **Unit tests:**
+    - `BuildingRulesTest`: placing and turning, footprints, matching, remaining work, costs, unplaceable blocks;
+    - `BlueprintTest`: reading templates, rejecting broken or huge ones, the building definition;
+    - `BuildingTest`: a site survives saving.
+  - **GameTests (`BuildingGameTests`, 8):**
+    - commissioning, and refusals: outside any claim, someone else's, partly outside, over the hall, overlapping;
+    - remaining work on a fresh site and after some blocks are placed by hand;
+    - `finish` (with an obstruction cleared), a rotated building's door facing the new way, `cancel`, `list`.
+  - **Manual:** the shed's look and its rotations, via `finish`.
+- **Notes:**
+  - **A block matches** if it's the same block facing the same way: facing, axis, half, hinge, attach face, rotation, slab type, rail shape and bed part must match (owner's call). Other properties are ignored (waterlogged, open, powered, leaf distance, stair shape, chest pairing), so opening a door doesn't make a building unfinished or, later, damaged.
+  - **Rotation:** a building turns about its footprint's middle, so a square one stays over the same ground. `<pos>` is the template's corner before turning.
+  - **Air in a template means "must be clear":** a solid block there is an obstruction, and so is grass or snow. Structure voids mean "don't care".
+  - **Costs:** a door, bed or tall plant costs one item (on its lower half or foot), a double slab costs two, and a wall torch costs a torch. Blocks with no item (fire, fluids) are listed as unplaceable.
+  - **Reading templates:** vanilla keeps a template's blocks private, so `Blueprint.read` parses the template's saved NBT (the public structure-file format). No access transformer is needed.
+    - Blueprints are cached per structure and cleared on datapack reload.
+    - Templates over 32k blocks are rejected.
+    - All template access goes through `BuildingTemplates`, so Structurize (design.md) could replace it later.
+  - **`finish`** sets blocks without shape updates while placing (so a door's lower half doesn't pop off before its upper half is there), then notifies neighbours. Block entity contents (a chest's items) aren't placed.
+  - **The sample shed** was generated with a small script. To re-author it in-game:
+    1. Build it.
+    2. Save it with a structure block named `kingdomrts:buildings/storage_shed`.
+    3. Copy the file from `run/world/generated/kingdomrts/structure/` into `src/main/resources/data/kingdomrts/structure/buildings/`.
+  - **Test fix:** the local GameTest world (`run/world`) keeps factions between runs, so a command that looked a test faction up by name could find a leftover one with the same name. `TestSupport.faction` names now end with a per-run suffix. CI starts fresh, so it never showed up there.
+  - **No stress run needed:** nothing per unit or per tick was added.
+  - **Follow-ups:**
+    - a workplace block in a template becomes a workplace when built;
+    - an outline or preview of a site;
+    - damage detection (built buildings compared with their template);
+    - evaluating Structurize for the build tool.
 
 ### S-011 Builder job
 - **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015

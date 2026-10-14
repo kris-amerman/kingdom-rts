@@ -36,6 +36,7 @@ public final class Settlement {
     private static final String UNITS_TAG = "units";
     private static final String OWNER_CHANGES_TAG = "owner_changes";
     private static final String WORKPLACES_TAG = "workplaces";
+    private static final String BUILDINGS_TAG = "buildings";
 
     private final UUID id;
     private String name;
@@ -55,6 +56,8 @@ public final class Settlement {
     private int ownerChanges;
     // Its workplaces, by block position (in its dimension).
     private final Map<BlockPos, Workplace> workplaces = new LinkedHashMap<>();
+    // Its commissioned buildings, by template origin (in its dimension).
+    private final Map<BlockPos, Building> buildings = new LinkedHashMap<>();
 
     Settlement(UUID id, String name, UUID owner, ResourceKey<Level> dimension, BlockPos townHall, Set<ChunkPos> chunks) {
         this.id = id;
@@ -114,6 +117,34 @@ public final class Settlement {
         return workplaces.remove(pos) != null;
     }
 
+    public Collection<Building> buildings() {
+        return Collections.unmodifiableCollection(buildings.values());
+    }
+
+    @Nullable
+    public Building buildingAt(BlockPos origin) {
+        return buildings.get(origin);
+    }
+
+    // The building whose footprint includes pos, if any.
+    @Nullable
+    public Building buildingContaining(BlockPos pos) {
+        for (Building building : buildings.values()) {
+            if (building.footprint().isInside(pos)) {
+                return building;
+            }
+        }
+        return null;
+    }
+
+    boolean addBuilding(Building building) {
+        return buildings.putIfAbsent(building.origin(), building) == null;
+    }
+
+    boolean removeBuilding(BlockPos origin) {
+        return buildings.remove(origin) != null;
+    }
+
     public int ownerChanges() {
         return ownerChanges;
     }
@@ -160,6 +191,9 @@ public final class Settlement {
         ListTag workplaceList = new ListTag();
         workplaces.values().forEach(workplace -> workplaceList.add(workplace.save()));
         tag.put(WORKPLACES_TAG, workplaceList);
+        ListTag buildingList = new ListTag();
+        buildings.values().forEach(building -> buildingList.add(building.save()));
+        tag.put(BUILDINGS_TAG, buildingList);
         return tag;
     }
 
@@ -180,6 +214,9 @@ public final class Settlement {
         settlement.ownerChanges = tag.getInt(OWNER_CHANGES_TAG);
         for (Tag workplace : tag.getList(WORKPLACES_TAG, Tag.TAG_COMPOUND)) {
             settlement.addWorkplace(Workplace.load((CompoundTag) workplace));
+        }
+        for (Tag building : tag.getList(BUILDINGS_TAG, Tag.TAG_COMPOUND)) {
+            settlement.addBuilding(Building.load((CompoundTag) building));
         }
         return settlement;
     }

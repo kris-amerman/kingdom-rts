@@ -155,6 +155,18 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void addBuilding(Settlement settlement, Building building) {
+        if (settlement.addBuilding(building)) {
+            setDirty();
+        }
+    }
+
+    void removeBuilding(Settlement settlement, BlockPos origin) {
+        if (settlement.removeBuilding(origin)) {
+            setDirty();
+        }
+    }
+
     void setWorkRadius(Workplace workplace, int workRadius) {
         if (workplace.setWorkRadius(workRadius)) {
             setDirty();
