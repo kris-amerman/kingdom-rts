@@ -12,6 +12,7 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.unit.Unit;
+import com.krisamerman.kingdomrts.util.Perf;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -137,12 +138,12 @@ public class TownHallBlockEntity extends BlockEntity {
         if (level.getGameTime() % CHECK_INTERVAL_TICKS != 0 || !(level instanceof ServerLevel serverLevel)) {
             return;
         }
-        // A profiler section, so Minecraft's profiler (and tools like Spark) show what capture costs.
-        serverLevel.getProfiler().push("kingdomrts:capture");
+        // Timed, so the profiler and the stress test show what capture costs.
+        long start = Perf.start(serverLevel, Perf.Section.CAPTURE);
         try {
             checkCapture(serverLevel, pos, townHall);
         } finally {
-            serverLevel.getProfiler().pop();
+            Perf.end(serverLevel, Perf.Section.CAPTURE, start);
         }
     }
 

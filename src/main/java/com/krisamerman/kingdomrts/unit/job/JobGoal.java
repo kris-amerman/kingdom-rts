@@ -3,6 +3,7 @@ package com.krisamerman.kingdomrts.unit.job;
 import java.util.EnumSet;
 
 import com.krisamerman.kingdomrts.unit.Unit;
+import com.krisamerman.kingdomrts.util.Perf;
 
 import net.minecraft.world.entity.ai.goal.Goal;
 
@@ -30,10 +31,10 @@ public class JobGoal extends Goal {
 
     @Override
     public void tick() {
-        // A profiler section, so Minecraft's profiler (and tools like Spark) show what jobs cost.
-        unit.level().getProfiler().push("kingdomrts:job");
+        // Timed, so the profiler and the stress test show what jobs cost.
+        long start = Perf.start(unit.level(), Perf.Section.JOB);
         runner.tick(unit);
-        unit.level().getProfiler().pop();
+        Perf.end(unit.level(), Perf.Section.JOB, start);
     }
 
     @Override

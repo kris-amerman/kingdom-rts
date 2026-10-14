@@ -72,6 +72,13 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
+        // The stress test (see docs/perf.md): `./gradlew runStressTest`. Only its own namespace, so
+        // none of the normal GameTests run, and they never run it.
+        stressTest {
+            type = "gameTestServer"
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'kingdomrts_stress'
+        }
+
         data {
             data()
             // example of overriding the workingDirectory set in configureEach above, uncomment if you want to use it

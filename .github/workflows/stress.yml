@@ -1,0 +1,39 @@
+name: Stress test
+
+# The stress test (see docs/perf.md). Not part of the normal build: run it by hand from the
+# Actions tab, and it also runs weekly. Shared runners are noisy, so these numbers show trends;
+# reference numbers come from local runs.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # Mondays, 06:00 UTC
+
+jobs:
+  stress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Fails if our code goes over budget (see PerfReport.Budget).
+      - name: Run the stress test
+        run: ./gradlew runStressTest
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-report
+          path: run/kingdomrts-stress/
