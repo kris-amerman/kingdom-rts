@@ -34,13 +34,31 @@ Story template:
 - **Status:** in progress | **Branch:** feature/stress-test | **PR:** - | **Depends on:** S-014
 - **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
 - **Scope:**
-  - A stress scenario (a GameTest batch or a command) that sets up settlements with huts and N workers in a generated forest (e.g. 50, 100, 200 lumberjacks) and records the average tick time (`MinecraftServer.getAverageTickTimeNanos`), plus our profiler sections, per worker count.
-  - It isn't part of the normal CI run: it runs on demand, and periodically (a scheduled workflow or a manual step before releases).
-  - Results go in `docs/perf.md`, so changes over time are visible.
-  - Agree a budget with the owner, e.g. our systems under a few ms per tick at 100 workers.
-- **Out of scope:** optimising anything (follow-up stories, driven by the numbers).
-- **Test:** the scenario itself, run once to record the baseline.
-- **Notes:** the profiler sections were added in S-014.
+  - **`Perf`** times the hot paths (`kingdomrts:unit` (a unit's whole tick), `job`, `job_seeking`, `capture`), as profiler sections that also add up their time while recording. Recording is off outside the stress test.
+  - **A headless stress run,** `./gradlew runStressTest`: towns of 10 units (8 lumberjacks with huts in a forest, a soldier, a job seeker) at 50, 100, 200 and 400 units. Each size warms up for 200 ticks and records 1200.
+  - **The report:** `run/kingdomrts-stress/report.md` and `.json`.
+  - **The budget fails the run:** 5 ms/tick at 100 units, 10 ms at 200 (`PerfReport.Budget`).
+  - **CI:** a weekly and manual GitHub workflow (`stress.yml`) uploads the report.
+  - **`docs/perf.md`:** the budget, how to run and read it, cost classes for unit code, a watch list, levers for later, and the results.
+- **Out of scope:** in-game stress and perf commands (S-022); optimising anything.
+- **Test:** unit tests: `PerfReportTest` (per-tick maths, the budget, sizes without a limit, no ticks); `PerfTest` (nothing counted while not recording, nested sections, restarting). The stress run itself: every size completes, the lumberjacks really work, the budget holds. The normal GameTests (86) don't include it. No manual checks (nothing visual).
+- **Notes:**
+  - **Separate namespace:** the stress tests use the `kingdomrts_stress` namespace (with a copy of the platform template). NeoForge only registers tests whose template namespace is enabled, so `runGameTestServer` and `/test runall` skip them, and `runStressTest` runs only them.
+  - **Each size is built in its own place,** so no leftovers from one size affect the next. Their chunks are forced, so they tick as if a player were near.
+  - **The GameTest server ticks as fast as it can,** so the run takes under a minute.
+  - **Baseline:** about 10 µs per unit per tick (1.0 ms at 100 units, 1.9 at 200, 4.5 at 400). That's well under budget. Most of it is vanilla's entity tick; our jobs are about a sixth. Job seeking and capture are negligible.
+  - **Sabotage checks:**
+    - an 80 µs busy-wait per job tick fails the 100- and 200-unit budgets;
+    - lumberjacks that never work fail every size's "really worked" check.
+  - **Unloaded settlements** (should they keep producing?) added to design.md's open questions.
+
+### S-022 In-game stress and perf commands
+- **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
+- **Goal:** the stress scenario and live `Perf` numbers are available in a real world, for watching and profiling with Spark.
+- **Scope:** `/kingdomrts stress <units>` builds `StressScenario` near the player (and `stress clear` removes it); `/kingdomrts perf start|stop` records and prints the same table as the stress report. Op only.
+- **Out of scope:** optimisation.
+- **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
+- **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-010 Building templates and sites
 - **Status:** planned | **Branch:** feature/building-sites | **PR:** - | **Depends on:** S-001

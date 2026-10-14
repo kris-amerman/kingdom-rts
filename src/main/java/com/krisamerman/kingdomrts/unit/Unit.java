@@ -10,6 +10,7 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
+import com.krisamerman.kingdomrts.util.Perf;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -331,6 +332,18 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
 
     // ---- Vanilla behavior ----
 
+    // A unit's whole tick (movement, AI, pathfinding, its job) is timed, so the profiler and the
+    // stress test show what units cost in total, vanilla's share included.
+    @Override
+    public void tick() {
+        long start = Perf.start(level(), Perf.Section.UNIT);
+        try {
+            super.tick();
+        } finally {
+            Perf.end(level(), Perf.Section.UNIT, start);
+        }
+    }
+
     // Advances the arm-swing animation timer each tick (on both server and client). Vanilla only
     // does this for Monster and Player, so without it swing() starts an animation that never plays.
     @Override
@@ -340,9 +353,9 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         // Job seeking (see WorkplaceOps#seekJob). The offset spreads units' checks across ticks.
         if (occupationId == null && settlementId != null && level() instanceof ServerLevel serverLevel
                 && (tickCount + Math.floorMod(getUUID().hashCode(), JOB_SEEK_INTERVAL_TICKS)) % JOB_SEEK_INTERVAL_TICKS == 0) {
-            serverLevel.getProfiler().push("kingdomrts:job_seeking");
+            long start = Perf.start(serverLevel, Perf.Section.JOB_SEEKING);
             WorkplaceOps.seekJob(serverLevel, this);
-            serverLevel.getProfiler().pop();
+            Perf.end(serverLevel, Perf.Section.JOB_SEEKING, start);
         }
     }
 

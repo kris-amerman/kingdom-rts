@@ -195,3 +195,4 @@ Sources: [CC:CBC](https://modrinth.com/mod/cc-cbc), [Create Big Cannons: Ballist
 - Whether AI factions field Create machines at first.
 - How new AI settlements pick sites.
 - The name (faction or nation, Kingdom RTS).
+- Unloaded settlements: units in unloaded chunks don't tick, so a settlement far from every player stops working. Should it keep producing while unloaded, as an abstract simulation (worked out when it loads, or by a cheap off-world tick)? This decides how "hundreds of workers across the world" behaves (see docs/perf.md).
