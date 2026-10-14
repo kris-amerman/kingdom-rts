@@ -66,3 +66,4 @@ Our ms per tick (µs per unit in brackets), from local runs. Server ms/tick is t
 | Date | Commit | Machine | 50 | 100 | 200 | 400 | Notes |
 |---|---|---|---|---|---|---|---|
 | 2026-10-13 | S-021 branch | Apple Silicon, 8 cores, Java 21 | 0.50 (10) | 1.01 (10) | 1.94 (10) | 4.53 (11) | Baseline. Three runs varied by about 15%. |
+| 2026-10-14 | d721b4d | GitHub Actions, 4 cores, Linux | 0.50 (10) | 0.90 (9) | 1.96 (10) | 4.87 (12) | First CI run: within about 10% of local. Worst tick 44 ms at 400 units. |

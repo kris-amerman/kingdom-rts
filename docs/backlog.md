@@ -23,34 +23,12 @@ Story template:
 ## Current: Units MVP
 
 ### S-020 spawnunit defaults to no occupation
-- **Status:** planned | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
+- **Status:** in progress | **Branch:** feature/spawnunit-default | **PR:** - | **Depends on:** -
 - **Goal:** `/kingdomrts spawnunit` with no occupation given spawns a unit with no occupation (the owner noticed it defaults to soldier).
 - **Scope:** change the default in `KingdomRtsCommands.spawnOptions` from `Occupation.SOLDIER` to none. `occupation kingdomrts:soldier` still gives a soldier, and `occupation none` stays as an alias.
 - **Out of scope:** other command changes.
 - **Test:** GameTests via `TestSupport.runCommand`: plain `spawnunit` has no occupation; `occupation kingdomrts:soldier` gives a soldier. Check the existing tests and docs that rely on the old default.
 - **Notes:** small; can be picked up any time.
-
-### S-021 Stress testing
-- **Status:** in review | **Branch:** feature/stress-test | **PR:** #22 | **Depends on:** S-014
-- **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
-- **Scope:**
-  - **`Perf`** times the hot paths (`kingdomrts:unit` (a unit's whole tick), `job`, `job_seeking`, `capture`), as profiler sections that also add up their time while recording. Recording is off outside the stress test.
-  - **A headless stress run,** `./gradlew runStressTest`: towns of 10 units (8 lumberjacks with huts in a forest, a soldier, a job seeker) at 50, 100, 200 and 400 units. Each size warms up for 200 ticks and records 1200.
-  - **The report:** `run/kingdomrts-stress/report.md` and `.json`.
-  - **The budget fails the run:** 5 ms/tick at 100 units, 10 ms at 200 (`PerfReport.Budget`).
-  - **CI:** a weekly and manual GitHub workflow (`stress.yml`) uploads the report.
-  - **`docs/perf.md`:** the budget, how to run and read it, cost classes for unit code, a watch list, levers for later, and the results.
-- **Out of scope:** in-game stress and perf commands (S-022); optimising anything.
-- **Test:** unit tests: `PerfReportTest` (per-tick maths, the budget, sizes without a limit, no ticks); `PerfTest` (nothing counted while not recording, nested sections, restarting). The stress run itself: every size completes, the lumberjacks really work, the budget holds. The normal GameTests (86) don't include it. No manual checks (nothing visual).
-- **Notes:**
-  - **Separate namespace:** the stress tests use the `kingdomrts_stress` namespace (with a copy of the platform template). NeoForge only registers tests whose template namespace is enabled, so `runGameTestServer` and `/test runall` skip them, and `runStressTest` runs only them.
-  - **Each size is built in its own place,** so no leftovers from one size affect the next. Their chunks are forced, so they tick as if a player were near.
-  - **The GameTest server ticks as fast as it can,** so the run takes under a minute.
-  - **Baseline:** about 10 µs per unit per tick (1.0 ms at 100 units, 1.9 at 200, 4.5 at 400). That's well under budget. Most of it is vanilla's entity tick; our jobs are about a sixth. Job seeking and capture are negligible.
-  - **Sabotage checks:**
-    - an 80 µs busy-wait per job tick fails the 100- and 200-unit budgets;
-    - lumberjacks that never work fail every size's "really worked" check.
-  - **Unloaded settlements** (should they keep producing?) added to design.md's open questions.
 
 ### S-022 In-game stress and perf commands
 - **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
@@ -105,6 +83,28 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-021 Stress testing
+- **Status:** done | **Branch:** feature/stress-test | **PR:** #22 | **Depends on:** S-014
+- **Goal:** we know what our systems cost per tick as the number of workers grows, and catch regressions before they settle in.
+- **Scope:**
+  - **`Perf`** times the hot paths (`kingdomrts:unit` (a unit's whole tick), `job`, `job_seeking`, `capture`), as profiler sections that also add up their time while recording. Recording is off outside the stress test.
+  - **A headless stress run,** `./gradlew runStressTest`: towns of 10 units (8 lumberjacks with huts in a forest, a soldier, a job seeker) at 50, 100, 200 and 400 units. Each size warms up for 200 ticks and records 1200.
+  - **The report:** `run/kingdomrts-stress/report.md` and `.json`.
+  - **The budget fails the run:** 5 ms/tick at 100 units, 10 ms at 200 (`PerfReport.Budget`).
+  - **CI:** a weekly and manual GitHub workflow (`stress.yml`) uploads the report.
+  - **`docs/perf.md`:** the budget, how to run and read it, cost classes for unit code, a watch list, levers for later, and the results.
+- **Out of scope:** in-game stress and perf commands (S-022); optimising anything.
+- **Test:** unit tests: `PerfReportTest` (per-tick maths, the budget, sizes without a limit, no ticks); `PerfTest` (nothing counted while not recording, nested sections, restarting). The stress run itself: every size completes, the lumberjacks really work, the budget holds. The normal GameTests (86) don't include it. No manual checks (nothing visual).
+- **Notes:**
+  - **Separate namespace:** the stress tests use the `kingdomrts_stress` namespace (with a copy of the platform template). NeoForge only registers tests whose template namespace is enabled, so `runGameTestServer` and `/test runall` skip them, and `runStressTest` runs only them.
+  - **Each size is built in its own place,** so no leftovers from one size affect the next. Their chunks are forced, so they tick as if a player were near.
+  - **The GameTest server ticks as fast as it can,** so the run takes under a minute.
+  - **Baseline:** about 10 µs per unit per tick (1.0 ms at 100 units, 1.9 at 200, 4.5 at 400). That's well under budget. Most of it is vanilla's entity tick; our jobs are about a sixth. Job seeking and capture are negligible.
+  - **Sabotage checks:**
+    - an 80 µs busy-wait per job tick fails the 100- and 200-unit budgets;
+    - lumberjacks that never work fail every size's "really worked" check.
+  - **Unloaded settlements** (should they keep producing?) added to design.md's open questions.
 
 ### S-016 Lumberjack hut settings
 - **Status:** done | **Branch:** feature/lumberjack-settings | **PR:** #21 | **Depends on:** S-014
