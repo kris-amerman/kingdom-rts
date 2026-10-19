@@ -37,7 +37,8 @@ import net.minecraft.world.level.block.Rotation;
 //   commission <type> <pos> [<rotation>] [faction <name>]: for the given faction, or the player's
 //   list: the sites of the settlement you're standing in
 //   remaining <pos>: what's left to do at the site containing pos
-//   cancel <pos>: forget the site (placed blocks stay)
+//   cancel <pos>: forget the site and take its construction site block away (placed blocks stay)
+//   demolish <pos>: remove the building containing pos, built or not: its blocks and its record
 //   finish <pos>: a cheat for testing: build it instantly, with no builder and no materials
 public final class BuildingCommands {
     // How many materials "remaining" lists before saying "and N more".
@@ -68,6 +69,9 @@ public final class BuildingCommands {
                 .then(Commands.literal("cancel")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(ctx -> cancel(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))))
+                .then(Commands.literal("demolish")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .executes(ctx -> demolish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))))
                 .then(Commands.literal("finish")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(ctx -> finish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))));
@@ -122,8 +126,10 @@ public final class BuildingCommands {
         source.sendSuccess(() -> Component.literal(settlement.name() + "'s buildings:"), false);
         for (Building building : settlement.buildings()) {
             BuildingOps.RemainingResult result = BuildingOps.remaining(level, building);
-            String progress = result.remaining() == null ? result.problem()
-                    : result.remaining().isDone() ? "finished" : result.remaining().missing().size() + " blocks to place";
+            String progress = building.isBuilt() ? "built on day " + (building.built() / 24000 + 1)
+                    : result.remaining() == null ? result.problem()
+                    : result.remaining().isDone() ? "finished, waiting to be completed"
+                    : result.remaining().missing().size() + " blocks to place";
             source.sendSuccess(() -> Component.literal("- " + typeName(level, building.type()) + " at " + building.origin().toShortString()
                     + ": " + progress), false);
         }
@@ -135,13 +141,17 @@ public final class BuildingCommands {
         if (building == null) {
             return 0;
         }
+        String name = typeName(source.getLevel(), building.type());
+        if (building.isBuilt()) {
+            source.sendSuccess(() -> Component.literal("The " + name + " is built"), false);
+            return 0;
+        }
         BuildingOps.RemainingResult result = BuildingOps.remaining(source.getLevel(), building);
         if (result.remaining() == null) {
             source.sendFailure(Component.literal(result.problem()));
             return 0;
         }
         BuildingRules.Remaining remaining = result.remaining();
-        String name = typeName(source.getLevel(), building.type());
         if (remaining.isDone()) {
             source.sendSuccess(() -> Component.literal("The " + name + " is finished"), false);
             return 0;
@@ -163,9 +173,29 @@ public final class BuildingCommands {
             return 0;
         }
         ServerLevel level = source.getLevel();
-        BuildingOps.cancel(level, SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(building.origin())), building);
+        if (building.isBuilt()) {
+            source.sendFailure(Component.literal("The " + typeName(level, building.type()) + " is already built"));
+            return 0;
+        }
+        BuildingOps.cancel(level, settlementOf(level, building), building);
         source.sendSuccess(() -> Component.literal("Cancelled the " + typeName(level, building.type()) + " at "
                 + building.origin().toShortString()), true);
+        return 1;
+    }
+
+    private static int demolish(CommandSourceStack source, BlockPos pos) {
+        Building building = buildingAt(source, pos);
+        if (building == null) {
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        String name = typeName(level, building.type());
+        int removed = BuildingOps.demolish(level, settlementOf(level, building), building);
+        if (removed < 0) {
+            source.sendFailure(Component.literal("The " + name + " isn't loaded"));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Demolished the " + name + " (" + removed + " blocks removed)"), true);
         return 1;
     }
 
@@ -174,7 +204,11 @@ public final class BuildingCommands {
         if (building == null) {
             return 0;
         }
-        int changed = BuildingOps.finish(source.getLevel(), building);
+        if (building.isBuilt()) {
+            source.sendFailure(Component.literal("The " + typeName(source.getLevel(), building.type()) + " is already built"));
+            return 0;
+        }
+        int changed = BuildingOps.finish(source.getLevel(), settlementOf(source.getLevel(), building), building);
         if (changed < 0) {
             source.sendFailure(Component.literal(BuildingOps.remaining(source.getLevel(), building).problem()));
             return 0;
@@ -193,6 +227,10 @@ public final class BuildingCommands {
             source.sendFailure(Component.literal("No building is commissioned at " + pos.toShortString()));
         }
         return building;
+    }
+
+    private static Settlement settlementOf(ServerLevel level, Building building) {
+        return SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(building.origin()));
     }
 
     private static String typeName(ServerLevel level, ResourceLocation type) {

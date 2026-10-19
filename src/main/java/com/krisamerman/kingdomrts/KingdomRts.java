@@ -3,6 +3,10 @@ package com.krisamerman.kingdomrts;
 import org.slf4j.Logger;
 
 import com.krisamerman.kingdomrts.building.BuildingType;
+import com.krisamerman.kingdomrts.settlement.BuildingSiteMenu;
+import com.krisamerman.kingdomrts.settlement.BuildingSiteStockMenu;
+import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlock;
+import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlockEntity;
 import com.krisamerman.kingdomrts.settlement.SettlementStorageBlock;
 import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.TownHallBlock;
@@ -87,6 +91,14 @@ public class KingdomRts {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorkplaceBlockEntity>> WORKPLACE_BLOCK_ENTITY =
             BLOCK_ENTITY_TYPES.register("workplace", () -> BlockEntityType.Builder.of(WorkplaceBlockEntity::new, LUMBERJACK_HUT.get()).build(null));
 
+    // A construction site, id "kingdomrts:construction_site": put down inside a building when it's
+    // commissioned and taken away when it's finished. It holds the site's stock and opens the site
+    // panel. No item: it only comes from commissioning.
+    public static final DeferredBlock<ConstructionSiteBlock> CONSTRUCTION_SITE = BLOCKS.registerBlock("construction_site", ConstructionSiteBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5f).sound(SoundType.WOOD));
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ConstructionSiteBlockEntity>> CONSTRUCTION_SITE_BLOCK_ENTITY =
+            BLOCK_ENTITY_TYPES.register("construction_site", () -> BlockEntityType.Builder.of(ConstructionSiteBlockEntity::new, CONSTRUCTION_SITE.get()).build(null));
+
     // The town hall menu, id "kingdomrts:town_hall". IMenuTypeExtension.create lets the server send
     // extra data (the hall's position and owner name) when the menu opens.
     public static final DeferredHolder<MenuType<?>, MenuType<TownHallMenu>> TOWN_HALL_MENU =
@@ -97,6 +109,12 @@ public class KingdomRts {
     // A workplace's stock opened from its panel (a chest with a Back button), id "kingdomrts:workplace_stock".
     public static final DeferredHolder<MenuType<?>, MenuType<WorkplaceStockMenu>> WORKPLACE_STOCK_MENU =
             MENU_TYPES.register("workplace_stock", () -> IMenuTypeExtension.create(WorkplaceStockMenu::new));
+    // The construction site panel, id "kingdomrts:building_site", opened from a construction site block.
+    public static final DeferredHolder<MenuType<?>, MenuType<BuildingSiteMenu>> BUILDING_SITE_MENU =
+            MENU_TYPES.register("building_site", () -> IMenuTypeExtension.create(BuildingSiteMenu::new));
+    // A construction site's stock opened from its panel (a chest with a Back button).
+    public static final DeferredHolder<MenuType<?>, MenuType<BuildingSiteStockMenu>> BUILDING_SITE_STOCK_MENU =
+            MENU_TYPES.register("building_site_stock", () -> IMenuTypeExtension.create(BuildingSiteStockMenu::new));
     // The unit info panel, id "kingdomrts:unit". The server sends what the viewer may see when it opens.
     public static final DeferredHolder<MenuType<?>, MenuType<UnitMenu>> UNIT_MENU =
             MENU_TYPES.register("unit", () -> IMenuTypeExtension.create(UnitMenu::new));

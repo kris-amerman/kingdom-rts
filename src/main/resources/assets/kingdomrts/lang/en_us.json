@@ -8,5 +8,6 @@
   "occupation.kingdomrts.soldier": "Soldier",
   "occupation.kingdomrts.lumberjack": "Lumberjack",
   "container.kingdomrts.town_hall": "Town Hall",
-  "button.kingdomrts.claim": "Claim"
+  "button.kingdomrts.claim": "Claim",
+  "block.kingdomrts.construction_site": "Construction Site"
 }

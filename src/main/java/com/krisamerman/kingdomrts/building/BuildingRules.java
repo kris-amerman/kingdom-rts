@@ -1,9 +1,13 @@
 package com.krisamerman.kingdomrts.building;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 import net.minecraft.core.BlockPos;
@@ -97,6 +101,34 @@ public final class BuildingRules {
             }
         }
         return true;
+    }
+
+    // Where a building's construction site block goes while it's built: a spot the building leaves
+    // clear (air in the template), so the site block never stands where a block is wanted. Floor
+    // spots are preferred (air with one of the building's blocks right under it, lowest first), and
+    // among those the one nearest the middle. Empty if the building has no clear spot at all.
+    public static Optional<BlockPos> siteSpot(List<Blueprint.Part> placed) {
+        if (placed.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<BlockPos> solid = new HashSet<>();
+        long sumX = 0;
+        long sumZ = 0;
+        for (Blueprint.Part part : placed) {
+            if (!part.state().isAir()) {
+                solid.add(part.pos());
+            }
+            sumX += part.pos().getX();
+            sumZ += part.pos().getZ();
+        }
+        double middleX = (double) sumX / placed.size();
+        double middleZ = (double) sumZ / placed.size();
+        Comparator<Blueprint.Part> preference = Comparator
+                .<Blueprint.Part>comparingInt(part -> solid.contains(part.pos().below()) ? 0 : 1)
+                .thenComparingInt(part -> part.pos().getY())
+                .thenComparingDouble(part -> Math.pow(part.pos().getX() - middleX, 2) + Math.pow(part.pos().getZ() - middleZ, 2))
+                .thenComparingLong(part -> part.pos().asLong());
+        return placed.stream().filter(part -> part.state().isAir()).min(preference).map(Blueprint.Part::pos);
     }
 
     // What's left to do at a site, given its placed blueprint and what's in the world.

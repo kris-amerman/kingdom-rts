@@ -47,8 +47,8 @@ public class BuildingGameTests {
     private static final ResourceLocation SHED = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "storage_shed");
     // The shed's template corner, inside the hall's claim and clear of the hall.
     private static final BlockPos SITE = new BlockPos(1, FLOOR_Y + 1, 1);
-    // Blocks of the shed that aren't air: 25 floor, 25 roof, 8 log corners, 22 planks, the door's two
-    // halves, the chest and the torch.
+    // Blocks of the shed: 25 floor, 25 roof, 8 log corners, 22 planks, the door's two halves, the chest
+    // and the torch.
     private static final int SHED_BLOCKS = 84;
 
     @GameTest(template = TEMPLATE, batch = "building_commission")
@@ -153,7 +153,9 @@ public class BuildingGameTests {
         helper.assertTrue(remaining(helper, building).isDone(), "Nothing should be left after finishing: " + remaining(helper, building));
         assertDoor(helper, helper.absolutePos(SITE.offset(2, 1, 0)), Direction.NORTH);
         helper.assertBlockPresent(Blocks.AIR, SITE.offset(1, 1, 1));
-        expectOutput(helper, "kingdomrts building remaining " + coords(helper, SITE), "is finished");
+        expectOutput(helper, "kingdomrts building remaining " + coords(helper, SITE), "is built");
+        expectOutput(helper, "kingdomrts building list", "built on day");
+        expectOutput(helper, "kingdomrts building cancel " + coords(helper, SITE), "already built");
         removeHall(helper, HALL);
         helper.succeed();
     }
@@ -161,11 +163,11 @@ public class BuildingGameTests {
     @GameTest(template = TEMPLATE, batch = "building_rotated")
     public static void aRotatedBuildingFacesTheNewWay(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
-        found(helper, HALL, blue);
+        Settlement settlement = found(helper, HALL, blue);
         Building building = commission(helper, blue, SITE.offset(0, 0, 8), Rotation.CLOCKWISE_90);
         BoundingBox box = building.footprint();
         helper.assertTrue(box.isInside(helper.absolutePos(SITE.offset(2, 1, 10))), "A square building turns in place: " + box);
-        BuildingOps.finish(helper.getLevel(), building);
+        BuildingOps.finish(helper.getLevel(), current(helper, settlement), building);
         helper.assertTrue(remaining(helper, building).isDone(), "Nothing should be left after finishing");
         // The door was on the north side facing north; turned clockwise it's on the east side, facing east.
         BlockPos door = null;
@@ -188,6 +190,7 @@ public class BuildingGameTests {
         commission(helper, blue, SITE, Rotation.NONE);
         expectOutput(helper, "kingdomrts building cancel " + coords(helper, SITE.offset(4, 3, 4)), "Cancelled the Storage shed");
         helper.assertTrue(current(helper, settlement).buildings().isEmpty(), "The site should be gone");
+        helper.assertBlockNotPresent(KingdomRts.CONSTRUCTION_SITE.get(), SITE.offset(2, 1, 2)); // its site block too
         expectOutput(helper, "kingdomrts building remaining " + coords(helper, SITE), "No building is commissioned");
         removeHall(helper, HALL);
         helper.succeed();

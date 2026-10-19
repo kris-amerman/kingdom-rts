@@ -1,5 +1,6 @@
 package com.krisamerman.kingdomrts;
 
+import com.krisamerman.kingdomrts.settlement.BuildingSiteScreen;
 import com.krisamerman.kingdomrts.settlement.TownHallScreen;
 import com.krisamerman.kingdomrts.settlement.WorkplaceScreen;
 import com.krisamerman.kingdomrts.settlement.WorkplaceStockScreen;
@@ -30,5 +31,8 @@ public class KingdomRtsClient {
         event.register(KingdomRts.UNIT_MENU.get(), UnitScreen::new);
         event.register(KingdomRts.WORKPLACE_MENU.get(), WorkplaceScreen::new);
         event.register(KingdomRts.WORKPLACE_STOCK_MENU.get(), WorkplaceStockScreen::new);
+        event.register(KingdomRts.BUILDING_SITE_MENU.get(), BuildingSiteScreen::new);
+        // The site's stock uses the same chest-with-a-Back-button screen as a workplace's.
+        event.register(KingdomRts.BUILDING_SITE_STOCK_MENU.get(), WorkplaceStockScreen::new);
     }
 }

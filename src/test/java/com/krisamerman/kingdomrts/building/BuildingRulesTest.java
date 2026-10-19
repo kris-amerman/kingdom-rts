@@ -4,9 +4,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
 
@@ -127,5 +129,35 @@ class BuildingRulesTest {
         BuildingRules.Remaining remaining = BuildingRules.remaining(placed, pos -> Blocks.AIR.defaultBlockState());
         assertEquals(1, remaining.unplaceable().size(), "Fire can't be placed; a door's free upper half isn't a problem");
         assertTrue(remaining.materials().isEmpty());
+    }
+
+    @Test
+    void theSiteGoesOnAClearFloorSpotNearTheMiddle() {
+        // A 3x2x3 hut: a stone floor, a ring of planks on top, and air in the middle of the ring.
+        List<Blueprint.Part> parts = new ArrayList<>();
+        for (int x = 0; x < 3; x++) {
+            for (int z = 0; z < 3; z++) {
+                parts.add(new Blueprint.Part(new BlockPos(x, 0, z), Blocks.STONE.defaultBlockState()));
+                boolean middle = x == 1 && z == 1;
+                parts.add(new Blueprint.Part(new BlockPos(x, 1, z), middle ? Blocks.AIR.defaultBlockState() : Blocks.OAK_PLANKS.defaultBlockState()));
+            }
+        }
+        parts.add(new Blueprint.Part(new BlockPos(0, 2, 0), Blocks.AIR.defaultBlockState())); // air over a corner, further out
+        assertEquals(Optional.of(new BlockPos(1, 1, 1)), BuildingRules.siteSpot(parts));
+    }
+
+    @Test
+    void aBuildingWithNoClearSpotHasNoSite() {
+        assertTrue(BuildingRules.siteSpot(List.of(new Blueprint.Part(BlockPos.ZERO, Blocks.STONE.defaultBlockState()))).isEmpty());
+        assertTrue(BuildingRules.siteSpot(List.of()).isEmpty());
+    }
+
+    @Test
+    void floorSpotsBeatFloatingOnes() {
+        List<Blueprint.Part> parts = List.of(
+                new Blueprint.Part(new BlockPos(5, 3, 5), Blocks.AIR.defaultBlockState()),   // nothing under it
+                new Blueprint.Part(new BlockPos(0, 0, 0), Blocks.STONE.defaultBlockState()),
+                new Blueprint.Part(new BlockPos(0, 1, 0), Blocks.AIR.defaultBlockState()));  // on the stone
+        assertEquals(Optional.of(new BlockPos(0, 1, 0)), BuildingRules.siteSpot(parts));
     }
 }
