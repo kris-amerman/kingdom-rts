@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-011 Construction sites
-- **Status:** in progress | **Branch:** feature/construction-sites | **PR:** - | **Depends on:** S-010
+- **Status:** in review | **Branch:** feature/construction-sites | **PR:** #25 | **Depends on:** S-010
 - **Goal:** a commissioned building has a construction site on site that holds its materials and shows its progress, until it's finished.
 - **Scope:**
   - **The construction site block** (`kingdomrts:construction_site`, no item): commissioning puts it inside the building, on a spot the template leaves clear. It's a floor spot near the middle (`BuildingRules.siteSpot`). A building with no clear spot is refused. Its stock is protected like the settlement's other containers.
