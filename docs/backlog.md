@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-028 Town hall panel: population
-- **Status:** in progress | **Branch:** feature/town-hall-population | **PR:** - | **Depends on:** S-011
+- **Status:** in review | **Branch:** feature/town-hall-population | **PR:** #26 | **Depends on:** S-011
 - **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
 - **Scope:**
   - **The town hall panel is redone** as the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, a snapshot plus a once-a-second live refresh), with two pages.
