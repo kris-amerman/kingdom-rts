@@ -34,25 +34,47 @@ Story template:
 - **Status:** in progress | **Branch:** feature/town-hall-population | **PR:** - | **Depends on:** S-011
 - **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
 - **Scope:**
-  - **The town hall panel gets pages,** the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, snapshot plus a once-a-second live refresh).
-    - **The current overview:** settlement, owner, control meter, claim, the Claim button.
-    - **A "Population (n)…" button** opens the new page.
-  - **The population page:** a paged list of the settlement's units, one per row. Each row has the unit's name, its occupation ("Lumberjack at the hut at x, y, z", "Soldier", "Unemployed", later "Builder"), and whether it's nearby (loaded) or away.
-    - Sorted by name, or grouped by occupation (decided in the story).
-    - A filter or sort toggle if the list gets long.
-  - **Clicking a nearby unit** opens its unit info panel (`UnitMenu`), with a Back button to the population page.
-  - **Who sees what:** owners only, like the hut panel. Other factions keep seeing today's overview of the hall, without the population.
-- **Out of scope:** hiring builders (S-024 adds a Builders page to this panel), happiness and needs (S-012), a settlement-wide management menu or map.
+  - **The town hall panel is redone** as the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, a snapshot plus a once-a-second live refresh), with two pages.
+    - **Overview:** settlement, owner, live control meter, claim, and population count, with the Claim button for an unclaimed hall and a "Population (n)…" button for the owning faction's members.
+    - **Population:** each citizen's name with their job title ("Lumberjack", "Soldier", "Unemployed"), one per line, 9 a page, sorted by name, with Back and paging.
+  - **The settlement remembers its units** (`Resident`: name and occupation), so units that aren't loaded are listed as last seen. It's refreshed when a unit joins, is hired or fired, and whenever it loads (`SettlementOps.refreshResident`).
+  - **Owners only:** other factions see the overview without the population, and can't open the page.
+- **Out of scope:** opening a unit's panel from the list, hiring builders (S-024 adds a Builders page here), happiness and needs (S-012), a settlement-wide management menu or map, filtering and sorting.
 - **Test:**
-  - **GameTests (via `recordingPlayer`):**
-    - the population page lists the settlement's units with the right occupations, paged;
-    - it refreshes when a unit joins, dies or gets a job;
-    - outsiders don't get the button;
-    - clicking a nearby unit opens its info panel, and Back returns.
-  - **Manual:** the panel's look.
+  - **Unit tests (`ResidentTest`):** residents survive saving; updates only touch the settlement's own units; units saved before residents existed load as unknown.
+  - **GameTests (`TownHallPanelGameTests`, 5):**
+    - everyone listed by name with their job (and not a faction unit outside the settlement);
+    - unloaded units listed as last seen;
+    - paging and Back;
+    - the open page updating when someone is hired or joins;
+    - outsiders don't get the population.
+  - **Manual:** the panels' look.
 - **Notes:**
-  - **Units that aren't loaded:** the settlement only stores their UUIDs today. So it should also keep each unit's name and occupation, updated when they change, the way workplaces keep their workers' names. Then away units can be listed properly too. Decided in the story.
-  - Best done before S-024, so the Builders page goes into an already-paged town hall panel.
+  - **Owner feedback after a first version:**
+    - no View button to open a unit's panel from the list (a first version had one, view only from the hall, with Back);
+    - no workplace or "away" marker: just each citizen and their job title.
+    - The unit panel is unchanged from main.
+  - **The settlement save format changed:** units are now saved with their name and occupation. Units saved in the old format (just a UUID) show as "Unknown settler" until they next load.
+  - **No stress run needed:** residents are only refreshed on hire, fire, joining and loading, and the panel's work only happens while it's open.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:** residents never refreshed (unloaded-units test), outsiders getting the population (outsider test), and no live refresh (live test) each fail the matching test.
+
+### S-029 Lumberjack reaches distant trees
+- **Status:** planned | **Branch:** feature/lumberjack-reach | **PR:** - | **Depends on:** S-014
+- **Goal:** a lumberjack walks to any tree in its work area without minute-long waits.
+- **Scope:**
+  - **First, reproduce and diagnose:** debug logging when a walk starts and fails (why, where it got to, whether the path reached), and GameTests with real vanilla trees at 10, 18, 26 and 34 blocks, plus one with the hut in the way.
+  - **Then fix what the evidence shows.** Expected:
+    - a longer pathfinding range for units (follow range, e.g. 48), checked with the stress test;
+    - "close enough counts": within chopping reach of the trunk is a successful walk;
+    - a lone unreachable tree retried after about 15 s instead of 60.
+- **Out of scope:** levelling terrain, day and night.
+- **Test:** the reproduction GameTests become regression tests; "close enough" and "lone tree retried sooner" tests; sabotage checks; a stress run, with a row in docs/perf.md. Manual: no waits in the owner's world.
+- **Notes:**
+  - **Owner report:** lumberjacks idle by the hut for minutes with a tree standing.
+  - **The log** (19 Oct session): the same tree, at (118, 64, 34), "couldn't reach" three times, a minute apart. Each failure skips the tree for 60 s; with nothing else to fell it waits at the hut.
+  - **The save:** flat open grass around that tree (so not a lack of standing room, the first guess). The hut was at (135, 64, 39) with a work radius of 32, so the tree was about 17.7 blocks away.
+  - **Suspected cause:** units keep vanilla's follow range of 16, which is also their pathfinding range. To be confirmed by the reproduction tests before fixing.
 
 ### S-024 Builders
 - **Status:** planned | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011

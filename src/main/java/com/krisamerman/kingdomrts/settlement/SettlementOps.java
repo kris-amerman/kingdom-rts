@@ -101,7 +101,7 @@ public final class SettlementOps {
             settlements.removeUnit(old, unit.getUUID());
         }
         if (settlement != null) {
-            settlements.addUnit(settlement, unit.getUUID());
+            settlements.addUnit(settlement, unit.getUUID(), Resident.of(unit));
             unit.setSettlement(settlement.id(), settlement.ownerChanges());
         } else {
             unit.setSettlement(null, 0);
@@ -133,6 +133,17 @@ public final class SettlementOps {
             }
         }
         WorkplaceOps.catchUp(level, unit);
+        refreshResident(level, unit);
+    }
+
+    // Updates what the unit's settlement remembers about it (name and occupation), so the
+    // town hall can list it while it's unloaded. Called when it's hired or fired and when it loads.
+    public static void refreshResident(ServerLevel level, Unit unit) {
+        SettlementData settlements = SettlementData.get(level);
+        Settlement settlement = settlements.byId(unit.getSettlementId());
+        if (settlement != null) {
+            settlements.updateResident(settlement, unit.getUUID(), Resident.of(unit));
+        }
     }
 
     // Runs action for each of the settlement's units that is currently loaded.

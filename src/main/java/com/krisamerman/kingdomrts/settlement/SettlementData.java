@@ -128,8 +128,14 @@ public class SettlementData extends SavedData {
         setDirty();
     }
 
-    void addUnit(Settlement settlement, UUID unit) {
-        if (settlement.addUnit(unit)) {
+    void addUnit(Settlement settlement, UUID unit, Resident resident) {
+        if (settlement.addUnit(unit, resident)) {
+            setDirty();
+        }
+    }
+
+    void updateResident(Settlement settlement, UUID unit, Resident resident) {
+        if (settlement.updateResident(unit, resident)) {
             setDirty();
         }
     }
