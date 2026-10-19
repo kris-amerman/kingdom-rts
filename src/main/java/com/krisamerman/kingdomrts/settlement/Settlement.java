@@ -141,6 +141,10 @@ public final class Settlement {
         return buildings.putIfAbsent(building.origin(), building) == null;
     }
 
+    void replaceBuilding(Building building) {
+        buildings.put(building.origin(), building);
+    }
+
     boolean removeBuilding(BlockPos origin) {
         return buildings.remove(origin) != null;
     }

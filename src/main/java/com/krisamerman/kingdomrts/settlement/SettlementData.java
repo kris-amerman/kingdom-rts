@@ -161,6 +161,11 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void finishBuilding(Settlement settlement, Building building, long gameTime) {
+        settlement.replaceBuilding(building.finishedAt(gameTime));
+        setDirty();
+    }
+
     void removeBuilding(Settlement settlement, BlockPos origin) {
         if (settlement.removeBuilding(origin)) {
             setDirty();

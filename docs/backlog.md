@@ -30,8 +30,191 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
+### S-011 Construction sites
+- **Status:** in review | **Branch:** feature/construction-sites | **PR:** #25 | **Depends on:** S-010
+- **Goal:** a commissioned building has a construction site on site that holds its materials and shows its progress, until it's finished.
+- **Scope:**
+  - **The construction site block** (`kingdomrts:construction_site`, no item): commissioning puts it inside the building, on a spot the template leaves clear. It's a floor spot near the middle (`BuildingRules.siteSpot`). A building with no clear spot is refused. Its stock is protected like the settlement's other containers.
+  - **The site panel** (right-click the site block): progress (blocks placed of the total), blocks in the way, and materials still needed with how many are already on site. A Materials page lists them all; a Stock button opens the site's stock.
+  - **Finishing:** once nothing is left to do, the building is marked built and its site block is taken away; leftover stock drops. This happens through `building finish`, or when the open panel notices (e.g. built by hand), and builders will do it in S-025. `building list` shows built buildings; `cancel` and `finish` refuse them.
+  - **Cancelling:** breaking the site block (owner only) cancels the site, and so does `building cancel` (which also removes the block).
+  - **Demolishing** (`BuildingOps.demolish`, command `/kingdomrts building demolish <pos>`), for sites and built buildings:
+    - the settlement forgets the building, so its ground is free and it's no longer listed;
+    - a site's block goes and its stock drops;
+    - every block still matching the template is removed at once, with no drops. Other blocks stay.
+    - It refuses if the site isn't loaded, so a building is never half removed.
+- **Out of scope:** builders (S-024), the work loop (S-025), core blocks for functional buildings (S-026), repair.
+- **Test:**
+  - **Unit tests:** where the site goes (`siteSpot`: a floor spot near the middle, floor beats floating, none without air), a building with and without a site surviving saving (including finished ones and older saves), and the panel's materials ordering.
+  - **GameTests (`BuildingSiteGameTests`, 8):**
+    - the site block placed on commission (and in a turned building);
+    - finishing marks the building built, takes the site block away and drops leftovers;
+    - an open panel completes a building finished by hand;
+    - an outsider can't open or break the site, and the owner breaking it cancels;
+    - cancelling removes the site block;
+    - the panel's progress and on-site counts; live refresh; the materials page, paging, Stock and Back;
+    - demolishing a built building (its blocks gone, a block put inside it stays, no longer listed, its ground free again) and a site (its block and the floor gone, its stock dropped).
+  - **`BuildingGameTests`:** `remaining` on a built building, `list` showing it built, and `cancel` refusing it.
+  - **Manual:** the panel's look.
+- **Notes:**
+  - **Owner's design (while planning S-011):**
+    - There's no builder's hut. A settlement has a pool of builders, hired at the town hall for now.
+    - Builders are assigned to construction sites and set up shop there until the building is done, with materials pooled on site.
+    - Builders always fetch materials themselves (couriers are on hold), later buying from shops.
+  - **Core blocks, decided after a first version:** S-011 first put a generic "building core" block in every template. The owner questioned what a core is for in a building that does nothing. Settled:
+    - a temporary construction site block for every building;
+    - functional buildings (huts, the town hall, homes with a residence core, markets) have their own block as a lasting core (S-026);
+    - plain buildings have no block once finished.
+    - Per-building core blocks can't come from data anyway: blocks are only registered at startup.
+  - **Buildings keep their footprint until they're removed,** even when broken by hand (owner's call after an in-game report; a "count only the blocks still there" rule was considered and dropped). This is like MineColonies, where a damaged building stays until its hut is removed.
+    - One difference: MineColonies doesn't track decorations once built, while we track every building. So plain buildings need a way out: `building demolish` now, the build tool's demolish later (instant, or a builder taking it apart).
+    - Demolish sabotage checks: not forgetting the building, not removing its blocks, and removing every block in the footprint each fail the demolish tests.
+  - **The site spot is air in the template,** so the site block never stands where a block is wanted. `remaining` skips it, so it's neither "in the way" nor counted.
+  - **The open panel checks once a second** whether the site is finished, by recomputing the remaining work. That's bounded by the 32k-block template cap, and only runs while someone is looking. Builders will complete sites themselves in S-025.
+  - The old "Builder job" story is split into S-011, S-024, S-023 (Structurize spike), S-025 and S-026.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - not placing the site block fails most site tests;
+    - breaking without cancelling fails the break test;
+    - never completing fails the finish tests.
+    - Removing the site block before marking the building built turned out harmless: the settlement forgets it and finishing writes it back. So that order isn't a hidden dependency.
+
+### S-028 Town hall panel: population
+- **Status:** planned | **Branch:** feature/town-hall-population | **PR:** - | **Depends on:** S-011
+- **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
+- **Scope:**
+  - **The town hall panel gets pages,** the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, snapshot plus a once-a-second live refresh).
+    - **The current overview:** settlement, owner, control meter, claim, the Claim button.
+    - **A "Population (n)…" button** opens the new page.
+  - **The population page:** a paged list of the settlement's units, one per row. Each row has the unit's name, its occupation ("Lumberjack at the hut at x, y, z", "Soldier", "Unemployed", later "Builder"), and whether it's nearby (loaded) or away.
+    - Sorted by name, or grouped by occupation (decided in the story).
+    - A filter or sort toggle if the list gets long.
+  - **Clicking a nearby unit** opens its unit info panel (`UnitMenu`), with a Back button to the population page.
+  - **Who sees what:** owners only, like the hut panel. Other factions keep seeing today's overview of the hall, without the population.
+- **Out of scope:** hiring builders (S-024 adds a Builders page to this panel), happiness and needs (S-012), a settlement-wide management menu or map.
+- **Test:**
+  - **GameTests (via `recordingPlayer`):**
+    - the population page lists the settlement's units with the right occupations, paged;
+    - it refreshes when a unit joins, dies or gets a job;
+    - outsiders don't get the button;
+    - clicking a nearby unit opens its info panel, and Back returns.
+  - **Manual:** the panel's look.
+- **Notes:**
+  - **Units that aren't loaded:** the settlement only stores their UUIDs today. So it should also keep each unit's name and occupation, updated when they change, the way workplaces keep their workers' names. Then away units can be listed properly too. Decided in the story.
+  - Best done before S-024, so the Builders page goes into an already-paged town hall panel.
+
+### S-024 Builders
+- **Status:** planned | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
+- **Goal:** a settlement has builders, hired at its town hall and assigned to construction sites.
+- **Scope:**
+  - **The builder occupation** (`kingdomrts:builder`, data). Builders have no workplace.
+  - **Town hall panel, Builders page:** hire unemployed settlers as builders, and fire builders.
+  - **Site panel, Builders section:** assign idle builders, unassign assigned ones. A site takes up to `max_builders` (building data, default 2; the right number is open).
+  - **Commands:** `unit hire <units> builder`, `building assign <pos> <units>`, `building unassign <pos> <units>`.
+  - **Where builders go:** assigned builders walk to their site and wait by its site block. Unassigned builders idle at their post. A builder whose site is finished or cancelled goes back to the pool.
+- **Out of scope:** building anything (S-025).
+- **Test:** GameTests for hiring and firing at the hall, assigning and unassigning at the site (and the limit), builders going to the site, and returning to the pool on cancel. Manual: the panels.
+- **Notes:** -
+
+### S-023 Structurize spike
+- **Status:** planned | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011
+- **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
+- **Scope:** a time-boxed look (a throwaway branch is fine) at:
+  - **its licence:** GPL-3.0, while this mod is "All Rights Reserved". Depending on it likely means a GPL-compatible licence for this mod; the owner decides.
+  - **its API:** loading blueprints; placement handlers per block (doors, beds, fluids); required items; using it without its GUI from our builders;
+  - **its build tool** as our placement preview;
+  - **NeoForge 1.21.1 support,** dependency size, and the cost per tick of placement.
+  - **The outcome:** a recommendation and the owner's decision in design.md (Build tools), plus a follow-up story if adopted.
+- **Out of scope:** adopting it.
+- **Test:** none (a decision document).
+- **Notes:** done before S-025, because block placement is where Structurize would plug in. Our template code is all behind `BuildingTemplates` and `BuildingRules`, so swapping stays contained.
+
+### S-025 Builder job
+- **Status:** planned | **Branch:** feature/builder-job | **PR:** - | **Depends on:** S-024, S-023
+- **Goal:** assigned builders build their site until it matches its template.
+- **Scope:**
+  - **The work loop:** clear what's in the way inside the footprint (breaking like a player would, keeping the drops in the site stock), then place missing blocks in build order (bottom up, only where they can stay, e.g. a torch after its wall). Placement speed is set in data.
+  - **Supply, as needed** (recommended to the owner):
+    - At most one builder per site fetches at a time; the others keep building from the site stock.
+    - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later shops). It deposits them into the site stock.
+    - What can't be found is skipped. Builders build what they can, then wait.
+  - **Splitting the work:** builders split the site's blocks without placing the same block twice (reservations in memory).
+  - **When the site is finished:** the building is marked built, and its builders return to the pool.
+  - **Performance:** the stress scenario gains a builder and a site per town, and the stress test is run before merging.
+- **Out of scope:** couriers, gold and shops, levelling or filling below the site, repair.
+- **Test:** GameTests: one builder finishes the shed; two builders finish without duplicates; a builder fetches from storage; a builder waits without crashing when materials are missing, then carries on when they appear; an obstruction is cleared. Manual: watch it build.
+- **Notes:** the site's list of outstanding materials is the demand signal markets can read later.
+
+### S-026 Lumberjack hut building
+- **Status:** planned | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-025
+- **Goal:** a lumberjack hut is a real building, commissioned from a template, built by builders, and managed from its hut block.
+- **Scope:**
+  - **Core blocks from data** (the general part, reused by later functional buildings): a building's data can name its core block, e.g. `"core": "kingdomrts:lumberjack_hut"`.
+    - The core is part of the template.
+    - Commissioning places it at once, at its turned spot. It replaces the construction site block for that building: there's no separate site block, and the core holds the site's stock.
+    - Clicking the core shows the site panel while the building is built, and its own panel (the hut panel) once built.
+    - Templates for buildings with a core must contain it exactly once; plain buildings keep using the site block.
+  - **The workplace starts employing once its building is built.** While under construction it's recorded as a workplace-to-be: no hiring, and it isn't offered to job seekers.
+  - **The building's stock:** what's left in the site stock when it's finished stays, as the hut's starting stock (e.g. spare axes).
+  - **A lumberjack hut template** (small, wooden) and its building definition.
+  - **Demolishing** the building removes its hut block too, so the workplace goes and its workers lose their jobs (existing workplace code).
+- **Out of scope:** other huts, the town hall (S-027), homes, repair.
+- **Test:**
+  - **Unit tests:** a template's core (missing, once, several), and the building definition with and without a core.
+  - **GameTests:**
+    - commissioning places the hut block at its turned spot, and it shows the site panel;
+    - nobody is hired while it's under construction;
+    - once finished, the hut panel shows and automatic hiring fills it;
+    - demolishing it fires its worker;
+    - a placed hut block (the stand-in) still works as before.
+  - **Manual:** the hut template's look; the panels switching.
+- **Notes:**
+  - Owner: homes need their own residence core, like MineColonies (a later story, with housing).
+  - Placed hut blocks, the stand-in until the build tool, keep working. Whether they stay once the build tool exists is open.
+
+### S-027 Town hall building
+- **Status:** planned | **Branch:** feature/town-hall-building | **PR:** - | **Depends on:** S-026
+- **Goal:** a settlement can be founded by commissioning a town hall building, which claims the land at once and is built like any other building.
+- **Scope:**
+  - **A town hall template and definition,** with the town hall block as its core (S-026's core-from-data).
+  - **Founding by commission** (`BuildingOps`/`SettlementOps`): commissioning a town hall outside any claim founds the settlement then and there, as CLAUDE.md says (claimed the moment it's founded). That means the starting claim, the space and buffer rules, and no town hall in another faction's territory. The hall building is then the settlement's first construction site.
+  - **The command:** `building commission` accepts a town hall outside a claim (every other building still needs your own claim).
+  - **While the hall is being built:** the claim and capture rules apply. Whether the hall panel's other features wait until it's finished is decided in the story.
+  - **Demolish:** a settlement's town hall can't be demolished, just as the hall block can't be broken.
+- **Out of scope:** the starter camp (Direction) and who builds the first hall, naturally generated settlements, the build tool.
+- **Test:**
+  - **GameTests:**
+    - commissioning a hall outside any claim founds a settlement, with the claim, and places the hall block;
+    - it's refused too close to another settlement or in another faction's land;
+    - finishing it makes it an ordinary built building;
+    - demolishing it is refused;
+    - a placed town hall block (the stand-in) still works.
+  - **Manual:** the hall template's look.
+- **Notes:**
+  - **Open, for the owner:** who builds the first town hall. The settlement has no builders until it's founded. In the Direction, the starter camp brings a builder; until then, a settlement's builders can be hired at the half-built hall, or `building finish` is used.
+  - The placed town hall block stays as the stand-in until the build tool and starter camp exist (CLAUDE.md).
+
+### S-012 Unit needs (design first)
+- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-025, S-014
+- **Goal:** units have hunger and happiness, drawn from real things in the world.
+- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
+- **Out of scope:** revolts, taxes.
+- **Test:** decided with the design.
+- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
+
+## Later (not yet stories)
+- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
+- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
+- **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
+- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
+- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
+- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
+- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
+
+## Done
+
 ### S-010 Building templates and sites
-- **Status:** in review | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
+- **Status:** done | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
 - **Goal:** a settlement can have a building commissioned at a site from a template.
 - **Scope:**
   - **Templates:**
@@ -76,39 +259,6 @@ Story template:
     - an outline or preview of a site;
     - damage detection (built buildings compared with their template);
     - evaluating Structurize for the build tool.
-
-### S-011 Builder job
-- **Status:** planned | **Branch:** feature/builder | **PR:** - | **Depends on:** S-010, S-014, S-015
-- **Goal:** builders take materials from settlement storage and build a commissioned site until it matches its template.
-- **Scope:**
-  - Uses the S-009 job steps: take materials, walk to the site, place blocks, repeat.
-  - Materials are used up as blocks are placed.
-  - Several builders can work one site without placing the same block twice.
-  - Placement speed is set in data.
-- **Out of scope:** the courier, gold, clearing and levelling the site, repair.
-- **Test:**
-  - GameTests: one builder completes a small template; two builders finish without duplicate placements; a builder waits without crashing when materials are missing.
-  - Manual: watch it build.
-- **Notes:** decided: the MVP builder takes materials from settlement storage, as CLAUDE.md's MVP says. The on-site builder + courier and payment model stays in Direction.
-
-### S-012 Unit needs (design first)
-- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-011, S-014
-- **Goal:** units have hunger and happiness, drawn from real things in the world.
-- **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
-- **Out of scope:** revolts, taxes.
-- **Test:** decided with the design.
-- **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
-
-## Later (not yet stories)
-- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
-- **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
-- **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
-- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
-- **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
-- **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
-- **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
-
-## Done
 
 ### S-020 spawnunit defaults to no occupation
 - **Status:** done | **Branch:** feature/spawnunit-default | **PR:** #23 | **Depends on:** -
