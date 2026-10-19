@@ -30,57 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-011 Construction sites
-- **Status:** in review | **Branch:** feature/construction-sites | **PR:** #25 | **Depends on:** S-010
-- **Goal:** a commissioned building has a construction site on site that holds its materials and shows its progress, until it's finished.
-- **Scope:**
-  - **The construction site block** (`kingdomrts:construction_site`, no item): commissioning puts it inside the building, on a spot the template leaves clear. It's a floor spot near the middle (`BuildingRules.siteSpot`). A building with no clear spot is refused. Its stock is protected like the settlement's other containers.
-  - **The site panel** (right-click the site block): progress (blocks placed of the total), blocks in the way, and materials still needed with how many are already on site. A Materials page lists them all; a Stock button opens the site's stock.
-  - **Finishing:** once nothing is left to do, the building is marked built and its site block is taken away; leftover stock drops. This happens through `building finish`, or when the open panel notices (e.g. built by hand), and builders will do it in S-025. `building list` shows built buildings; `cancel` and `finish` refuse them.
-  - **Cancelling:** breaking the site block (owner only) cancels the site, and so does `building cancel` (which also removes the block).
-  - **Demolishing** (`BuildingOps.demolish`, command `/kingdomrts building demolish <pos>`), for sites and built buildings:
-    - the settlement forgets the building, so its ground is free and it's no longer listed;
-    - a site's block goes and its stock drops;
-    - every block still matching the template is removed at once, with no drops. Other blocks stay.
-    - It refuses if the site isn't loaded, so a building is never half removed.
-- **Out of scope:** builders (S-024), the work loop (S-025), core blocks for functional buildings (S-026), repair.
-- **Test:**
-  - **Unit tests:** where the site goes (`siteSpot`: a floor spot near the middle, floor beats floating, none without air), a building with and without a site surviving saving (including finished ones and older saves), and the panel's materials ordering.
-  - **GameTests (`BuildingSiteGameTests`, 8):**
-    - the site block placed on commission (and in a turned building);
-    - finishing marks the building built, takes the site block away and drops leftovers;
-    - an open panel completes a building finished by hand;
-    - an outsider can't open or break the site, and the owner breaking it cancels;
-    - cancelling removes the site block;
-    - the panel's progress and on-site counts; live refresh; the materials page, paging, Stock and Back;
-    - demolishing a built building (its blocks gone, a block put inside it stays, no longer listed, its ground free again) and a site (its block and the floor gone, its stock dropped).
-  - **`BuildingGameTests`:** `remaining` on a built building, `list` showing it built, and `cancel` refusing it.
-  - **Manual:** the panel's look.
-- **Notes:**
-  - **Owner's design (while planning S-011):**
-    - There's no builder's hut. A settlement has a pool of builders, hired at the town hall for now.
-    - Builders are assigned to construction sites and set up shop there until the building is done, with materials pooled on site.
-    - Builders always fetch materials themselves (couriers are on hold), later buying from shops.
-  - **Core blocks, decided after a first version:** S-011 first put a generic "building core" block in every template. The owner questioned what a core is for in a building that does nothing. Settled:
-    - a temporary construction site block for every building;
-    - functional buildings (huts, the town hall, homes with a residence core, markets) have their own block as a lasting core (S-026);
-    - plain buildings have no block once finished.
-    - Per-building core blocks can't come from data anyway: blocks are only registered at startup.
-  - **Buildings keep their footprint until they're removed,** even when broken by hand (owner's call after an in-game report; a "count only the blocks still there" rule was considered and dropped). This is like MineColonies, where a damaged building stays until its hut is removed.
-    - One difference: MineColonies doesn't track decorations once built, while we track every building. So plain buildings need a way out: `building demolish` now, the build tool's demolish later (instant, or a builder taking it apart).
-    - Demolish sabotage checks: not forgetting the building, not removing its blocks, and removing every block in the footprint each fail the demolish tests.
-  - **The site spot is air in the template,** so the site block never stands where a block is wanted. `remaining` skips it, so it's neither "in the way" nor counted.
-  - **The open panel checks once a second** whether the site is finished, by recomputing the remaining work. That's bounded by the 32k-block template cap, and only runs while someone is looking. Builders will complete sites themselves in S-025.
-  - The old "Builder job" story is split into S-011, S-024, S-023 (Structurize spike), S-025 and S-026.
-  - **Flakes:** GameTests ran 3 times in a row without flakes.
-  - **Sabotage checks:**
-    - not placing the site block fails most site tests;
-    - breaking without cancelling fails the break test;
-    - never completing fails the finish tests.
-    - Removing the site block before marking the building built turned out harmless: the settlement forgets it and finishing writes it back. So that order isn't a hidden dependency.
-
 ### S-028 Town hall panel: population
-- **Status:** planned | **Branch:** feature/town-hall-population | **PR:** - | **Depends on:** S-011
+- **Status:** in progress | **Branch:** feature/town-hall-population | **PR:** - | **Depends on:** S-011
 - **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
 - **Scope:**
   - **The town hall panel gets pages,** the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, snapshot plus a once-a-second live refresh).
@@ -212,6 +163,55 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-011 Construction sites
+- **Status:** done | **Branch:** feature/construction-sites | **PR:** #25 | **Depends on:** S-010
+- **Goal:** a commissioned building has a construction site on site that holds its materials and shows its progress, until it's finished.
+- **Scope:**
+  - **The construction site block** (`kingdomrts:construction_site`, no item): commissioning puts it inside the building, on a spot the template leaves clear. It's a floor spot near the middle (`BuildingRules.siteSpot`). A building with no clear spot is refused. Its stock is protected like the settlement's other containers.
+  - **The site panel** (right-click the site block): progress (blocks placed of the total), blocks in the way, and materials still needed with how many are already on site. A Materials page lists them all; a Stock button opens the site's stock.
+  - **Finishing:** once nothing is left to do, the building is marked built and its site block is taken away; leftover stock drops. This happens through `building finish`, or when the open panel notices (e.g. built by hand), and builders will do it in S-025. `building list` shows built buildings; `cancel` and `finish` refuse them.
+  - **Cancelling:** breaking the site block (owner only) cancels the site, and so does `building cancel` (which also removes the block).
+  - **Demolishing** (`BuildingOps.demolish`, command `/kingdomrts building demolish <pos>`), for sites and built buildings:
+    - the settlement forgets the building, so its ground is free and it's no longer listed;
+    - a site's block goes and its stock drops;
+    - every block still matching the template is removed at once, with no drops. Other blocks stay.
+    - It refuses if the site isn't loaded, so a building is never half removed.
+- **Out of scope:** builders (S-024), the work loop (S-025), core blocks for functional buildings (S-026), repair.
+- **Test:**
+  - **Unit tests:** where the site goes (`siteSpot`: a floor spot near the middle, floor beats floating, none without air), a building with and without a site surviving saving (including finished ones and older saves), and the panel's materials ordering.
+  - **GameTests (`BuildingSiteGameTests`, 8):**
+    - the site block placed on commission (and in a turned building);
+    - finishing marks the building built, takes the site block away and drops leftovers;
+    - an open panel completes a building finished by hand;
+    - an outsider can't open or break the site, and the owner breaking it cancels;
+    - cancelling removes the site block;
+    - the panel's progress and on-site counts; live refresh; the materials page, paging, Stock and Back;
+    - demolishing a built building (its blocks gone, a block put inside it stays, no longer listed, its ground free again) and a site (its block and the floor gone, its stock dropped).
+  - **`BuildingGameTests`:** `remaining` on a built building, `list` showing it built, and `cancel` refusing it.
+  - **Manual:** the panel's look.
+- **Notes:**
+  - **Owner's design (while planning S-011):**
+    - There's no builder's hut. A settlement has a pool of builders, hired at the town hall for now.
+    - Builders are assigned to construction sites and set up shop there until the building is done, with materials pooled on site.
+    - Builders always fetch materials themselves (couriers are on hold), later buying from shops.
+  - **Core blocks, decided after a first version:** S-011 first put a generic "building core" block in every template. The owner questioned what a core is for in a building that does nothing. Settled:
+    - a temporary construction site block for every building;
+    - functional buildings (huts, the town hall, homes with a residence core, markets) have their own block as a lasting core (S-026);
+    - plain buildings have no block once finished.
+    - Per-building core blocks can't come from data anyway: blocks are only registered at startup.
+  - **Buildings keep their footprint until they're removed,** even when broken by hand (owner's call after an in-game report; a "count only the blocks still there" rule was considered and dropped). This is like MineColonies, where a damaged building stays until its hut is removed.
+    - One difference: MineColonies doesn't track decorations once built, while we track every building. So plain buildings need a way out: `building demolish` now, the build tool's demolish later (instant, or a builder taking it apart).
+    - Demolish sabotage checks: not forgetting the building, not removing its blocks, and removing every block in the footprint each fail the demolish tests.
+  - **The site spot is air in the template,** so the site block never stands where a block is wanted. `remaining` skips it, so it's neither "in the way" nor counted.
+  - **The open panel checks once a second** whether the site is finished, by recomputing the remaining work. That's bounded by the 32k-block template cap, and only runs while someone is looking. Builders will complete sites themselves in S-025.
+  - The old "Builder job" story is split into S-011, S-024, S-023 (Structurize spike), S-025 and S-026.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - not placing the site block fails most site tests;
+    - breaking without cancelling fails the break test;
+    - never completing fails the finish tests.
+    - Removing the site block before marking the building built turned out harmless: the settlement forgets it and finishing writes it back. So that order isn't a hidden dependency.
 
 ### S-010 Building templates and sites
 - **Status:** done | **Branch:** feature/building-sites | **PR:** #24 | **Depends on:** S-001
