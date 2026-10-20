@@ -30,30 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-023 Structurize spike
-- **Status:** in review | **Branch:** feature/structurize-spike | **PR:** #29 | **Depends on:** S-011
-- **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
-- **Scope:** a time-boxed look at its licence, API, build tool, 1.21.1 support, size and cost, with a hands-on test on a throwaway copy (not kept; the report says how to reproduce it). **The report is `docs/structurize.md`.**
-- **Out of scope:** adopting it.
-- **Test:** none (a decision document). The hands-on test was a GameTest on the throwaway copy.
-- **Notes:**
-  - **Owner, before the spike:** open to relicensing Kingdom RTS as GPL-3.0 if Structurize is the better tool.
-  - **Findings in brief:**
-    - **Licence and dependencies:** GPL-3.0. It requires BlockUI (GUI library) and Domum Ornamentum (decorative-block content). About 2.5 MB of jars.
-    - **Builds:** all 1.21.1 builds are beta or snapshot. A mismatched Structurize/BlockUI pair crashed the dedicated server at load; the matched snapshot trio worked, with all our GameTests passing alongside.
-    - **Placement:** server-side, resumable, a bounded number of blocks per call, driven by a survival `IStructureHandler` (inventory, required items, consume). 22 placement handlers.
-    - **Hands-on:** it rebuilt our shed exactly, with required items matching ours exactly. About 110 µs per placed block, against 8 µs for our bulk `finish`; roughly 1 ms per tick for 100 builders.
-    - **The build tool** has a hook (`ISurvivalBlueprintHandler`) that can turn a placement into `BuildingOps.commission`.
-  - **The report recommended adopting** (if Domum Ornamentum was acceptable too).
-  - **Owner's decision:** we won't use Structurize, BlockUI or Domum Ornamentum. The mod stays fully distinct from MineColonies and its libraries (a new standing policy in CLAUDE.md, Independence), and the spike's costs point the same way. Recorded in design.md (Nation management interface). `docs/structurize.md` stays as the record of the spike.
-  - **Follow-ups from the decision:**
-    - **The "build tool" becomes the nation management interface** (working name): the player's main way of shaping and running their nation, opened by a hotkey for now, with actions that don't depend on how they're triggered (stories S-032 to S-036).
-    - **Placement stays our own:** S-025 is reworked from vanilla's block rules and split into S-025, S-030 and S-031.
-    - **Docs:** CLAUDE.md, design.md and the README describe features in our own terms, with an Influences section crediting MineColonies, Polytopia, Civilization, Cities: Skylines and others. Done stories stay as they are.
-    - **Later:** code comments that mention MineColonies or Structurize (`WorkplaceScreen`, `BuildingTemplates`) are reworded in the next code PR.
-
 ### S-025 Builders place blocks
-- **Status:** planned | **Branch:** feature/builders-place | **PR:** - | **Depends on:** S-024
+- **Status:** in progress | **Branch:** feature/builders-place | **PR:** - | **Depends on:** S-024
 - **Goal:** assigned builders build their site from its stock until it matches its template.
 - **Scope:**
   - **Placing** missing blocks from the site stock, a block at a time, at a speed set in the builder's occupation data. Each block placed uses up its materials.
@@ -239,6 +217,28 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-023 Structurize spike
+- **Status:** done | **Branch:** feature/structurize-spike | **PR:** #29 | **Depends on:** S-011
+- **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
+- **Scope:** a time-boxed look at its licence, API, build tool, 1.21.1 support, size and cost, with a hands-on test on a throwaway copy (not kept; the report says how to reproduce it). **The report is `docs/structurize.md`.**
+- **Out of scope:** adopting it.
+- **Test:** none (a decision document). The hands-on test was a GameTest on the throwaway copy.
+- **Notes:**
+  - **Owner, before the spike:** open to relicensing Kingdom RTS as GPL-3.0 if Structurize is the better tool.
+  - **Findings in brief:**
+    - **Licence and dependencies:** GPL-3.0. It requires BlockUI (GUI library) and Domum Ornamentum (decorative-block content). About 2.5 MB of jars.
+    - **Builds:** all 1.21.1 builds are beta or snapshot. A mismatched Structurize/BlockUI pair crashed the dedicated server at load; the matched snapshot trio worked, with all our GameTests passing alongside.
+    - **Placement:** server-side, resumable, a bounded number of blocks per call, driven by a survival `IStructureHandler` (inventory, required items, consume). 22 placement handlers.
+    - **Hands-on:** it rebuilt our shed exactly, with required items matching ours exactly. About 110 µs per placed block, against 8 µs for our bulk `finish`; roughly 1 ms per tick for 100 builders.
+    - **The build tool** has a hook (`ISurvivalBlueprintHandler`) that can turn a placement into `BuildingOps.commission`.
+  - **The report recommended adopting** (if Domum Ornamentum was acceptable too).
+  - **Owner's decision:** we won't use Structurize, BlockUI or Domum Ornamentum. The mod stays fully distinct from MineColonies and its libraries (a new standing policy in CLAUDE.md, Independence), and the spike's costs point the same way. Recorded in design.md (Nation management interface). `docs/structurize.md` stays as the record of the spike.
+  - **Follow-ups from the decision:**
+    - **The "build tool" becomes the nation management interface** (working name): the player's main way of shaping and running their nation, opened by a hotkey for now, with actions that don't depend on how they're triggered (stories S-032 to S-036).
+    - **Placement stays our own:** S-025 is reworked from vanilla's block rules and split into S-025, S-030 and S-031.
+    - **Docs:** CLAUDE.md, design.md and the README describe features in our own terms, with an Influences section crediting MineColonies, Polytopia, Civilization, Cities: Skylines and others. Done stories stay as they are.
+    - **Later:** code comments that mention MineColonies or Structurize (`WorkplaceScreen`, `BuildingTemplates`) are reworded in the next code PR.
 
 ### S-024 Builders
 - **Status:** done | **Branch:** feature/builders | **PR:** #28 | **Depends on:** S-011
