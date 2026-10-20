@@ -43,6 +43,8 @@ public final class WalkToStep implements JobStep {
     private final BooleanSupplier stillWanted;
     private int ticks;
     private double closest;
+    // The closest it ever got (for the debug log; closest is reset by each recovery attempt).
+    private double closestEver;
     private int ticksSinceCloser;
     private int stuckCount;
     private int randomStepTicks;
@@ -69,12 +71,36 @@ public final class WalkToStep implements JobStep {
     public void start(Unit unit) {
         ticks = 0;
         closest = Double.MAX_VALUE;
+        closestEver = Double.MAX_VALUE;
         ticksSinceCloser = 0;
         stuckCount = 0;
         randomStepTicks = 0;
         if (workBlock != null) {
             target = chooseStandSpot(unit, workBlock);
         }
+        if (KingdomRts.LOGGER.isDebugEnabled() && target != null) {
+            Path path = unit.getNavigation().createPath(target, 0);
+            KingdomRts.LOGGER.debug("Unit {} walking from {} to {} ({} blocks{}); first path {}", unit.getUUID(), unit.blockPosition().toShortString(),
+                    target.toShortString(), String.format("%.1f", Math.sqrt(unit.blockPosition().distSqr(target))),
+                    workBlock != null ? ", to work on " + workBlock.toShortString() : "", describe(path));
+        }
+    }
+
+    // For the debug log: whether a path reaches its target, and where it ends.
+    private static String describe(@Nullable Path path) {
+        if (path == null) {
+            return "none";
+        }
+        BlockPos end = path.getEndNode() != null ? path.getEndNode().asBlockPos() : null;
+        return (path.canReach() ? "reaches" : "doesn't reach") + " (" + path.getNodeCount() + " nodes, ends at "
+                + (end != null ? end.toShortString() : "?") + ")";
+    }
+
+    // Logs why a walk gave up, for reports of stuck units.
+    private void logFailure(Unit unit, String why) {
+        KingdomRts.LOGGER.debug("Unit {} gave up walking to {}{}: {}; at {}, closest {} blocks", unit.getUUID(),
+                target != null ? target.toShortString() : "?", workBlock != null ? " (near " + workBlock.toShortString() + ")" : "", why,
+                unit.blockPosition().toShortString(), closestEver == Double.MAX_VALUE ? "?" : String.format("%.1f", closestEver));
     }
 
     // The nearest stand spot next to the block that the unit has a full path to (checking only a
@@ -93,10 +119,15 @@ public final class WalkToStep implements JobStep {
 
     @Override
     public Status tick(Unit unit) {
-        if (target == null || !stillWanted.getAsBoolean()) {
-            return Status.FAILED; // nowhere to stand, or no longer wanted
+        if (target == null) {
+            logFailure(unit, "no spot to stand near it");
+            return Status.FAILED;
+        }
+        if (!stillWanted.getAsBoolean()) {
+            return Status.FAILED; // no longer wanted (e.g. the tree is gone): nothing went wrong
         }
         double distance = unit.position().distanceTo(Vec3.atBottomCenterOf(target));
+        closestEver = Math.min(closestEver, distance);
         if (distance <= reach && unit.onGround()) {
             return Status.DONE;
         }
@@ -112,6 +143,7 @@ public final class WalkToStep implements JobStep {
         }
         if (ticksSinceCloser >= STUCK_TICKS || Footing.isOnTree(unit)) {
             if (!getUnstuck(unit)) {
+                logFailure(unit, "stuck, with no way out left to try (last path " + describe(unit.getNavigation().getPath()) + ")");
                 return Status.FAILED;
             }
             return Status.RUNNING;
