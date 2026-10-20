@@ -17,8 +17,8 @@ import net.neoforged.neoforge.event.AddReloadListenerEvent;
 
 // Where buildings' blueprints come from: vanilla structure templates (through the level's structure
 // manager), read into Blueprints and kept until datapacks reload. Everything that needs a
-// building's layout goes through here, so templates could later come from somewhere else (for
-// instance Structurize, see docs/design.md) without touching the rest.
+// building's layout goes through here, so where templates come from can change later (building
+// packs, styles and levels) without touching the rest.
 @EventBusSubscriber(modid = KingdomRts.MODID)
 public final class BuildingTemplates {
     // Server thread only. Empty optionals are kept too, so a missing template is only reported once.

@@ -15,13 +15,20 @@ import org.junit.jupiter.api.Test;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.BedBlock;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CandleBlock;
 import net.minecraft.world.level.block.DoorBlock;
+import net.minecraft.world.level.block.DoublePlantBlock;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.RotatedPillarBlock;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.SeaPickleBlock;
 import net.minecraft.world.level.block.SlabBlock;
+import net.minecraft.world.level.block.SnowLayerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
@@ -109,16 +116,69 @@ class BuildingRulesTest {
 
     @Test
     void whatBlocksCost() {
-        assertEquals(Items.OAK_DOOR, BuildingRules.itemFor(DOOR_NORTH).getItem(), "A door's lower half costs the door");
-        assertTrue(BuildingRules.itemFor(DOOR_NORTH.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER)).isEmpty(), "Its upper half comes free");
+        assertEquals(List.of(Items.OAK_DOOR), items(DOOR_NORTH), "A door's lower half costs the door");
+        assertTrue(BuildingRules.costOf(DOOR_NORTH.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER)).isEmpty(), "Its upper half comes free");
         BlockState bed = Blocks.RED_BED.defaultBlockState();
-        assertEquals(1, BuildingRules.itemFor(bed.setValue(BedBlock.PART, BedPart.FOOT)).getCount());
-        assertTrue(BuildingRules.itemFor(bed.setValue(BedBlock.PART, BedPart.HEAD)).isEmpty());
-        assertEquals(2, BuildingRules.itemFor(Blocks.OAK_SLAB.defaultBlockState().setValue(SlabBlock.TYPE, SlabType.DOUBLE)).getCount());
-        assertEquals(Items.TORCH, BuildingRules.itemFor(Blocks.WALL_TORCH.defaultBlockState()).getItem(), "A wall torch is a torch");
-        assertTrue(BuildingRules.itemFor(Blocks.AIR.defaultBlockState()).isEmpty());
-        assertTrue(BuildingRules.itemFor(Blocks.WATER.defaultBlockState()).isEmpty());
-        assertTrue(BuildingRules.itemFor(Blocks.FIRE.defaultBlockState()).isEmpty());
+        assertEquals(List.of(Items.RED_BED), items(bed.setValue(BedBlock.PART, BedPart.FOOT)));
+        assertTrue(BuildingRules.costOf(bed.setValue(BedBlock.PART, BedPart.HEAD)).isEmpty());
+        assertEquals(2, BuildingRules.costOf(Blocks.OAK_SLAB.defaultBlockState().setValue(SlabBlock.TYPE, SlabType.DOUBLE)).get(0).getCount());
+        assertEquals(List.of(Items.TORCH), items(Blocks.WALL_TORCH.defaultBlockState()), "A wall torch is a torch");
+        assertEquals(List.of(Items.WHEAT_SEEDS), items(Blocks.WHEAT.defaultBlockState()), "Crops cost their seeds");
+        assertEquals(List.of(Items.FLOWER_POT, Items.POPPY), items(Blocks.POTTED_POPPY.defaultBlockState()), "A pot and the plant");
+        assertEquals(List.of(Items.FLOWER_POT), items(Blocks.FLOWER_POT.defaultBlockState()), "An empty pot is just a pot");
+        for (BlockState dirtLike : List.of(Blocks.GRASS_BLOCK.defaultBlockState(), Blocks.FARMLAND.defaultBlockState(), Blocks.DIRT_PATH.defaultBlockState())) {
+            assertEquals(List.of(Items.DIRT), items(dirtLike), dirtLike + " costs dirt");
+        }
+        assertEquals(3, BuildingRules.costOf(Blocks.SNOW.defaultBlockState().setValue(SnowLayerBlock.LAYERS, 3)).get(0).getCount(), "One per layer");
+        assertEquals(2, BuildingRules.costOf(Blocks.CANDLE.defaultBlockState().setValue(CandleBlock.CANDLES, 2)).get(0).getCount(), "One per candle");
+        assertEquals(4, BuildingRules.costOf(Blocks.SEA_PICKLE.defaultBlockState().setValue(SeaPickleBlock.PICKLES, 4)).get(0).getCount(), "One per pickle");
+        assertEquals(List.of(Items.WATER_BUCKET), items(Blocks.WATER.defaultBlockState()), "A water source costs a bucket of water");
+        assertTrue(BuildingRules.costOf(Blocks.WATER.defaultBlockState().setValue(LiquidBlock.LEVEL, 3)).isEmpty(), "Flowing water can't be placed");
+        assertTrue(BuildingRules.costOf(Blocks.LAVA.defaultBlockState()).isEmpty(), "Builders don't place lava");
+        assertTrue(BuildingRules.costOf(Blocks.AIR.defaultBlockState()).isEmpty());
+        assertTrue(BuildingRules.costOf(Blocks.FIRE.defaultBlockState()).isEmpty());
+    }
+
+    @Test
+    void theOtherHalfGoesDownWithIt() {
+        BlockPos lowerPos = new BlockPos(0, 64, 0);
+        Blueprint.Part lower = new Blueprint.Part(lowerPos, DOOR_NORTH);
+        Blueprint.Part upper = new Blueprint.Part(lowerPos.above(), DOOR_NORTH.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER));
+        Map<BlockPos, Blueprint.Part> door = Map.of(lowerPos, lower, lowerPos.above(), upper);
+        assertEquals(Optional.of(upper), BuildingRules.partnerOf(lower, door));
+        assertEquals(Optional.empty(), BuildingRules.partnerOf(upper, door), "The upper half isn't placed on its own");
+
+        BlockState tall = Blocks.TALL_GRASS.defaultBlockState();
+        Blueprint.Part bottom = new Blueprint.Part(lowerPos, tall);
+        Blueprint.Part top = new Blueprint.Part(lowerPos.above(), tall.setValue(DoublePlantBlock.HALF, DoubleBlockHalf.UPPER));
+        assertEquals(Optional.of(top), BuildingRules.partnerOf(bottom, Map.of(lowerPos, bottom, lowerPos.above(), top)));
+
+        BlockState bed = Blocks.RED_BED.defaultBlockState().setValue(BedBlock.FACING, Direction.EAST);
+        Blueprint.Part foot = new Blueprint.Part(lowerPos, bed.setValue(BedBlock.PART, BedPart.FOOT));
+        Blueprint.Part head = new Blueprint.Part(lowerPos.east(), bed.setValue(BedBlock.PART, BedPart.HEAD));
+        assertEquals(Optional.of(head), BuildingRules.partnerOf(foot, Map.of(lowerPos, foot, lowerPos.east(), head)), "The head is the way the bed faces");
+        assertEquals(Optional.empty(), BuildingRules.partnerOf(new Blueprint.Part(lowerPos, Blocks.STONE.defaultBlockState()), door));
+    }
+
+    @Test
+    void buildersGoBottomUpAndWallsBeforeWhatHangsOnThem() {
+        Blueprint.Part torch = new Blueprint.Part(new BlockPos(0, 1, 0), Blocks.WALL_TORCH.defaultBlockState());
+        Blueprint.Part wall = new Blueprint.Part(new BlockPos(5, 1, 0), Blocks.STONE.defaultBlockState());
+        Blueprint.Part floor = new Blueprint.Part(new BlockPos(9, 0, 9), Blocks.OAK_PLANKS.defaultBlockState());
+        List<Blueprint.Part> parts = new ArrayList<>(List.of(torch, wall, floor));
+        parts.sort(BuildingRules.BUILD_ORDER);
+        assertEquals(List.of(floor, wall, torch), parts);
+    }
+
+    @Test
+    void waterloggedBlocksArePlacedDry() {
+        BlockState wet = Blocks.OAK_SLAB.defaultBlockState().setValue(SlabBlock.WATERLOGGED, true);
+        assertFalse(BuildingRules.placedState(wet).getValue(SlabBlock.WATERLOGGED));
+        assertEquals(Blocks.STONE.defaultBlockState(), BuildingRules.placedState(Blocks.STONE.defaultBlockState()));
+    }
+
+    private static List<Item> items(BlockState state) {
+        return BuildingRules.costOf(state).stream().map(ItemStack::getItem).toList();
     }
 
     @Test

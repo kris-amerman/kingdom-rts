@@ -1,10 +1,16 @@
 package com.krisamerman.kingdomrts.unit;
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import net.minecraft.world.Container;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
-// Moving items into a container (a workplace's stock, say): topping up matching stacks first, then
-// filling empty slots, like a hopper would. Works on any Container, so it can be unit tested.
+// Moving items into and out of a container (a workplace's or a site's stock): topping up matching
+// stacks first, then filling empty slots, like a hopper would; and taking a set of items out, all or
+// nothing. Works on any Container, so it can be unit tested.
 public final class Stock {
     private Stock() {
     }
@@ -33,5 +39,33 @@ public final class Stock {
             container.setChanged();
         }
         return left;
+    }
+
+    // Whether the container holds all of these (counting stacks of the same item together).
+    public static boolean has(Container container, List<ItemStack> stacks) {
+        Map<Item, Integer> needed = new HashMap<>();
+        stacks.forEach(stack -> needed.merge(stack.getItem(), stack.getCount(), Integer::sum));
+        return needed.entrySet().stream().allMatch(entry -> container.countItem(entry.getKey()) >= entry.getValue());
+    }
+
+    // Takes these out of the container, all or nothing. Returns false (taking nothing) if it doesn't
+    // hold them all.
+    public static boolean take(Container container, List<ItemStack> stacks) {
+        if (!has(container, stacks)) {
+            return false;
+        }
+        for (ItemStack stack : stacks) {
+            int left = stack.getCount();
+            for (int i = 0; i < container.getContainerSize() && left > 0; i++) {
+                ItemStack existing = container.getItem(i);
+                if (existing.is(stack.getItem())) {
+                    int taken = Math.min(left, existing.getCount());
+                    existing.shrink(taken);
+                    left -= taken;
+                }
+            }
+        }
+        container.setChanged();
+        return true;
     }
 }

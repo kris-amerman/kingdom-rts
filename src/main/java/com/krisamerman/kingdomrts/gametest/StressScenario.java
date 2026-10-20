@@ -7,10 +7,16 @@ import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
+import com.krisamerman.kingdomrts.settlement.BuilderOps;
+import com.krisamerman.kingdomrts.settlement.Building;
+import com.krisamerman.kingdomrts.settlement.BuildingOps;
+import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlockEntity;
 import com.krisamerman.kingdomrts.settlement.Settlement;
+import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.Occupation;
+import com.krisamerman.kingdomrts.unit.Stock;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
@@ -18,16 +24,19 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // The stress test's world (see StressGameTests and docs/perf.md): a grid of settlements, each a
 // small working town of UNITS_PER_SETTLEMENT units: lumberjacks working from their huts in a forest
-// of small oaks, a soldier at the hall, and a settler looking for work it won't find. Everything is
+// of small oaks, a soldier at the hall, and a builder building a storage shed from a stocked site. Everything is
 // placed the same way every run, so runs can be compared. The settlements' chunks are kept loaded
 // (forced) so they tick like chunks near a player.
 final class StressScenario {
@@ -41,6 +50,9 @@ final class StressScenario {
     private static final int CLEARING = 8;
     // Where the huts go around the hall, and where each lumberjack starts (next to its hut).
     private static final int[][] HUTS = {{-5, -5}, {0, -5}, {5, -5}, {-5, 0}, {5, 0}, {-5, 5}, {0, 5}, {5, 5}};
+    // Where each town's shed goes (its template corner, from the hall), outside the clearing.
+    private static final int[] SHED_OFFSET = {10, -2};
+    private static final ResourceLocation SHED = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "storage_shed");
 
     private final ServerLevel level;
     private final List<BlockPos> halls = new ArrayList<>();
@@ -48,6 +60,7 @@ final class StressScenario {
     private final List<Unit> units = new ArrayList<>();
     private final List<Unit> lumberjacks = new ArrayList<>();
     private final List<ChunkPos> forced = new ArrayList<>();
+    private final List<BlockPos> sheds = new ArrayList<>();
 
     private StressScenario(ServerLevel level) {
         this.level = level;
@@ -95,10 +108,13 @@ final class StressScenario {
             throw new IllegalStateException("Couldn't found a stress settlement: " + founded.problem());
         }
         halls.add(hall);
+        // The shed's ground is kept clear of trees (builders don't clear sites yet).
+        BlockPos shedOrigin = hall.offset(SHED_OFFSET[0], 0, SHED_OFFSET[1]);
+        BoundingBox shedGround = new BoundingBox(shedOrigin.getX() - 3, floorY, shedOrigin.getZ() - 3, shedOrigin.getX() + 7, floorY + 8, shedOrigin.getZ() + 7);
         for (int x = TREE_SPACING / 2; x < size - 1; x += TREE_SPACING) {
             for (int z = TREE_SPACING / 2; z < size - 1; z += TREE_SPACING) {
                 BlockPos base = new BlockPos(minX + x, floorY + 1, minZ + z);
-                if (Math.abs(base.getX() - hall.getX()) > CLEARING || Math.abs(base.getZ() - hall.getZ()) > CLEARING) {
+                if ((Math.abs(base.getX() - hall.getX()) > CLEARING || Math.abs(base.getZ() - hall.getZ()) > CLEARING) && !shedGround.isInside(base)) {
                     tree(base);
                 }
             }
@@ -118,7 +134,35 @@ final class StressScenario {
             lumberjacks.add(lumberjack);
         }
         spawn(faction, settlement, hall.offset(2, 0, 0), Occupation.SOLDIER); // stands guard at the hall
-        spawn(faction, settlement, hall.offset(-2, 0, 0), null); // looks for work every 10 s, finds none
+        // A builder on a storage shed, its site stocked with everything the shed needs.
+        BuildingOps.CommissionResult shed = BuildingOps.commission(level, faction, SHED, shedOrigin, Rotation.NONE);
+        if (shed.building() == null) {
+            throw new IllegalStateException("Couldn't commission a stress shed: " + shed.problem());
+        }
+        sheds.add(shed.building().origin());
+        if (level.getBlockEntity(shed.building().site()) instanceof ConstructionSiteBlockEntity stock) {
+            BuildingOps.remaining(level, shed.building()).remaining().materials().forEach((item, count) -> Stock.insert(stock, new ItemStack(item, count)));
+        }
+        Unit builder = spawn(faction, settlement, hall.offset(-2, 0, 0), null);
+        String problem = BuilderOps.hire(level, settlement, builder);
+        problem = problem != null ? problem : BuilderOps.assign(level, settlement, shed.building(), builder.getUUID());
+        if (problem != null) {
+            throw new IllegalStateException("Couldn't set up a stress builder: " + problem);
+        }
+    }
+
+    // How many of the towns' sheds are built.
+    int shedsBuilt() {
+        SettlementData data = SettlementData.get(level);
+        int built = 0;
+        for (BlockPos origin : sheds) {
+            Settlement settlement = data.claimAt(level.dimension(), new ChunkPos(origin));
+            Building building = settlement != null ? settlement.buildingAt(origin) : null;
+            if (building != null && building.isBuilt()) {
+                built++;
+            }
+        }
+        return built;
     }
 
     // A small natural oak, the same as LumberjackGameTests': dirt under a trunk, leaves around its

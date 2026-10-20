@@ -19,7 +19,7 @@ A server tick has 50 ms in total, and vanilla, other mods and players need most 
   - `kingdomrts:capture`: a town hall's capture check.
   - "Our ms per tick" = unit + capture; jobs run inside units' ticks, so they aren't added again.
   - Not recording, a section costs only the profiler push and pop. The timers run only during the stress test.
-- **The stress test** (`gametest/StressScenario.java`, `StressGameTests.java`) builds towns of 10 units each: 8 lumberjacks working from their huts in a forest of small oaks, a soldier at the hall, and a settler looking for work it won't find. It runs 50, 100, 200 and 400 units. Each size warms up for 200 ticks, then records 1200 ticks. It also checks that the lumberjacks actually felled trees, so an idle town can't pass by being cheap.
+- **The stress test** (`gametest/StressScenario.java`, `StressGameTests.java`) builds towns of 10 units each: 8 lumberjacks working from their huts in a forest of small oaks, a soldier at the hall, and a builder building a storage shed from a stocked site. It runs 50, 100, 200 and 400 units. Each size warms up for 200 ticks, then records 1200 ticks. It also checks that the lumberjacks actually felled trees and that at least half the sheds got built, so an idle town can't pass by being cheap.
   - The GameTest server ticks as fast as it can, so the whole run takes under a minute.
   - Its tests use their own namespace, `kingdomrts_stress`, so the normal GameTest run never includes them.
 
@@ -67,3 +67,4 @@ Our ms per tick (µs per unit in brackets), from local runs. Server ms/tick is t
 |---|---|---|---|---|---|---|---|
 | 2026-10-13 | S-021 branch | Apple Silicon, 8 cores, Java 21 | 0.50 (10) | 1.01 (10) | 1.94 (10) | 4.53 (11) | Baseline. Three runs varied by about 15%. |
 | 2026-10-14 | d721b4d | GitHub Actions, 4 cores, Linux | 0.50 (10) | 0.90 (9) | 1.96 (10) | 4.87 (12) | First CI run: within about 10% of local. Worst tick 44 ms at 400 units. |
+| 2026-10-19 | S-025 branch | Apple Silicon, 8 cores, Java 21 | 0.54 (11) | 1.03 (10) | 2.11 (11) | 4.98 (12) | Builders join the scenario: each town's idle settler is now a builder building a stocked shed. All sheds built in every size. Worst ticks 10, 17 and 39 ms at 100, 200 and 400. |

@@ -18,7 +18,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 
 // Client only. Draws the hut panel in the vanilla style, as pages of the same fixed size (so it fits
-// any screen, however many settlers there are), like MineColonies' hut windows:
+// any screen, however many settlers there are):
 //   - Overview: the workplace's details (settlement, job, workers, work area with -/+), then buttons
 //     for automatic hiring, the workers page, the stock and (for jobs that have them) job settings.
 //   - Workers: who works here (each with a Fire button) and who's looking for work (each with a

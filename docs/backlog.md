@@ -67,7 +67,34 @@ Story template:
     - doors, beds, torches and falling blocks end up right.
   - **Manual:** watch it build.
 - **Notes:**
-  - **Placement stays our own** (S-023 decision). The awkward blocks above come from vanilla's block classes.
+  - **Placement stays our own** (S-023 decision). The awkward blocks come from vanilla's block classes (`canSurvive`, `FallingBlock.isFree`, `DoubleBlockHalf`, `BedPart`, `FlowerPotBlock`, layer and count properties, fluid sources).
+  - **What was built:**
+    - `BuildingRules.costOf`, `partnerOf`, `BUILD_ORDER` and `placedState` (pure);
+    - `SitePlacement` (check and place one block from a stock);
+    - `SiteReservations` (in memory, expiring);
+    - `Stock.has` and `take`;
+    - `BuilderJob` builds;
+    - `ticks_per_block` in `occupation/builder.json` (10 by default).
+  - **Decisions:**
+    - builders on site use the site stock directly (no carrying);
+    - an emptied water bucket goes back to the stock;
+    - blocks are placed dry and block entities empty.
+  - **Choosing the next block:** the first block in build order that it can place now and reach (5 blocks from its eyes). If none is in reach, the first it can place, to walk to. Each look goes through at most 256 planned blocks, so big buildings stay cheap.
+  - **Standing in the way:** a builder standing where a block goes leaves it for last, then steps at least 2 blocks aside onto a spot that isn't planned. The shed's floor is at walking level, so this always comes up.
+  - **Found while tuning:**
+    - **A step-aside loop:** the spot it chose could be the one it was already on, because a unit can straddle two blocks. It took about 120 zero-distance walks per builder in the stress run.
+    - **Strict build order made builders zigzag** between the shed's sides.
+    - **Walking "to" the solid site block** took about 330 ticks to recover; builders now walk next to it.
+    - **The result:** one builder finishes the shed in about 1180 ticks (the ideal is about 1020).
+  - **Stress:** each town's idle settler is now a builder on a stocked shed. All sheds are built in every size; about 10 µs per unit per tick, 1.03 ms at 100 units and 2.11 at 200 (docs/perf.md). The stress test now also checks that at least half the sheds get built.
+  - **Comments** in `WorkplaceScreen` and `BuildingTemplates` no longer mention MineColonies or Structurize (Independence).
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - ignoring `canSurvive` (the awkward-blocks test);
+    - no reservations (two builders went for the same block 82 times);
+    - not using up materials (the leftover and no-materials checks);
+    - placing a door without its other half (the door test, and every shed test).
+    - Each fails.
   - The site's list of outstanding materials is the demand signal markets can read later.
 
 ### S-030 Builders clear the site
