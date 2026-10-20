@@ -1,5 +1,6 @@
 package com.krisamerman.kingdomrts.settlement;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -11,6 +12,7 @@ import com.krisamerman.kingdomrts.building.BuildingType;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionCommands;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.unit.Unit;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
@@ -20,6 +22,7 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.commands.arguments.TemplateRotationArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
@@ -28,6 +31,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Rotation;
@@ -39,6 +43,7 @@ import net.minecraft.world.level.block.Rotation;
 //   remaining <pos>: what's left to do at the site containing pos
 //   cancel <pos>: forget the site and take its construction site block away (placed blocks stay)
 //   demolish <pos>: remove the building containing pos, built or not: its blocks and its record
+//   assign <pos> <units> / unassign <pos> <units>: put builders on the site containing pos, or take them off
 //   finish <pos>: a cheat for testing: build it instantly, with no builder and no materials
 public final class BuildingCommands {
     // How many materials "remaining" lists before saying "and N more".
@@ -69,6 +74,16 @@ public final class BuildingCommands {
                 .then(Commands.literal("cancel")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(ctx -> cancel(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))))
+                .then(Commands.literal("assign")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .then(Commands.argument("units", EntityArgument.entities())
+                                        .executes(ctx -> assign(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos"),
+                                                EntityArgument.getEntities(ctx, "units"), true)))))
+                .then(Commands.literal("unassign")
+                        .then(Commands.argument("pos", BlockPosArgument.blockPos())
+                                .then(Commands.argument("units", EntityArgument.entities())
+                                        .executes(ctx -> assign(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos"),
+                                                EntityArgument.getEntities(ctx, "units"), false)))))
                 .then(Commands.literal("demolish")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(ctx -> demolish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))))
@@ -181,6 +196,40 @@ public final class BuildingCommands {
         source.sendSuccess(() -> Component.literal("Cancelled the " + typeName(level, building.type()) + " at "
                 + building.origin().toShortString()), true);
         return 1;
+    }
+
+    // Assigns builders to (or unassigns them from) the site containing pos, one by one, reporting each refusal.
+    private static int assign(CommandSourceStack source, BlockPos pos, Collection<? extends Entity> entities, boolean assign) {
+        Building building = buildingAt(source, pos);
+        if (building == null) {
+            return 0;
+        }
+        ServerLevel level = source.getLevel();
+        Settlement settlement = settlementOf(level, building);
+        String name = typeName(level, building.type());
+        int changed = 0;
+        for (Entity entity : entities) {
+            if (!(entity instanceof Unit unit)) {
+                continue;
+            }
+            if (assign) {
+                String problem = BuilderOps.assign(level, settlement, building, unit.getUUID());
+                if (problem != null) {
+                    source.sendFailure(Component.literal(problem));
+                    continue;
+                }
+            } else if (!BuilderOps.unassign(level, settlement, building, unit.getUUID())) {
+                source.sendFailure(Component.literal(unit.getName().getString() + " isn't working on the " + name));
+                continue;
+            }
+            changed++;
+        }
+        if (changed > 0) {
+            int total = changed;
+            source.sendSuccess(() -> Component.literal((assign ? "Assigned " : "Unassigned ") + total + " builder(s) " + (assign ? "to" : "from")
+                    + " the " + name), true);
+        }
+        return changed;
     }
 
     private static int demolish(CommandSourceStack source, BlockPos pos) {

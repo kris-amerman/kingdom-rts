@@ -34,14 +34,41 @@ Story template:
 - **Status:** in progress | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
 - **Goal:** a settlement has builders, hired at its town hall and assigned to construction sites.
 - **Scope:**
-  - **The builder occupation** (`kingdomrts:builder`, data). Builders have no workplace.
-  - **Town hall panel, Builders page:** hire unemployed settlers as builders, and fire builders.
-  - **Site panel, Builders section:** assign idle builders, unassign assigned ones. A site takes up to `max_builders` (building data, default 2; the right number is open).
-  - **Commands:** `unit hire <units> builder`, `building assign <pos> <units>`, `building unassign <pos> <units>`.
-  - **Where builders go:** assigned builders walk to their site and wait by its site block. Unassigned builders idle at their post. A builder whose site is finished or cancelled goes back to the pool.
+  - **The builder occupation** (`kingdomrts:builder`: `BuilderOccupation`, data in `occupation/builder.json`). Builders have no workplace.
+  - **Town hall panel, Builders page** (owners only): the settlement's builders with what each is working on and Fire; its unemployed settlers with Hire. The overview's bottom row is now [Population (n)] [Builders (n)].
+  - **Site panel, Builders page:** the builders on this site with Unassign; the settlement's idle builders with Assign (hidden once the site is full). A site takes up to `max_builders` (building data, default 2; the right number is open). The overview gets a "Builders (n/max)…" button.
+  - **Commands:** `unit hire <units> builder`; `unit fire` also fires builders; `building assign|unassign <pos> <units>`.
+  - **Where builders go** (`BuilderJob`): assigned builders walk to their site and wait within 4 blocks of its site block. Unassigned builders go back to their post, the town hall, and wait within 4 blocks. A builder whose site is finished, cancelled or demolished is back in the pool.
 - **Out of scope:** building anything (S-025).
-- **Test:** GameTests for hiring and firing at the hall, assigning and unassigning at the site (and the limit), builders going to the site, and returning to the pool on cancel. Manual: the panels.
-- **Notes:** -
+- **Test:**
+  - **Unit tests:** `BuilderRulesTest` (hiring and assigning refusals); a building's builders surviving saving and being freed when finished; `max_builders` optional, and at least 1.
+  - **GameTests (`BuilderGameTests`, 7):**
+    - hiring and firing at the hall panel;
+    - outsiders don't get the builders page;
+    - assigning at the site panel up to the limit, with busy builders not offered elsewhere;
+    - a builder walking to its site and back to the hall when the site is cancelled;
+    - finishing a site freeing its builders;
+    - a builder that dies or leaves being taken off its site;
+    - the commands.
+  - **Manual:** the panels.
+- **Notes:**
+  - **Decisions:**
+    - idle builders' post is the town hall, so the pool gathers there;
+    - only idle builders can be assigned (no moving a busy builder between sites from the panel; unassign first);
+    - `max_builders` defaults to 2.
+  - **Owner, for later:** the cap on builders per site should come from some level, perhaps a builders' guild's level, rather than a fixed number per building. Undecided; `max_builders` is a placeholder until then.
+  - **Assignments live on the building** (`Building.builders`, UUID to name), so they're known while builders are unloaded. A builder fired while unloaded loses the job when it next loads (`SettlementOps.catchUp`). A builder that leaves its settlement loses the job too.
+  - **Bug found by a sabotage check:**
+    - finishing a building wrote back the caller's copy of the building record, which could be out of date (from before builders were assigned), so changes made since were lost;
+    - `SettlementData.finishBuilding`, `assignBuilder` and `unassignBuilder` now work on the settlement's current record.
+  - **Stress:** builders add a small per-unit job (a short wait, and a look through the settlement's buildings when a step ends). The stress run is unchanged and within budget; builders join the scenario in S-025.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - no `max_builders` check (limit test);
+    - finishing keeping its builders (finish test, after the fix above);
+    - outsiders getting builders (outsider tests);
+    - the job ignoring its site (walk test).
+    - Each fails the matching test.
 
 ### S-023 Structurize spike
 - **Status:** planned | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011

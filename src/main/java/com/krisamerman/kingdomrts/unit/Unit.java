@@ -284,6 +284,13 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         return post;
     }
 
+    // Moves the unit's post (e.g. a builder's, to its town hall); its occupation then decides again
+    // whether it keeps near it.
+    public void movePost(@Nullable BlockPos post) {
+        this.post = post != null ? post.immutable() : null;
+        applyOccupation();
+    }
+
     private void setPost(@Nullable BlockPos post) {
         this.post = post != null ? post.immutable() : null;
         if (this.post != null) {

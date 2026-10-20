@@ -2,6 +2,7 @@ package com.krisamerman.kingdomrts.building;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -74,5 +75,11 @@ class BlueprintTest {
         BuildingType type = BuildingType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(
                 "{ \"structure\": \"kingdomrts:buildings/storage_shed\", \"name\": \"Storage shed\" }")).getOrThrow();
         assertEquals(new BuildingType(ResourceLocation.parse("kingdomrts:buildings/storage_shed"), "Storage shed"), type);
+        assertEquals(BuildingType.DEFAULT_MAX_BUILDERS, type.maxBuilders(), "max_builders is optional");
+        BuildingType bigger = BuildingType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(
+                "{ \"structure\": \"kingdomrts:buildings/barn\", \"name\": \"Barn\", \"max_builders\": 4 }")).getOrThrow();
+        assertEquals(4, bigger.maxBuilders());
+        assertTrue(BuildingType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(
+                "{ \"structure\": \"kingdomrts:buildings/barn\", \"name\": \"Barn\", \"max_builders\": 0 }")).isError(), "At least one");
     }
 }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 
@@ -51,5 +52,16 @@ class BuildingTest {
         List<BuildingSiteMenu.Material> materials = BuildingSiteMenu.materials(Map.of(Items.OAK_PLANKS, 12, Items.COBBLESTONE, 25, Items.TORCH, 1), stock);
         assertEquals(List.of(new BuildingSiteMenu.Material(Items.COBBLESTONE, 25, 0), new BuildingSiteMenu.Material(Items.OAK_PLANKS, 12, 4),
                 new BuildingSiteMenu.Material(Items.TORCH, 1, 0)), materials);
+    }
+
+    @Test
+    void assignedBuildersSurviveSavingAndAreFreedWhenFinished() {
+        UUID ada = UUID.randomUUID();
+        UUID ben = UUID.randomUUID();
+        Building assigned = SHED.withBuilder(ada, "Ada Thorne").withBuilder(ben, "Ben Ash");
+        assertEquals(List.of(ada, ben), List.copyOf(assigned.builders().keySet()), "In assignment order");
+        assertEquals(assigned, Building.load(assigned.save()));
+        assertEquals(Map.of(ben, "Ben Ash"), assigned.withoutBuilder(ada).builders());
+        assertTrue(assigned.finishedAt(99L).builders().isEmpty());
     }
 }

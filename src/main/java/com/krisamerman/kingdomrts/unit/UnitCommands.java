@@ -5,6 +5,7 @@ import java.util.Collection;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.settlement.BuilderOps;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementCommands;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
@@ -39,9 +40,11 @@ public final class UnitCommands {
                 .then(Commands.literal("leave")
                         .then(Commands.argument("units", EntityArgument.entities())
                                 .executes(ctx -> join(ctx.getSource(), EntityArgument.getEntities(ctx, "units"), null))))
-                // /kingdomrts unit hire <units> <workplace>
+                // /kingdomrts unit hire <units> <workplace>, or <units> builder (one of their settlement's builders)
                 .then(Commands.literal("hire")
                         .then(Commands.argument("units", EntityArgument.entities())
+                                .then(Commands.literal("builder")
+                                        .executes(ctx -> hireBuilders(ctx.getSource(), EntityArgument.getEntities(ctx, "units"))))
                                 .then(Commands.argument("workplace", BlockPosArgument.blockPos())
                                         .executes(ctx -> hire(ctx.getSource(), EntityArgument.getEntities(ctx, "units"),
                                                 BlockPosArgument.getLoadedBlockPos(ctx, "workplace"))))))
@@ -94,15 +97,47 @@ public final class UnitCommands {
         return hired;
     }
 
+    // Hires units as builders of the settlement each belongs to. Reports each one that couldn't be.
+    private static int hireBuilders(CommandSourceStack source, Collection<? extends Entity> entities) {
+        int hired = 0;
+        for (Entity entity : entities) {
+            if (entity instanceof Unit unit) {
+                ServerLevel level = (ServerLevel) unit.level();
+                Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+                String problem = settlement != null ? BuilderOps.hire(level, settlement, unit)
+                        : unit.getName().getString() + " doesn't belong to a settlement";
+                if (problem != null) {
+                    source.sendFailure(Component.literal(problem));
+                } else {
+                    hired++;
+                }
+            }
+        }
+        if (hired > 0) {
+            int total = hired;
+            source.sendSuccess(() -> Component.literal("Hired " + total + " unit(s) as builders"), true);
+        }
+        return hired;
+    }
+
+    // Fires units from their workplace, or from their settlement's builders.
     private static int fire(CommandSourceStack source, Collection<? extends Entity> entities) {
         int fired = 0;
         for (Entity entity : entities) {
-            if (entity instanceof Unit unit && WorkplaceOps.fire((ServerLevel) unit.level(), unit)) {
+            if (!(entity instanceof Unit unit)) {
+                continue;
+            }
+            ServerLevel level = (ServerLevel) unit.level();
+            Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
+            if (settlement != null && Occupation.BUILDER.equals(unit.getOccupationId())) {
+                BuilderOps.fire(level, settlement, unit.getUUID());
+                fired++;
+            } else if (WorkplaceOps.fire(level, unit)) {
                 fired++;
             }
         }
         if (fired == 0) {
-            source.sendFailure(Component.literal("None of those units has a workplace"));
+            source.sendFailure(Component.literal("None of those units has a workplace or is a builder"));
             return 0;
         }
         int total = fired;
