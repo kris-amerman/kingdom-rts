@@ -84,15 +84,20 @@ public class StressGameTests {
                 .thenExecute(() -> {
                     PerfReport.Result result = new PerfReport.Result(scenario.unitCount(), Perf.stopRecording());
                     int logs = scenario.logsCollected();
+                    int shedsBuilt = scenario.shedsBuilt();
                     scenario.remove();
                     RESULTS.add(result);
                     RESULTS.sort(Comparator.comparingInt(PerfReport.Result::units));
                     writeReport();
                     double trees = (double) logs / StressScenario.TREE_HEIGHT / scenario.lumberjackCount();
-                    KingdomRts.LOGGER.info("Stress test: {} units done, {} trees per lumberjack\n{}", units, String.format("%.1f", trees),
+                    KingdomRts.LOGGER.info("Stress test: {} units done, {} trees per lumberjack, {} of {} sheds built\n{}", units, String.format("%.1f", trees),
+                            shedsBuilt, scenario.unitCount() / StressScenario.UNITS_PER_SETTLEMENT,
                             PerfReport.table(RESULTS, PerfReport.Budget.DEFAULT));
                     helper.assertTrue(trees >= MIN_TREES_PER_LUMBERJACK,
                             String.format("The lumberjacks barely worked (%.1f trees each), so the numbers mean little", trees));
+                    int towns = scenario.unitCount() / StressScenario.UNITS_PER_SETTLEMENT;
+                    helper.assertTrue(shedsBuilt * 2 >= towns,
+                            "The builders barely worked (" + shedsBuilt + " of " + towns + " sheds built), so the numbers mean little");
                     String over = PerfReport.overBudget(result, PerfReport.Budget.DEFAULT);
                     helper.assertTrue(over == null, over);
                 })

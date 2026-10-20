@@ -1,7 +1,10 @@
 package com.krisamerman.kingdomrts.unit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
@@ -36,5 +39,19 @@ class StockTest {
         ItemStack logs = new ItemStack(Items.OAK_LOG, 5);
         Stock.insert(new SimpleContainer(1), logs);
         assertEquals(5, logs.getCount());
+    }
+
+    @Test
+    void takesAllOrNothing() {
+        SimpleContainer stock = new SimpleContainer(3);
+        stock.setItem(0, new ItemStack(Items.OAK_PLANKS, 3));
+        stock.setItem(2, new ItemStack(Items.OAK_PLANKS, 4));
+        stock.setItem(1, new ItemStack(Items.TORCH, 1));
+        assertTrue(Stock.has(stock, List.of(new ItemStack(Items.OAK_PLANKS, 6), new ItemStack(Items.TORCH))));
+        assertTrue(Stock.take(stock, List.of(new ItemStack(Items.OAK_PLANKS, 6))), "Across two stacks");
+        assertEquals(1, stock.countItem(Items.OAK_PLANKS));
+        assertFalse(Stock.take(stock, List.of(new ItemStack(Items.OAK_PLANKS, 1), new ItemStack(Items.TORCH, 2))), "Not enough torches");
+        assertEquals(1, stock.countItem(Items.OAK_PLANKS), "Nothing taken when it can't take everything");
+        assertEquals(1, stock.countItem(Items.TORCH));
     }
 }

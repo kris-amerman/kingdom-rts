@@ -1,4 +1,5 @@
 {
   "type": "kingdomrts:builder",
-  "movement_speed": 0.3
+  "movement_speed": 0.3,
+  "ticks_per_block": 10
 }

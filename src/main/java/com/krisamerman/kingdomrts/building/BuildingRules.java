@@ -15,6 +15,11 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.EmptyBlockGetter;
+import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.FlowerPotBlock;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
@@ -24,6 +29,7 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.block.state.properties.SlabType;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
@@ -152,31 +158,85 @@ public final class BuildingRules {
                 continue;
             }
             missing.add(part);
-            ItemStack cost = itemFor(part.state());
+            List<ItemStack> cost = costOf(part.state());
             if (cost.isEmpty()) {
                 if (!isFreeHalf(part.state())) {
                     unplaceable.add(part);
                 }
             } else {
-                materials.merge(cost.getItem(), cost.getCount(), Integer::sum);
+                cost.forEach(stack -> materials.merge(stack.getItem(), stack.getCount(), Integer::sum));
             }
         }
         return new Remaining(missing, obstructions, materials, unplaceable);
     }
 
-    // What placing this block costs. Two-block things (doors, beds, tall flowers) cost one item, on
-    // their lower half or foot; a double slab costs two slabs. Blocks with no item (air, fluids,
-    // fire, a piston's head) cost nothing.
-    public static ItemStack itemFor(BlockState state) {
-        if (state.isAir() || state.getBlock() instanceof LiquidBlock || isFreeHalf(state)) {
-            return ItemStack.EMPTY;
+    // What placing this block costs, worked out from vanilla's blocks. Usually its own item. Two-block
+    // things (doors, tall plants, beds) cost one item, on their lower half or foot; a double slab
+    // costs two slabs; snow layers, candles and sea pickles cost one per layer or piece; a potted
+    // plant costs a flower pot and the plant; grass, farmland and paths cost dirt (they can't be
+    // picked up as items without silk touch or a tool); a water source costs a water bucket (the
+    // empty bucket comes back, see SitePlacement). Blocks with no item (air, lava, flowing fluids,
+    // fire, a piston's head) cost nothing and can't be placed by builders. Empty for the free half
+    // of a two-block thing.
+    public static List<ItemStack> costOf(BlockState state) {
+        if (state.isAir() || isFreeHalf(state)) {
+            return List.of();
         }
-        Item item = state.getBlock().asItem();
+        Block block = state.getBlock();
+        if (block instanceof LiquidBlock) {
+            return state.getFluidState().isSourceOfType(Fluids.WATER) ? List.of(new ItemStack(Items.WATER_BUCKET)) : List.of();
+        }
+        if (block instanceof FlowerPotBlock pot && pot.getPotted() != Blocks.AIR) {
+            return List.of(new ItemStack(Items.FLOWER_POT), new ItemStack(pot.getPotted().asItem()));
+        }
+        if (block == Blocks.GRASS_BLOCK || block == Blocks.FARMLAND || block == Blocks.DIRT_PATH) {
+            return List.of(new ItemStack(Items.DIRT));
+        }
+        Item item = block.asItem();
         if (item == Items.AIR) {
-            return ItemStack.EMPTY;
+            return List.of();
         }
-        int count = state.hasProperty(BlockStateProperties.SLAB_TYPE) && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.DOUBLE ? 2 : 1;
-        return new ItemStack(item, count);
+        int count = 1;
+        if (state.hasProperty(BlockStateProperties.SLAB_TYPE) && state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.DOUBLE) {
+            count = 2;
+        } else if (state.hasProperty(BlockStateProperties.LAYERS) && block == Blocks.SNOW) {
+            count = state.getValue(BlockStateProperties.LAYERS);
+        } else if (state.hasProperty(BlockStateProperties.CANDLES)) {
+            count = state.getValue(BlockStateProperties.CANDLES);
+        } else if (state.hasProperty(BlockStateProperties.PICKLES)) {
+            count = state.getValue(BlockStateProperties.PICKLES);
+        }
+        return List.of(new ItemStack(item, count));
+    }
+
+    // The other half of a two-block thing, which goes down in the same step as this one: the upper
+    // half above a door's or tall plant's lower half, or a bed's head beside its foot. Empty for
+    // anything else (or if the blueprint lacks the other half).
+    public static Optional<Blueprint.Part> partnerOf(Blueprint.Part part, Map<BlockPos, Blueprint.Part> byPos) {
+        BlockState state = part.state();
+        BlockPos other = null;
+        if (state.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF) && state.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == DoubleBlockHalf.LOWER) {
+            other = part.pos().above();
+        } else if (state.hasProperty(BlockStateProperties.BED_PART) && state.getValue(BlockStateProperties.BED_PART) == BedPart.FOOT) {
+            other = part.pos().relative(BedBlock.getConnectedDirection(state));
+        }
+        Blueprint.Part partner = other != null ? byPos.get(other) : null;
+        return partner != null && partner.state().is(state.getBlock()) ? Optional.of(partner) : Optional.empty();
+    }
+
+    // The order builders place blocks in: the lowest layer first, and within a layer full blocks
+    // before the rest (so walls go up before what hangs on them), then a fixed order by position.
+    // Whether a block can actually go down yet is checked when placing (see SitePlacement).
+    public static final Comparator<Blueprint.Part> BUILD_ORDER = Comparator
+            .<Blueprint.Part>comparingInt(part -> part.pos().getY())
+            .thenComparingInt(part -> part.state().isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO) ? 0 : 1)
+            .thenComparingInt(part -> part.pos().getX())
+            .thenComparingInt(part -> part.pos().getZ());
+
+    // The state a builder actually places: the blueprint's, but dry (a waterlogged block in a
+    // template doesn't bring its own water).
+    public static BlockState placedState(BlockState state) {
+        return state.hasProperty(BlockStateProperties.WATERLOGGED) ? state.setValue(BlockStateProperties.WATERLOGGED, false) : state;
     }
 
     // The half of a two-block thing that comes free with the other half.
