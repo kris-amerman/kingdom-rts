@@ -375,7 +375,12 @@ public final class LumberjackJob implements Job {
 
         @Override
         public Status tick(Unit unit) {
-            if (tree == null || unit.position().distanceTo(tree.base().getBottomCenter()) > REACH + 3) {
+            if (tree == null) {
+                return Status.FAILED;
+            }
+            if (unit.position().distanceTo(tree.base().getBottomCenter()) > REACH + 3) {
+                KingdomRts.LOGGER.debug("Lumberjack {} stopped felling the tree at {}: it's at {}, too far from the trunk", unit.getUUID(),
+                        tree.base().toShortString(), unit.blockPosition().toShortString());
                 return Status.FAILED;
             }
             ServerLevel level = (ServerLevel) unit.level();

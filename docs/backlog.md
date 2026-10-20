@@ -30,51 +30,24 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-028 Town hall panel: population
-- **Status:** in review | **Branch:** feature/town-hall-population | **PR:** #26 | **Depends on:** S-011
-- **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
-- **Scope:**
-  - **The town hall panel is redone** as the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, a snapshot plus a once-a-second live refresh), with two pages.
-    - **Overview:** settlement, owner, live control meter, claim, and population count, with the Claim button for an unclaimed hall and a "Population (n)…" button for the owning faction's members.
-    - **Population:** each citizen's name with their job title ("Lumberjack", "Soldier", "Unemployed"), one per line, 9 a page, sorted by name, with Back and paging.
-  - **The settlement remembers its units** (`Resident`: name and occupation), so units that aren't loaded are listed as last seen. It's refreshed when a unit joins, is hired or fired, and whenever it loads (`SettlementOps.refreshResident`).
-  - **Owners only:** other factions see the overview without the population, and can't open the page.
-- **Out of scope:** opening a unit's panel from the list, hiring builders (S-024 adds a Builders page here), happiness and needs (S-012), a settlement-wide management menu or map, filtering and sorting.
-- **Test:**
-  - **Unit tests (`ResidentTest`):** residents survive saving; updates only touch the settlement's own units; units saved before residents existed load as unknown.
-  - **GameTests (`TownHallPanelGameTests`, 5):**
-    - everyone listed by name with their job (and not a faction unit outside the settlement);
-    - unloaded units listed as last seen;
-    - paging and Back;
-    - the open page updating when someone is hired or joins;
-    - outsiders don't get the population.
-  - **Manual:** the panels' look.
+### S-029 Walk diagnostics for idling lumberjacks
+- **Status:** in review | **Branch:** feature/lumberjack-reach | **PR:** #27 | **Depends on:** S-014
+- **Goal:** the next time a lumberjack idles while a tree stands, the debug log says why.
+- **Scope:** logging only, no behaviour changes (owner's call: no fixes on a guess).
+  - `WalkToStep` logs when a walk starts (from where, to which spot, and whether the first path reaches) and when it gives up: no spot to stand, or stuck with no way out, with where it got to and the closest it came.
+  - The felling step logs when the lumberjack ends up too far from the trunk to keep chopping.
+  - All at debug level, logged only at those moments.
+- **Out of scope:** fixing the idling (a follow-up story once the logs show the cause).
+- **Test:** `LumberjackReachGameTests`: real vanilla trees (by the game's own tree generator) at 10, 18, 26 and 34 blocks from the hut, a fancy oak, and one with the town hall in the way. Each must start being felled within 30 s. They pass today and guard walking against regressions.
 - **Notes:**
-  - **Owner feedback after a first version:**
-    - no View button to open a unit's panel from the list (a first version had one, view only from the hall, with Back);
-    - no workplace or "away" marker: just each citizen and their job title.
-    - The unit panel is unchanged from main.
-  - **The settlement save format changed:** units are now saved with their name and occupation. Units saved in the old format (just a UUID) show as "Unknown settler" until they next load.
-  - **No stress run needed:** residents are only refreshed on hire, fire, joining and loading, and the panel's work only happens while it's open.
-  - **Flakes:** GameTests ran 3 times in a row without flakes.
-  - **Sabotage checks:** residents never refreshed (unloaded-units test), outsiders getting the population (outsider test), and no live refresh (live test) each fail the matching test.
-
-### S-029 Lumberjack reaches distant trees
-- **Status:** planned | **Branch:** feature/lumberjack-reach | **PR:** - | **Depends on:** S-014
-- **Goal:** a lumberjack walks to any tree in its work area without minute-long waits.
-- **Scope:**
-  - **First, reproduce and diagnose:** debug logging when a walk starts and fails (why, where it got to, whether the path reached), and GameTests with real vanilla trees at 10, 18, 26 and 34 blocks, plus one with the hut in the way.
-  - **Then fix what the evidence shows.** Expected:
-    - a longer pathfinding range for units (follow range, e.g. 48), checked with the stress test;
-    - "close enough counts": within chopping reach of the trunk is a successful walk;
-    - a lone unreachable tree retried after about 15 s instead of 60.
-- **Out of scope:** levelling terrain, day and night.
-- **Test:** the reproduction GameTests become regression tests; "close enough" and "lone tree retried sooner" tests; sabotage checks; a stress run, with a row in docs/perf.md. Manual: no waits in the owner's world.
-- **Notes:**
-  - **Owner report:** lumberjacks idle by the hut for minutes with a tree standing.
-  - **The log** (19 Oct session): the same tree, at (118, 64, 34), "couldn't reach" three times, a minute apart. Each failure skips the tree for 60 s; with nothing else to fell it waits at the hut.
-  - **The save:** flat open grass around that tree (so not a lack of standing room, the first guess). The hut was at (135, 64, 39) with a work radius of 32, so the tree was about 17.7 blocks away.
-  - **Suspected cause:** units keep vanilla's follow range of 16, which is also their pathfinding range. To be confirmed by the reproduction tests before fixing.
+  - **Owner report:** lumberjacks sometimes wait by the hut for minutes with a tree standing, then eventually fell it.
+  - **The log** (19 Oct session): the same tree, at (118, 64, 34), "couldn't reach" three times, a minute apart. Each failure skips the tree for 60 s; with nothing else to fell it waits at the hut. Just before that, "can't replant at (122, 64, 40), too far": it had ended up more than 6 blocks from the tree it had just felled.
+  - **Ruled out so far:**
+    - **Lack of standing room:** the save shows flat open grass.
+    - **The 16-block pathfinding range:** the reach tests start felling within 6 to 13 s at every distance.
+    - **A small forest:** a temporary scenario with 10 vanilla trees and an idle unit had no failed walks.
+  - **Next time it happens:** the "gave up walking" and "stopped felling" lines in `run/logs/debug.log`.
+  - **Ideas held back** until the cause is known: "close enough counts", and retrying a lone tree sooner.
 
 ### S-024 Builders
 - **Status:** planned | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
@@ -185,6 +158,35 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-028 Town hall panel: population
+- **Status:** done | **Branch:** feature/town-hall-population | **PR:** #26 | **Depends on:** S-011
+- **Goal:** a settlement's owners can open its town hall and scroll through everyone who lives there.
+- **Scope:**
+  - **The town hall panel is redone** as the same fixed vanilla-style panel as the hut and site panels (`GuiDraw`, `SwitchingMenuProvider`, a snapshot plus a once-a-second live refresh), with two pages.
+    - **Overview:** settlement, owner, live control meter, claim, and population count, with the Claim button for an unclaimed hall and a "Population (n)…" button for the owning faction's members.
+    - **Population:** each citizen's name with their job title ("Lumberjack", "Soldier", "Unemployed"), one per line, 9 a page, sorted by name, with Back and paging.
+  - **The settlement remembers its units** (`Resident`: name and occupation), so units that aren't loaded are listed as last seen. It's refreshed when a unit joins, is hired or fired, and whenever it loads (`SettlementOps.refreshResident`).
+  - **Owners only:** other factions see the overview without the population, and can't open the page.
+- **Out of scope:** opening a unit's panel from the list, hiring builders (S-024 adds a Builders page here), happiness and needs (S-012), a settlement-wide management menu or map, filtering and sorting.
+- **Test:**
+  - **Unit tests (`ResidentTest`):** residents survive saving; updates only touch the settlement's own units; units saved before residents existed load as unknown.
+  - **GameTests (`TownHallPanelGameTests`, 5):**
+    - everyone listed by name with their job (and not a faction unit outside the settlement);
+    - unloaded units listed as last seen;
+    - paging and Back;
+    - the open page updating when someone is hired or joins;
+    - outsiders don't get the population.
+  - **Manual:** the panels' look.
+- **Notes:**
+  - **Owner feedback after a first version:**
+    - no View button to open a unit's panel from the list (a first version had one, view only from the hall, with Back);
+    - no workplace or "away" marker: just each citizen and their job title.
+    - The unit panel is unchanged from main.
+  - **The settlement save format changed:** units are now saved with their name and occupation. Units saved in the old format (just a UUID) show as "Unknown settler" until they next load.
+  - **No stress run needed:** residents are only refreshed on hire, fire, joining and loading, and the panel's work only happens while it's open.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:** residents never refreshed (unloaded-units test), outsiders getting the population (outsider test), and no live refresh (live test) each fail the matching test.
 
 ### S-011 Construction sites
 - **Status:** done | **Branch:** feature/construction-sites | **PR:** #25 | **Depends on:** S-010
