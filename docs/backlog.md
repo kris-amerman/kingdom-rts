@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-024 Builders
-- **Status:** in progress | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
+- **Status:** in review | **Branch:** feature/builders | **PR:** #28 | **Depends on:** S-011
 - **Goal:** a settlement has builders, hired at its town hall and assigned to construction sites.
 - **Scope:**
   - **The builder occupation** (`kingdomrts:builder`: `BuilderOccupation`, data in `occupation/builder.json`). Builders have no workplace.
