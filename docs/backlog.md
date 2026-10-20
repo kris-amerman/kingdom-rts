@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-023 Structurize spike
-- **Status:** in progress | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011
+- **Status:** in review | **Branch:** feature/structurize-spike | **PR:** #29 | **Depends on:** S-011
 - **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
 - **Scope:** a time-boxed look at its licence, API, build tool, 1.21.1 support, size and cost, with a hands-on test on a throwaway copy (not kept; the report says how to reproduce it). **The report is `docs/structurize.md`.**
 - **Out of scope:** adopting it.
