@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-025 Builders place blocks
-- **Status:** in progress | **Branch:** feature/builders-place | **PR:** - | **Depends on:** S-024
+- **Status:** in review | **Branch:** feature/builders-place | **PR:** #30 | **Depends on:** S-024
 - **Goal:** assigned builders build their site from its stock until it matches its template.
 - **Scope:**
   - **Placing** missing blocks from the site stock, a block at a time, at a speed set in the builder's occupation data. Each block placed uses up its materials.
