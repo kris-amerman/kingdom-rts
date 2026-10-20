@@ -30,37 +30,45 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-029 Walk diagnostics for idling lumberjacks
-- **Status:** in review | **Branch:** feature/lumberjack-reach | **PR:** #27 | **Depends on:** S-014
-- **Goal:** the next time a lumberjack idles while a tree stands, the debug log says why.
-- **Scope:** logging only, no behaviour changes (owner's call: no fixes on a guess).
-  - `WalkToStep` logs when a walk starts (from where, to which spot, and whether the first path reaches) and when it gives up: no spot to stand, or stuck with no way out, with where it got to and the closest it came.
-  - The felling step logs when the lumberjack ends up too far from the trunk to keep chopping.
-  - All at debug level, logged only at those moments.
-- **Out of scope:** fixing the idling (a follow-up story once the logs show the cause).
-- **Test:** `LumberjackReachGameTests`: real vanilla trees (by the game's own tree generator) at 10, 18, 26 and 34 blocks from the hut, a fancy oak, and one with the town hall in the way. Each must start being felled within 30 s. They pass today and guard walking against regressions.
-- **Notes:**
-  - **Owner report:** lumberjacks sometimes wait by the hut for minutes with a tree standing, then eventually fell it.
-  - **The log** (19 Oct session): the same tree, at (118, 64, 34), "couldn't reach" three times, a minute apart. Each failure skips the tree for 60 s; with nothing else to fell it waits at the hut. Just before that, "can't replant at (122, 64, 40), too far": it had ended up more than 6 blocks from the tree it had just felled.
-  - **Ruled out so far:**
-    - **Lack of standing room:** the save shows flat open grass.
-    - **The 16-block pathfinding range:** the reach tests start felling within 6 to 13 s at every distance.
-    - **A small forest:** a temporary scenario with 10 vanilla trees and an idle unit had no failed walks.
-  - **Next time it happens:** the "gave up walking" and "stopped felling" lines in `run/logs/debug.log`.
-  - **Ideas held back** until the cause is known: "close enough counts", and retrying a lone tree sooner.
-
 ### S-024 Builders
-- **Status:** planned | **Branch:** feature/builders | **PR:** - | **Depends on:** S-011
+- **Status:** in review | **Branch:** feature/builders | **PR:** #28 | **Depends on:** S-011
 - **Goal:** a settlement has builders, hired at its town hall and assigned to construction sites.
 - **Scope:**
-  - **The builder occupation** (`kingdomrts:builder`, data). Builders have no workplace.
-  - **Town hall panel, Builders page:** hire unemployed settlers as builders, and fire builders.
-  - **Site panel, Builders section:** assign idle builders, unassign assigned ones. A site takes up to `max_builders` (building data, default 2; the right number is open).
-  - **Commands:** `unit hire <units> builder`, `building assign <pos> <units>`, `building unassign <pos> <units>`.
-  - **Where builders go:** assigned builders walk to their site and wait by its site block. Unassigned builders idle at their post. A builder whose site is finished or cancelled goes back to the pool.
+  - **The builder occupation** (`kingdomrts:builder`: `BuilderOccupation`, data in `occupation/builder.json`). Builders have no workplace.
+  - **Town hall panel, Builders page** (owners only): the settlement's builders with what each is working on and Fire; its unemployed settlers with Hire. The overview's bottom row is now [Population (n)] [Builders (n)].
+  - **Site panel, Builders page:** the builders on this site with Unassign; the settlement's idle builders with Assign (hidden once the site is full). A site takes up to `max_builders` (building data, default 2; the right number is open). The overview gets a "Builders (n/max)…" button.
+  - **Commands:** `unit hire <units> builder`; `unit fire` also fires builders; `building assign|unassign <pos> <units>`.
+  - **Where builders go** (`BuilderJob`): assigned builders walk to their site and wait within 4 blocks of its site block. Unassigned builders go back to their post, the town hall, and wait within 4 blocks. A builder whose site is finished, cancelled or demolished is back in the pool.
 - **Out of scope:** building anything (S-025).
-- **Test:** GameTests for hiring and firing at the hall, assigning and unassigning at the site (and the limit), builders going to the site, and returning to the pool on cancel. Manual: the panels.
-- **Notes:** -
+- **Test:**
+  - **Unit tests:** `BuilderRulesTest` (hiring and assigning refusals); a building's builders surviving saving and being freed when finished; `max_builders` optional, and at least 1.
+  - **GameTests (`BuilderGameTests`, 7):**
+    - hiring and firing at the hall panel;
+    - outsiders don't get the builders page;
+    - assigning at the site panel up to the limit, with busy builders not offered elsewhere;
+    - a builder walking to its site and back to the hall when the site is cancelled;
+    - finishing a site freeing its builders;
+    - a builder that dies or leaves being taken off its site;
+    - the commands.
+  - **Manual:** the panels.
+- **Notes:**
+  - **Decisions:**
+    - idle builders' post is the town hall, so the pool gathers there;
+    - only idle builders can be assigned (no moving a busy builder between sites from the panel; unassign first);
+    - `max_builders` defaults to 2.
+  - **Owner, for later:** the cap on builders per site should come from some level, perhaps a builders' guild's level, rather than a fixed number per building. Undecided; `max_builders` is a placeholder until then.
+  - **Assignments live on the building** (`Building.builders`, UUID to name), so they're known while builders are unloaded. A builder fired while unloaded loses the job when it next loads (`SettlementOps.catchUp`). A builder that leaves its settlement loses the job too.
+  - **Bug found by a sabotage check:**
+    - finishing a building wrote back the caller's copy of the building record, which could be out of date (from before builders were assigned), so changes made since were lost;
+    - `SettlementData.finishBuilding`, `assignBuilder` and `unassignBuilder` now work on the settlement's current record.
+  - **Stress:** builders add a small per-unit job (a short wait, and a look through the settlement's buildings when a step ends). The stress run is unchanged and within budget; builders join the scenario in S-025.
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - no `max_builders` check (limit test);
+    - finishing keeping its builders (finish test, after the fix above);
+    - outsiders getting builders (outsider tests);
+    - the job ignoring its site (walk test).
+    - Each fails the matching test.
 
 ### S-023 Structurize spike
 - **Status:** planned | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011
@@ -158,6 +166,25 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-029 Walk diagnostics for idling lumberjacks
+- **Status:** done | **Branch:** feature/lumberjack-reach | **PR:** #27 | **Depends on:** S-014
+- **Goal:** the next time a lumberjack idles while a tree stands, the debug log says why.
+- **Scope:** logging only, no behaviour changes (owner's call: no fixes on a guess).
+  - `WalkToStep` logs when a walk starts (from where, to which spot, and whether the first path reaches) and when it gives up: no spot to stand, or stuck with no way out, with where it got to and the closest it came.
+  - The felling step logs when the lumberjack ends up too far from the trunk to keep chopping.
+  - All at debug level, logged only at those moments.
+- **Out of scope:** fixing the idling (a follow-up story once the logs show the cause).
+- **Test:** `LumberjackReachGameTests`: real vanilla trees (by the game's own tree generator) at 10, 18, 26 and 34 blocks from the hut, a fancy oak, and one with the town hall in the way. Each must start being felled within 30 s. They pass today and guard walking against regressions.
+- **Notes:**
+  - **Owner report:** lumberjacks sometimes wait by the hut for minutes with a tree standing, then eventually fell it.
+  - **The log** (19 Oct session): the same tree, at (118, 64, 34), "couldn't reach" three times, a minute apart. Each failure skips the tree for 60 s; with nothing else to fell it waits at the hut. Just before that, "can't replant at (122, 64, 40), too far": it had ended up more than 6 blocks from the tree it had just felled.
+  - **Ruled out so far:**
+    - **Lack of standing room:** the save shows flat open grass.
+    - **The 16-block pathfinding range:** the reach tests start felling within 6 to 13 s at every distance.
+    - **A small forest:** a temporary scenario with 10 vanilla trees and an idle unit had no failed walks.
+  - **Next time it happens:** the "gave up walking" and "stopped felling" lines in `run/logs/debug.log`.
+  - **Ideas held back** until the cause is known: "close enough counts", and retrying a lone tree sooner.
 
 ### S-028 Town hall panel: population
 - **Status:** done | **Branch:** feature/town-hall-population | **PR:** #26 | **Depends on:** S-011

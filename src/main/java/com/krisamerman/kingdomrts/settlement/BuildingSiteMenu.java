@@ -39,12 +39,24 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
     public static final int SHOW_OVERVIEW_BUTTON = 2;
     public static final int PREVIOUS_PAGE_BUTTON = 3;
     public static final int NEXT_PAGE_BUTTON = 4;
+    public static final int SHOW_BUILDERS_BUTTON = 5;
+    // Assigning available builder i is button ASSIGN_BUTTON + i; unassigning assigned builder i, UNASSIGN_BUTTON + i.
+    public static final int ASSIGN_BUTTON = 200;
+    public static final int UNASSIGN_BUTTON = 400;
+    // The builders page lists this many rows (section titles included) per page.
+    public static final int ROWS_PER_PAGE = 6;
     // The overview shows this many materials; the materials page shows this many a page.
-    public static final int OVERVIEW_MATERIALS = 4;
+    public static final int OVERVIEW_MATERIALS = 3;
     public static final int MATERIALS_PER_PAGE = 6;
     public static final int REFRESH_CHECK_TICKS = 20;
 
-    public enum View { OVERVIEW, MATERIALS }
+    public enum View { OVERVIEW, MATERIALS, BUILDERS }
+
+    // A row of the builders page: a section title, an assigned or available builder (by index), or
+    // an "empty" line under a section with nobody in it.
+    public record Row(Kind kind, int index) {
+        public enum Kind { ASSIGNED_TITLE, ASSIGNED, NO_ASSIGNED, AVAILABLE_TITLE, AVAILABLE, NO_AVAILABLE }
+    }
 
     // A material still needed: how many the missing blocks take, and how many are in the site's stock.
     public record Material(Item item, int needed, int onSite) {
@@ -61,9 +73,10 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
 
     // What the panel shows. loaded is false when the site's chunks aren't loaded (then only the names
     // mean anything). total counts the building's blocks (not the air it needs clear); placed, how
-    // many of them are in place. Materials are most needed first.
+    // many of them are in place. Materials are most needed first. assigned are the builders on this
+    // site (up to maxBuilders), available the settlement's builders not working on any site.
     public record SiteInfo(String buildingName, String settlementName, boolean loaded, int total, int placed, int inTheWay,
-            List<Material> materials, View view, int page) {
+            List<Material> materials, List<PanelEntry> assigned, List<PanelEntry> available, int maxBuilders, View view, int page) {
         void write(FriendlyByteBuf buf) {
             buf.writeUtf(buildingName);
             buf.writeUtf(settlementName);
@@ -72,21 +85,37 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
             buf.writeVarInt(placed);
             buf.writeVarInt(inTheWay);
             buf.writeCollection(materials, (b, material) -> material.write(b));
+            buf.writeCollection(assigned, (b, entry) -> entry.write(b));
+            buf.writeCollection(available, (b, entry) -> entry.write(b));
+            buf.writeVarInt(maxBuilders);
             buf.writeEnum(view);
             buf.writeVarInt(page);
         }
 
         static SiteInfo read(FriendlyByteBuf buf) {
             return new SiteInfo(buf.readUtf(), buf.readUtf(), buf.readBoolean(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(),
-                    buf.readList(Material::read), buf.readEnum(View.class), buf.readVarInt());
+                    buf.readList(Material::read), buf.readList(PanelEntry::read), buf.readList(PanelEntry::read), buf.readVarInt(),
+                    buf.readEnum(View.class), buf.readVarInt());
         }
 
         public boolean isFinished() {
             return loaded && placed == total && inTheWay == 0;
         }
 
+        public boolean isFull() {
+            return assigned.size() >= maxBuilders;
+        }
+
         public int pages() {
-            return Math.max(1, (materials.size() + MATERIALS_PER_PAGE - 1) / MATERIALS_PER_PAGE);
+            return view == View.BUILDERS ? pagesOf(builderRows(assigned.size(), available.size()).size(), ROWS_PER_PAGE)
+                    : pagesOf(materials.size(), MATERIALS_PER_PAGE);
+        }
+
+        // The rows on the current page of the builders page.
+        public List<Row> pageRows() {
+            List<Row> rows = builderRows(assigned.size(), available.size());
+            int from = Math.min(rows.size(), page * ROWS_PER_PAGE);
+            return rows.subList(from, Math.min(rows.size(), from + ROWS_PER_PAGE));
         }
 
         // The materials on the current page of the materials view.
@@ -94,6 +123,30 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
             int from = Math.min(materials.size(), page * MATERIALS_PER_PAGE);
             return materials.subList(from, Math.min(materials.size(), from + MATERIALS_PER_PAGE));
         }
+    }
+
+    // The builders page: who works on this site, then the builders who could.
+    static List<Row> builderRows(int assigned, int available) {
+        List<Row> rows = new ArrayList<>();
+        rows.add(new Row(Row.Kind.ASSIGNED_TITLE, 0));
+        for (int i = 0; i < assigned; i++) {
+            rows.add(new Row(Row.Kind.ASSIGNED, i));
+        }
+        if (assigned == 0) {
+            rows.add(new Row(Row.Kind.NO_ASSIGNED, 0));
+        }
+        rows.add(new Row(Row.Kind.AVAILABLE_TITLE, 0));
+        for (int i = 0; i < available; i++) {
+            rows.add(new Row(Row.Kind.AVAILABLE, i));
+        }
+        if (available == 0) {
+            rows.add(new Row(Row.Kind.NO_AVAILABLE, 0));
+        }
+        return rows;
+    }
+
+    private static int pagesOf(int items, int perPage) {
+        return Math.max(1, (items + perPage - 1) / perPage);
     }
 
     private final SiteInfo info;
@@ -157,14 +210,20 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
         String name = BuildingType.get(level, building.type()).map(BuildingType::name).orElse(building.type().toString());
         BuildingOps.RemainingResult result = BuildingOps.remaining(level, building);
         BuildingRules.Remaining remaining = result.remaining();
+        List<PanelEntry> assigned = building.builders().entrySet().stream()
+                .map(builder -> new PanelEntry(builder.getKey(), builder.getValue(), "")).toList();
+        List<PanelEntry> available = BuilderOps.idleBuilders(level, settlement).stream()
+                .map(builder -> new PanelEntry(builder.id(), builder.name(), "")).toList();
+        int maxBuilders = BuildingType.get(level, building.type()).map(BuildingType::maxBuilders).orElse(BuildingType.DEFAULT_MAX_BUILDERS);
         if (remaining == null) {
-            return new SiteInfo(name, settlement.name(), false, 0, 0, 0, List.of(), View.OVERVIEW, 0);
+            return new SiteInfo(name, settlement.name(), false, 0, 0, 0, List.of(), assigned, available, maxBuilders, View.OVERVIEW, 0);
         }
         List<Material> materials = materials(remaining.materials(), core);
         int total = total(level, building);
-        int pages = Math.max(1, (materials.size() + MATERIALS_PER_PAGE - 1) / MATERIALS_PER_PAGE);
+        int pages = view == View.BUILDERS ? pagesOf(builderRows(assigned.size(), available.size()).size(), ROWS_PER_PAGE)
+                : pagesOf(materials.size(), MATERIALS_PER_PAGE);
         return new SiteInfo(name, settlement.name(), true, total, total - remaining.missing().size(), remaining.obstructions().size(),
-                materials, view, Math.max(0, Math.min(page, pages - 1)));
+                materials, assigned, available, maxBuilders, view, Math.max(0, Math.min(page, pages - 1)));
     }
 
     // The building's blocks, not counting the air it needs clear.
@@ -213,11 +272,34 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
             case STOCK_BUTTON -> BuildingSiteStockMenu.open(viewer, core);
             case SHOW_MATERIALS_BUTTON -> open(viewer, core, View.MATERIALS, 0);
             case SHOW_OVERVIEW_BUTTON -> open(viewer, core, View.OVERVIEW, 0);
+            case SHOW_BUILDERS_BUTTON -> open(viewer, core, View.BUILDERS, 0);
             case PREVIOUS_PAGE_BUTTON, NEXT_PAGE_BUTTON -> open(viewer, core, info.view(), info.page() + (id == NEXT_PAGE_BUTTON ? 1 : -1));
             default -> {
-                return false;
+                return assignOrUnassign(id);
             }
         }
+        return true;
+    }
+
+    // The builders page's Assign and Unassign buttons.
+    private boolean assignOrUnassign(int id) {
+        Settlement settlement = core.getSettlement();
+        Building building = settlement != null ? BuildingOps.siteAt(settlement, core.getBlockPos()) : null;
+        if (building == null || !(core.getLevel() instanceof ServerLevel level)) {
+            return false;
+        }
+        if (id >= UNASSIGN_BUTTON && id - UNASSIGN_BUTTON < info.assigned().size()) {
+            BuilderOps.unassign(level, settlement, building, info.assigned().get(id - UNASSIGN_BUTTON).id());
+        } else if (id >= ASSIGN_BUTTON && id - ASSIGN_BUTTON < info.available().size()) {
+            String problem = BuilderOps.assign(level, settlement, building, info.available().get(id - ASSIGN_BUTTON).id());
+            if (problem != null) {
+                viewer.displayClientMessage(Component.literal(problem), true);
+                return false;
+            }
+        } else {
+            return false;
+        }
+        open(viewer, core, info.view(), info.page()); // refresh, on the same page
         return true;
     }
 

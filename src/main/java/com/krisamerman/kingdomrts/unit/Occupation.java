@@ -24,6 +24,7 @@ public interface Occupation {
 
     ResourceLocation SOLDIER = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "soldier");
     ResourceLocation LUMBERJACK = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "lumberjack");
+    ResourceLocation BUILDER = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "builder");
 
     OccupationType type();
 

@@ -9,6 +9,7 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.Faction;
+import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
@@ -93,10 +94,13 @@ public final class SettlementOps {
     // unit list in step. Faction and settlement are independent, so this doesn't change its faction.
     public static void setUnitSettlement(ServerLevel level, Unit unit, @Nullable Settlement settlement) {
         SettlementData settlements = SettlementData.get(level);
+        Settlement old = settlements.byId(unit.getSettlementId());
         if (settlement == null || !settlement.id().equals(unit.getSettlementId())) {
             WorkplaceOps.fire(level, unit); // its workplace belongs to the settlement it's leaving
+            if (old != null && Occupation.BUILDER.equals(unit.getOccupationId())) {
+                BuilderOps.fire(level, old, unit.getUUID()); // and so does its place among the builders
+            }
         }
-        Settlement old = settlements.byId(unit.getSettlementId());
         if (old != null) {
             settlements.removeUnit(old, unit.getUUID());
         }
@@ -114,6 +118,7 @@ public final class SettlementOps {
         SettlementData settlements = SettlementData.get(level);
         Settlement settlement = settlements.byId(unit.getSettlementId());
         if (settlement != null) {
+            BuilderOps.unassignEverywhere(level, settlement, unit.getUUID());
             settlements.removeUnit(settlement, unit.getUUID());
         }
     }
@@ -133,6 +138,12 @@ public final class SettlementOps {
             }
         }
         WorkplaceOps.catchUp(level, unit);
+        // A builder fired while it was away (see BuilderOps#fire) loses the job now.
+        Settlement current = SettlementData.get(level).byId(unit.getSettlementId());
+        Resident remembered = current != null ? current.residents().get(unit.getUUID()) : null;
+        if (Occupation.BUILDER.equals(unit.getOccupationId()) && (remembered == null || !Occupation.BUILDER.equals(remembered.occupation()))) {
+            unit.setOccupation(null);
+        }
         refreshResident(level, unit);
     }
 

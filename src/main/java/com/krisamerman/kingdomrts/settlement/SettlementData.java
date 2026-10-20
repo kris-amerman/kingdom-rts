@@ -167,9 +167,30 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void assignBuilder(Settlement settlement, Building building, UUID builder, String name) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current != null) {
+            settlement.replaceBuilding(current.withBuilder(builder, name));
+            setDirty();
+        }
+    }
+
+    void unassignBuilder(Settlement settlement, Building building, UUID builder) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current != null && current.builders().containsKey(builder)) {
+            settlement.replaceBuilding(current.withoutBuilder(builder));
+            setDirty();
+        }
+    }
+
+    // Works on the settlement's current record of the building (the caller's copy may be out of
+    // date, e.g. from before builders were assigned), so nothing changed since is lost.
     void finishBuilding(Settlement settlement, Building building, long gameTime) {
-        settlement.replaceBuilding(building.finishedAt(gameTime));
-        setDirty();
+        Building current = settlement.buildingAt(building.origin());
+        if (current != null) {
+            settlement.replaceBuilding(current.finishedAt(gameTime));
+            setDirty();
+        }
     }
 
     void removeBuilding(Settlement settlement, BlockPos origin) {

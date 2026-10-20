@@ -197,7 +197,7 @@ Sources: [CC:CBC](https://modrinth.com/mod/cc-cbc), [Create Big Cannons: Ballist
 - The starter camp recipe and loot. Build tool details and whether Structurize fits (see Build tools).
 - Money details: tax rate, permit fees, whether lots are leased, payment timing, subsidies, how the mint works, state wages, daily needs, prices inside a settlement, and sinks (see How money flows).
 - How severe material shortages are.
-- How many builders a construction site can take, and whether couriers ever come back to help builders (see Builders and construction sites).
+- How many builders a construction site can take. There should be a cap, but the owner sees it coming from some level (perhaps a builders' guild's), not a fixed number; for now it's `max_builders` in building data, 2 by default. Also whether couriers ever come back to help builders (see Builders and construction sites).
 - Workplaces: how many workers each can employ (building level?), and how worker supply works (markets, shops, couriers; see Workplaces and supply).
 - Population: how fast wanderers arrive and what capacity means (housing, jobs, happiness?); see Units.
 - Surrender: does it end hostility, transfer units, settle the war? Military units stay hostile after capture until then.
