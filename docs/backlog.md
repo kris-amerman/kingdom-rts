@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-029 Walk diagnostics for idling lumberjacks
-- **Status:** in progress | **Branch:** feature/lumberjack-reach | **PR:** - | **Depends on:** S-014
+- **Status:** in review | **Branch:** feature/lumberjack-reach | **PR:** #27 | **Depends on:** S-014
 - **Goal:** the next time a lumberjack idles while a tree stands, the debug log says why.
 - **Scope:** logging only, no behaviour changes (owner's call: no fixes on a guess).
   - `WalkToStep` logs when a walk starts (from where, to which spot, and whether the first path reaches) and when it gives up: no spot to stand, or stuck with no way out, with where it got to and the closest it came.
