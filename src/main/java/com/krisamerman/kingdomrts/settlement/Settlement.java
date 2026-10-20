@@ -49,8 +49,9 @@ public final class Settlement {
     private final Set<ChunkPos> chunks;
     // Positions of this settlement's Settlement Storage blocks (in its dimension).
     private final Set<BlockPos> storage = new LinkedHashSet<>();
-    // The units that belong to this settlement (entity UUIDs; a unit may be unloaded).
-    private final Set<UUID> units = new LinkedHashSet<>();
+    // The units that belong to this settlement (entity UUIDs; a unit may be unloaded), with what the
+    // settlement remembers about each (see Resident).
+    private final Map<UUID, Resident> units = new LinkedHashMap<>();
     // Counts changes of owner, so units that were unloaded during a capture can tell they missed
     // one when they load (see Unit#getSeenOwnerChanges).
     private int ownerChanges;
@@ -97,7 +98,11 @@ public final class Settlement {
     }
 
     public Set<UUID> units() {
-        return Collections.unmodifiableSet(units);
+        return Collections.unmodifiableSet(units.keySet());
+    }
+
+    public Map<UUID, Resident> residents() {
+        return Collections.unmodifiableMap(units);
     }
 
     public Collection<Workplace> workplaces() {
@@ -153,12 +158,17 @@ public final class Settlement {
         return ownerChanges;
     }
 
-    boolean addUnit(UUID unit) {
-        return units.add(unit);
+    boolean addUnit(UUID unit, Resident resident) {
+        return !resident.equals(units.put(unit, resident));
+    }
+
+    // Updates what's remembered about one of its units; false if it isn't one, or nothing changed.
+    boolean updateResident(UUID unit, Resident resident) {
+        return units.containsKey(unit) && !resident.equals(units.put(unit, resident));
     }
 
     boolean removeUnit(UUID unit) {
-        return units.remove(unit);
+        return units.remove(unit) != null;
     }
 
     boolean addStorage(BlockPos pos) {
@@ -189,7 +199,7 @@ public final class Settlement {
         tag.put(CHUNKS_TAG, new LongArrayTag(chunks.stream().mapToLong(ChunkPos::toLong).toArray()));
         tag.put(STORAGE_TAG, new LongArrayTag(storage.stream().mapToLong(BlockPos::asLong).toArray()));
         ListTag unitList = new ListTag();
-        units.forEach(unit -> unitList.add(NbtUtils.createUUID(unit)));
+        units.forEach((unit, resident) -> unitList.add(resident.save(unit)));
         tag.put(UNITS_TAG, unitList);
         tag.putInt(OWNER_CHANGES_TAG, ownerChanges);
         ListTag workplaceList = new ListTag();
@@ -212,8 +222,11 @@ public final class Settlement {
         for (long packed : tag.getLongArray(STORAGE_TAG)) {
             settlement.storage.add(BlockPos.of(packed));
         }
-        for (Tag unit : tag.getList(UNITS_TAG, Tag.TAG_INT_ARRAY)) {
-            settlement.units.add(NbtUtils.loadUUID(unit));
+        for (Tag unit : tag.getList(UNITS_TAG, Tag.TAG_COMPOUND)) {
+            settlement.units.put(Resident.loadId((CompoundTag) unit), Resident.load((CompoundTag) unit));
+        }
+        for (Tag unit : tag.getList(UNITS_TAG, Tag.TAG_INT_ARRAY)) { // saved before residents were remembered
+            settlement.units.put(NbtUtils.loadUUID(unit), Resident.UNKNOWN);
         }
         settlement.ownerChanges = tag.getInt(OWNER_CHANGES_TAG);
         for (Tag workplace : tag.getList(WORKPLACES_TAG, Tag.TAG_COMPOUND)) {

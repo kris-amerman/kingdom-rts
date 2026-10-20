@@ -88,6 +88,7 @@ public final class WorkplaceOps {
         SettlementData.get(level).addWorker(workplace, unit.getUUID(), unitName);
         unit.setWorkplace(pos);
         unit.setOccupation(type.get().occupation());
+        SettlementOps.refreshResident(level, unit);
         return null;
     }
 
@@ -192,5 +193,8 @@ public final class WorkplaceOps {
     private static void unemploy(Unit unit) {
         unit.setWorkplace(null);
         unit.setOccupation(null);
+        if (unit.level() instanceof ServerLevel level) {
+            SettlementOps.refreshResident(level, unit);
+        }
     }
 }
