@@ -33,34 +33,147 @@ Story template:
 ### S-023 Structurize spike
 - **Status:** in progress | **Branch:** feature/structurize-spike | **PR:** - | **Depends on:** S-011
 - **Goal:** decide whether to build on Structurize (ldtteam) or keep our own templates and placement.
-- **Scope:** a time-boxed look (a throwaway branch is fine) at:
-  - **its licence:** GPL-3.0, while this mod is "All Rights Reserved". Depending on it likely means a GPL-compatible licence for this mod; the owner decides.
-  - **its API:** loading blueprints; placement handlers per block (doors, beds, fluids); required items; using it without its GUI from our builders;
-  - **its build tool** as our placement preview;
-  - **NeoForge 1.21.1 support,** dependency size, and the cost per tick of placement.
-  - **The outcome:** a recommendation and the owner's decision in design.md (Build tools), plus a follow-up story if adopted.
+- **Scope:** a time-boxed look at its licence, API, build tool, 1.21.1 support, size and cost, with a hands-on test on a throwaway copy (not kept; the report says how to reproduce it). **The report is `docs/structurize.md`.**
 - **Out of scope:** adopting it.
-- **Test:** none (a decision document).
-- **Notes:** done before S-025, because block placement is where Structurize would plug in. Our template code is all behind `BuildingTemplates` and `BuildingRules`, so swapping stays contained.
+- **Test:** none (a decision document). The hands-on test was a GameTest on the throwaway copy.
+- **Notes:**
+  - **Owner, before the spike:** open to relicensing Kingdom RTS as GPL-3.0 if Structurize is the better tool.
+  - **Findings in brief:**
+    - **Licence and dependencies:** GPL-3.0. It requires BlockUI (GUI library) and Domum Ornamentum (decorative-block content). About 2.5 MB of jars.
+    - **Builds:** all 1.21.1 builds are beta or snapshot. A mismatched Structurize/BlockUI pair crashed the dedicated server at load; the matched snapshot trio worked, with all our GameTests passing alongside.
+    - **Placement:** server-side, resumable, a bounded number of blocks per call, driven by a survival `IStructureHandler` (inventory, required items, consume). 22 placement handlers.
+    - **Hands-on:** it rebuilt our shed exactly, with required items matching ours exactly. About 110 µs per placed block, against 8 µs for our bulk `finish`; roughly 1 ms per tick for 100 builders.
+    - **The build tool** has a hook (`ISurvivalBlueprintHandler`) that can turn a placement into `BuildingOps.commission`.
+  - **The report recommended adopting** (if Domum Ornamentum was acceptable too).
+  - **Owner's decision:** we won't use Structurize, BlockUI or Domum Ornamentum. The mod stays fully distinct from MineColonies and its libraries (a new standing policy in CLAUDE.md, Independence), and the spike's costs point the same way. Recorded in design.md (Nation management interface). `docs/structurize.md` stays as the record of the spike.
+  - **Follow-ups from the decision:**
+    - **The "build tool" becomes the nation management interface** (working name): the player's main way of shaping and running their nation, opened by a hotkey for now, with actions that don't depend on how they're triggered (stories S-032 to S-036).
+    - **Placement stays our own:** S-025 is reworked from vanilla's block rules and split into S-025, S-030 and S-031.
+    - **Docs:** CLAUDE.md, design.md and the README describe features in our own terms, with an Influences section crediting MineColonies, Polytopia, Civilization, Cities: Skylines and others. Done stories stay as they are.
+    - **Later:** code comments that mention MineColonies or Structurize (`WorkplaceScreen`, `BuildingTemplates`) are reworded in the next code PR.
 
-### S-025 Builder job
-- **Status:** planned | **Branch:** feature/builder-job | **PR:** - | **Depends on:** S-024, S-023
-- **Goal:** assigned builders build their site until it matches its template.
+### S-025 Builders place blocks
+- **Status:** planned | **Branch:** feature/builders-place | **PR:** - | **Depends on:** S-024
+- **Goal:** assigned builders build their site from its stock until it matches its template.
 - **Scope:**
-  - **The work loop:** clear what's in the way inside the footprint (breaking like a player would, keeping the drops in the site stock), then place missing blocks in build order (bottom up, only where they can stay, e.g. a torch after its wall). Placement speed is set in data.
-  - **Supply, as needed** (recommended to the owner):
-    - At most one builder per site fetches at a time; the others keep building from the site stock.
-    - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later shops). It deposits them into the site stock.
-    - What can't be found is skipped. Builders build what they can, then wait.
-  - **Splitting the work:** builders split the site's blocks without placing the same block twice (reservations in memory).
-  - **When the site is finished:** the building is marked built, and its builders return to the pool.
+  - **Placing** missing blocks from the site stock, a block at a time, at a speed set in the builder's occupation data. Each block placed uses up its materials.
+  - **Build order,** from vanilla's own rules (not from any other mod):
+    - bottom layer first;
+    - a block is only placed once vanilla says it can stay there (`BlockState.canSurvive`), otherwise it waits. That one rule covers torches, lanterns, ladders, buttons, levers, signs, vines, carpets, rails, pressure plates and plants on soil;
+    - falling blocks (sand, gravel, concrete powder, anvils) only once something is under them (`FallingBlock.isFree` on the block below).
+  - **Two-block things** (doors and tall plants by `DoubleBlockHalf`, beds by `BedPart`): both halves go down in the same step, costing one item, so the first half doesn't pop off.
+  - **Shapes and connections** (stairs' corners, fences, walls, panes, redstone, paired chests) come from vanilla's neighbour updates. We place the template's facing, axis and half, and the matching rule already ignores the rest.
+  - **Costs,** a pure rule in `BuildingRules`, unit-tested:
+    - a double slab costs 2 slabs, and a wall torch costs a torch (done);
+    - crops cost their seeds (`asItem`);
+    - a potted plant costs a flower pot plus the plant;
+    - grass blocks, farmland and paths cost dirt;
+    - snow layers, candles and sea pickles cost one per layer or piece;
+    - a water source costs a water bucket, with the empty bucket returned to the site stock.
+  - **What builders don't place:** lava, flowing fluids, fire, portals and piston heads are listed as "not placeable", as now.
+  - **Block entities** (chests, barrels, furnaces, signs, banners) are placed empty and plain; a template never gives away items or text.
+  - **Waterlogged blocks** are placed dry.
+  - **Several builders on one site** never place the same block twice (reservations in memory).
+  - **When nothing's left,** the site is completed (`BuildingOps.completeIfDone`), and its builders return to the pool.
   - **Performance:** the stress scenario gains a builder and a site per town, and the stress test is run before merging.
-- **Out of scope:** couriers, gold and shops, levelling or filling below the site, repair.
-- **Test:** GameTests: one builder finishes the shed; two builders finish without duplicates; a builder fetches from storage; a builder waits without crashing when materials are missing, then carries on when they appear; an obstruction is cleared. Manual: watch it build.
-- **Notes:** the site's list of outstanding materials is the demand signal markets can read later.
+- **Out of scope:**
+  - clearing what's in the way (S-030);
+  - fetching materials (S-031); for now the player fills the site stock;
+  - couriers, gold, levelling, repair.
+- **Test:**
+  - **Unit tests:** costs and build order (rules).
+  - **GameTests:**
+    - one builder finishes the shed from a stocked site;
+    - two builders finish it without duplicates;
+    - a builder with an empty stock waits without crashing, then carries on when materials are added;
+    - doors, beds, torches and falling blocks end up right.
+  - **Manual:** watch it build.
+- **Notes:**
+  - **Placement stays our own** (S-023 decision). The awkward blocks above come from vanilla's block classes.
+  - The site's list of outstanding materials is the demand signal markets can read later.
+
+### S-030 Builders clear the site
+- **Status:** planned | **Branch:** feature/builders-clear | **PR:** - | **Depends on:** S-025
+- **Goal:** builders clear what's in the way inside a site before building there.
+- **Scope:**
+  - Builders break blocks inside the footprint where the template wants air or another block, taking as long as a player would with their best tool (`BreakTime`).
+  - The drops go into the site stock.
+  - Grass, snow and the like are cleared too.
+  - No levelling or filling below the site.
+- **Out of scope:** terraforming and levelling.
+- **Test:** GameTests: a site with dirt and a tree in the way gets cleared and then built; the drops end up in the site stock. Manual: watch it.
+- **Notes:** -
+
+### S-031 Builders fetch materials
+- **Status:** planned | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
+- **Goal:** builders fetch what their site is missing from settlement storage.
+- **Scope:**
+  - At most one builder per site fetches at a time; the others keep building from the site stock.
+  - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later from shops), and deposits them into the site stock.
+  - What can't be found is skipped; builders build what they can, then wait.
+  - Leftover materials go back to storage when the site is finished.
+- **Out of scope:** couriers, gold and shops.
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on. Manual: watch it.
+- **Notes:** the supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
+
+### S-032 Nation management interface: opening it
+- **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
+- **Goal:** a player can open the nation management interface, and its actions run on the server as faction operations, however they're triggered.
+- **Scope:**
+  - **Opening it:** a rebindable hotkey, N by default, in a "Kingdom RTS" category under Controls (vanilla doesn't use N). Also `/kingdomrts nation`, which opens the same screen. No item.
+  - **A first screen:** your faction and settlements, and the actions Build, Demolish and Borders (filled in by the next stories).
+  - **A request channel** from the screens to the server: the server checks the player belongs to the faction and runs the same faction operations as the commands. How a request is triggered (a key, a later command view or free camera) never matters to the server.
+  - Players without a faction see a short "join or found a faction first" screen.
+- **Out of scope:** the actions themselves (S-033 to S-036), the name, a command view or free camera.
+- **Test:** GameTests for the request handling (accepted, refused for outsiders and factionless players) and the command. Manual: the key and the screen.
+- **Notes:** the hotkey is the owner's lean (no item); the command is for testing and anyone who hasn't set a key.
+
+### S-033 Nation interface: building preview
+- **Status:** planned | **Branch:** feature/building-preview | **PR:** - | **Depends on:** S-032
+- **Goal:** a player can pick a building from the catalog and see it as a ghost in the world, moving and turning it.
+- **Scope:**
+  - **Build** lists the building catalog, sent from the server (building data isn't on the client).
+  - Picking one shows it as a translucent ghost where the player is looking. Keys nudge it sideways and up or down, and rotate it.
+  - The template's blocks are sent on demand, within the existing size cap.
+  - Our own ghost renderer, using vanilla's block rendering.
+- **Out of scope:** confirming (S-034), mirroring, styles and levels.
+- **Test:** unit tests for the placement maths (reusing `BuildingRules.place` and `footprint`); a GameTest for the catalog and template payloads. Manual: the ghost and its controls.
+- **Notes:** -
+
+### S-034 Nation interface: commission from the preview
+- **Status:** planned | **Branch:** feature/preview-commission | **PR:** - | **Depends on:** S-033
+- **Goal:** confirming a preview commissions the building, under the same rules as the command.
+- **Scope:**
+  - Confirming sends a commission request; the server runs `BuildingOps.commission`, so every claim and overlap rule applies.
+  - Refusals are shown to the player ("outside your claim", "overlaps…").
+  - The ghost is tinted where the spot can't work, from a rate-limited check on the server, which stays the authority.
+- **Out of scope:** gold costs.
+- **Test:** GameTests for commissioning through the request (success, outside the claim, overlapping, another faction's claim). Manual: the tint and messages.
+- **Notes:** -
+
+### S-035 Nation interface: demolish
+- **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032
+- **Goal:** a player can demolish their own buildings from the interface.
+- **Scope:**
+  - **Demolish** shows your settlement's buildings as outlines.
+  - Pick one by looking at it, confirm, and the server runs `BuildingOps.demolish`.
+  - Other factions' buildings can't be picked or demolished.
+- **Out of scope:** the explosion effect, rubble and materials returned, gold costs.
+- **Test:** GameTests for the request (own building demolished, another faction's refused). Manual: outlines and picking.
+- **Notes:** -
+
+### S-036 Nation interface: borders view
+- **Status:** planned | **Branch:** feature/borders-view | **PR:** - | **Depends on:** S-032
+- **Goal:** a player can toggle a view of settlement borders around them.
+- **Scope:**
+  - A toggle that draws claim borders near the player, coloured per faction.
+  - The server sends nearby claims when the view is switched on, and when claims change.
+- **Out of scope:** claim management, faction colours and emblems beyond a simple colour.
+- **Test:** a GameTest for what's sent (nearby claims, owners). Manual: the drawn borders.
+- **Notes:** -
 
 ### S-026 Lumberjack hut building
-- **Status:** planned | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-025
+- **Status:** planned | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-031, S-034
 - **Goal:** a lumberjack hut is a real building, commissioned from a template, built by builders, and managed from its hut block.
 - **Scope:**
   - **Core blocks from data** (the general part, reused by later functional buildings): a building's data can name its core block, e.g. `"core": "kingdomrts:lumberjack_hut"`.
@@ -83,8 +196,8 @@ Story template:
     - a placed hut block (the stand-in) still works as before.
   - **Manual:** the hut template's look; the panels switching.
 - **Notes:**
-  - Owner: homes need their own residence core, like MineColonies (a later story, with housing).
-  - Placed hut blocks, the stand-in until the build tool, keep working. Whether they stay once the build tool exists is open.
+  - Owner: homes need their own residence core (a later story, with housing).
+  - Placed hut blocks, the stand-in until the nation management interface builds huts, keep working. Whether they stay after that is open.
 
 ### S-027 Town hall building
 - **Status:** planned | **Branch:** feature/town-hall-building | **PR:** - | **Depends on:** S-026
@@ -95,7 +208,7 @@ Story template:
   - **The command:** `building commission` accepts a town hall outside a claim (every other building still needs your own claim).
   - **While the hall is being built:** the claim and capture rules apply. Whether the hall panel's other features wait until it's finished is decided in the story.
   - **Demolish:** a settlement's town hall can't be demolished, just as the hall block can't be broken.
-- **Out of scope:** the starter camp (Direction) and who builds the first hall, naturally generated settlements, the build tool.
+- **Out of scope:** the starter camp (Direction) and who builds the first hall, naturally generated settlements, founding through the interface (a later story).
 - **Test:**
   - **GameTests:**
     - commissioning a hall outside any claim founds a settlement, with the claim, and places the hall block;
@@ -106,10 +219,10 @@ Story template:
   - **Manual:** the hall template's look.
 - **Notes:**
   - **Open, for the owner:** who builds the first town hall. The settlement has no builders until it's founded. In the Direction, the starter camp brings a builder; until then, a settlement's builders can be hired at the half-built hall, or `building finish` is used.
-  - The placed town hall block stays as the stand-in until the build tool and starter camp exist (CLAUDE.md).
+  - The placed town hall block stays as the stand-in until the interface and starter camp can found settlements (CLAUDE.md).
 
 ### S-012 Unit needs (design first)
-- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-025, S-014
+- **Status:** planned | **Branch:** feature/unit-needs | **PR:** - | **Depends on:** S-031, S-014
 - **Goal:** units have hunger and happiness, drawn from real things in the world.
 - **Scope:** first a short design note in docs/design.md, then the simplest version (likely hunger from food in settlement storage, happiness from housing).
 - **Out of scope:** revolts, taxes.
@@ -117,10 +230,10 @@ Story template:
 - **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
 
 ## Later (not yet stories)
-- **Work-area view:** a toggle on the hut panel or the build tool that shows a workplace's work area.
+- **Work-area view:** a toggle on the hut panel or in the nation management interface that shows a workplace's work area.
 - **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
 - **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
-- **Worker skills:** MineColonies-style skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
+- **Worker skills:** per-unit skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
 - **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
 - **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).

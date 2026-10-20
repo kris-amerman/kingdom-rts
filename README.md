@@ -1,25 +1,31 @@
+# Kingdom RTS
 
-Installation information
-=======
+A NeoForge mod for Minecraft 1.21.1: a long-lived, real-time kingdom game. Found and grow settlements, put your people to work, trade and negotiate with rival factions, and defend and capture territory. AI-led factions play by the same rules you do.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+It's early in development. What exists so far: settlements with claims and capture, factions, units with data-driven occupations, workplaces and lumberjacks, buildings commissioned from templates with construction sites, and builders. The design and plans are in [`docs/design.md`](docs/design.md) and [`docs/backlog.md`](docs/backlog.md).
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+## Building and running
+- `./gradlew runClient`: the dev client
+- `./gradlew build`: compile and run the unit tests
+- `./gradlew runGameTestServer`: run the GameTests headless
+- `./gradlew runStressTest`: the performance stress test (see [`docs/perf.md`](docs/perf.md))
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+Requires Java 21. The mod is standalone: it doesn't depend on other gameplay mods.
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+## Influences
+Kingdom RTS is its own design, but it owes a lot to games and mods we admire:
+- **Polytopia:** empire-building and strategy, starting money, and relationships between factions.
+- **MineColonies:** settlements run by workers, buildings built from templates, and lessons about keeping settlement systems quicker and more fun than doing the work by hand.
+- **Civilization:** growing borders.
+- **Cities: Skylines:** zoning and demand-driven growth.
+- **Crusader Kings, Anno, Manor Lords:** inspiration for relationships, production and settlement life.
+- **Create:** a planned add-on for machines and factories.
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+More detail is in the Influences section of [`docs/design.md`](docs/design.md).
+
+## Mapping names
+This project uses the official mapping names from Mojang for methods and fields in the Minecraft codebase. These names are covered by a specific license, which all modders should be aware of. For the latest license text, refer to the mapping file itself, or the reference copy here: https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+
+## Resources
+- NeoForge documentation: https://docs.neoforged.net/
+- NeoForged Discord: https://discord.neoforged.net/
