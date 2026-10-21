@@ -220,4 +220,31 @@ class BuildingRulesTest {
                 new Blueprint.Part(new BlockPos(0, 1, 0), Blocks.AIR.defaultBlockState()));  // on the stone
         assertEquals(Optional.of(new BlockPos(0, 1, 0)), BuildingRules.siteSpot(parts));
     }
+
+    @Test
+    void whatsInTheWayHasToBeCleared() {
+        BlockState air = Blocks.AIR.defaultBlockState();
+        BlockState stone = Blocks.STONE.defaultBlockState();
+        assertTrue(BuildingRules.isObstruction(air, Blocks.DIRT.defaultBlockState()), "Dirt where the template wants air");
+        assertTrue(BuildingRules.isObstruction(air, Blocks.SHORT_GRASS.defaultBlockState()), "Grass is cleared where the template wants air");
+        assertTrue(BuildingRules.isObstruction(stone, Blocks.DIRT.defaultBlockState()), "Dirt where the stone goes");
+        assertFalse(BuildingRules.isObstruction(stone, Blocks.SHORT_GRASS.defaultBlockState()), "Grass is simply built over");
+        assertFalse(BuildingRules.isObstruction(stone, stone), "Already right");
+        assertFalse(BuildingRules.isObstruction(stone, air), "Nothing there");
+    }
+
+    @Test
+    void fluidsAndUnbreakableBlocksAreLeft() {
+        BlockState air = Blocks.AIR.defaultBlockState();
+        assertFalse(BuildingRules.isObstruction(air, Blocks.BEDROCK.defaultBlockState()));
+        assertFalse(BuildingRules.isObstruction(air, Blocks.WATER.defaultBlockState()));
+        assertFalse(BuildingRules.isObstruction(Blocks.STONE.defaultBlockState(), Blocks.LAVA.defaultBlockState()));
+    }
+
+    @Test
+    void sitesAreClearedTopDown() {
+        List<BlockPos> spots = new ArrayList<>(List.of(new BlockPos(0, 0, 0), new BlockPos(1, 2, 0), new BlockPos(0, 2, 1), new BlockPos(0, 1, 0)));
+        spots.sort(BuildingRules.CLEAR_ORDER);
+        assertEquals(List.of(new BlockPos(0, 2, 1), new BlockPos(1, 2, 0), new BlockPos(0, 1, 0), new BlockPos(0, 0, 0)), spots);
+    }
 }

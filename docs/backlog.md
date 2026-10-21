@@ -40,7 +40,18 @@ Story template:
   - No levelling or filling below the site.
 - **Out of scope:** terraforming and levelling.
 - **Test:** GameTests: a site with dirt and a tree in the way gets cleared and then built; the drops end up in the site stock. Manual: watch it.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - `BuildingRules.isObstruction` and `CLEAR_ORDER` (pure);
+    - `Stock.bestToolFor`;
+    - clearing in `BuilderJob`: `ClearStep` runs before placing, top down.
+  - **Decisions:**
+    - Something is in the way where the template wants air, or where a block goes and what's there can't simply be built over. Grass, flowers and torches count where air is wanted; grass and snow are built over where a block goes.
+    - Fluids and unbreakable blocks (bedrock) are left, and don't keep a site from finishing. Water flowing over a site can wash out blocks that have been placed (torches); handling that is left for later.
+    - The builder uses the best tool in the site stock, puts it back afterwards (a little worn), and breaks a block as long as a player with that tool would.
+    - Like a player, a builder gets no drops from blocks that need the right tool (stone, ores) unless it has one. The loot table doesn't check this, so `ClearStep` does.
+  - **Known gap:** when the site finishes, whatever is left in its stock (cleared blocks, tools) spills on the floor and vanishes after 5 minutes. S-031 has builders carry it back to storage.
+  - **Also fixed:** `LumberjackReachGameTests` laid out its hut and tree assuming where the hall falls in its chunk, so it failed once more tests shifted the layout.
 
 ### S-031 Builders fetch materials
 - **Status:** planned | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
@@ -49,9 +60,9 @@ Story template:
   - At most one builder per site fetches at a time; the others keep building from the site stock.
   - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later from shops), and deposits them into the site stock.
   - What can't be found is skipped; builders build what they can, then wait.
-  - Leftover materials go back to storage when the site is finished.
+  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) back to settlement storage, in as many trips as it takes, so nothing is lost. Only what doesn't fit in storage is dropped. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
 - **Out of scope:** couriers, gold and shops.
-- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on. Manual: watch it.
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on; after the site is finished, what was left in its stock (materials, cleared blocks, a tool) ends up in settlement storage, with nothing dropped. Manual: watch it.
 - **Notes:** the supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
 
 ### S-032 Nation management interface: opening it
