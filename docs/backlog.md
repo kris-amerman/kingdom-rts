@@ -73,21 +73,6 @@ Story template:
   - Owner, 2026-10-20: blocks that aren't the template's are left standing. Containers that are part of the template are emptied by the builders, who come back for whatever they can't carry.
   - GameTests that need a building gone at once can keep a test-only helper.
 
-### S-039 Settlement storage in building templates (investigate)
-- **Status:** planned | **Branch:** feature/template-storage | **PR:** - | **Depends on:** S-025
-- **Goal:** decide whether building templates should only ever contain the mod's own settlement storage containers, never vanilla ones (chests, barrels and the like), so the mod controls who can open them.
-- **Scope (to look into first):**
-  - **Today:** a vanilla chest in a template is built as an ordinary chest. Anyone can open or break it, hoppers can drain it, and the settlement doesn't know it's there. The Settlement Storage block (S-003) already does what we want: only the owner opens it, it's unbreakable for others, hoppers and pipes are shut out, and it's listed by its settlement.
-  - **Options:**
-    - refuse vanilla containers in templates when they load, with a clear message for pack authors;
-    - swap them for settlement storage when the building is built, so packs made with vanilla tools still work;
-    - a small family of our own containers (storage, perhaps a barrel look, workstations with inventories), so templates don't need vanilla ones.
-  - **Questions:** which blocks count (chests, barrels, shulker boxes, furnaces, brewing stands, hoppers, droppers); whether built containers are registered with the settlement automatically; how a workplace's stock relates to containers in its building; what this means for later allied access, and for Create.
-  - **Outcome:** a decision written into docs/design.md and CLAUDE.md, and follow-up stories.
-- **Out of scope:** building any of it.
-- **Test:** none; this is a decision.
-- **Notes:** owner idea, 2026-10-20: never use normal Minecraft storage containers in templates, so opening permissions stay ours to control.
-
 ### S-032 Nation management interface: opening it
 - **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
 - **Goal:** a player can open the nation management interface, and its actions run on the server as faction operations, however they're triggered.
