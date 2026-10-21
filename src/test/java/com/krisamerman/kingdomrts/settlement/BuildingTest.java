@@ -77,4 +77,15 @@ class BuildingTest {
         assertEquals(Map.of(ben, "Ben Ash"), assigned.withoutBuilder(ada).builders());
         assertTrue(assigned.finishedAt(99L).withSiteClosed().builders().isEmpty());
     }
+
+    @Test
+    void aBuildingBeingDemolishedTakesBuildersAndSurvivesSaving() {
+        Building closed = SHED.finishedAt(5678L).withSiteClosed();
+        assertFalse(closed.takesBuilders(), "Built, with its site closed");
+        Building demolishing = closed.withDemolishing(true);
+        assertTrue(demolishing.takesBuilders());
+        assertFalse(demolishing.isBeingClearedOut());
+        assertEquals(demolishing, Building.load(demolishing.save()));
+        assertFalse(Building.load(SHED.save()).demolishing(), "Not unless ordered");
+    }
 }

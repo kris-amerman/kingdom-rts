@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -70,6 +71,25 @@ public final class Hauling {
             from.setItem(i, left);
         }
         return moved;
+    }
+
+    // Whether all of these would fit in the container, together.
+    public static boolean fitsAll(Container container, List<ItemStack> stacks) {
+        SimpleContainer copy = new SimpleContainer(container.getContainerSize());
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            copy.setItem(i, container.getItem(i).copy());
+        }
+        return stacks.stream().allMatch(stack -> Stock.insert(copy, stack).isEmpty());
+    }
+
+    // Whether the container has an empty slot.
+    public static boolean hasEmptySlot(Container container) {
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            if (container.getItem(i).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Whether any of the first container's items would fit, at least partly, in the second.

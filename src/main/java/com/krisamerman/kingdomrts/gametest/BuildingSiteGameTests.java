@@ -159,16 +159,17 @@ public class BuildingSiteGameTests {
     }
 
     @GameTest(template = TEMPLATE, batch = "site_demolish_built")
-    public static void demolishingABuiltBuildingRemovesIt(GameTestHelper helper) {
+    // Removing a building at once (the test and admin helper; demolition goes through builders: see
+    // BuilderDemolishGameTests).
+    public static void removingABuiltBuildingAtOnceForgetsIt(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
         Settlement settlement = found(helper, HALL, blue);
         Building building = commission(helper, blue, SITE, Rotation.NONE);
         BuildingOps.finish(helper.getLevel(), current(helper, settlement), building);
         BlockPos extra = SITE.offset(1, 1, 1); // not part of the shed: something put inside it
         helper.setBlock(extra, Blocks.STONE);
-        List<String> output = runCommand(helper, HALL, "kingdomrts building demolish " + coords(helper, SITE.offset(2, 2, 2)));
-        helper.assertTrue(output.stream().anyMatch(line -> line.startsWith("Demolished the Storage shed (84 blocks removed)")),
-                "Expected the shed demolished, got " + output);
+        int removed = BuildingOps.removeAtOnce(helper.getLevel(), current(helper, settlement), current(helper, settlement).buildingAt(building.origin()));
+        helper.assertTrue(removed == 84, "Expected the shed's 84 blocks removed, got " + removed);
         helper.assertBlockPresent(Blocks.AIR, SITE);                  // its floor
         helper.assertBlockPresent(Blocks.AIR, SITE.offset(2, 1, 0));  // its door
         helper.assertBlockPresent(Blocks.AIR, SITE.offset(4, 3, 4));  // its roof
@@ -184,7 +185,7 @@ public class BuildingSiteGameTests {
     }
 
     @GameTest(template = TEMPLATE, batch = "site_demolish_site")
-    public static void demolishingASiteDropsItsStock(GameTestHelper helper) {
+    public static void removingASiteAtOnceDropsItsStock(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
         Settlement settlement = found(helper, HALL, blue);
         Building building = commission(helper, blue, SITE, Rotation.NONE);
@@ -194,7 +195,7 @@ public class BuildingSiteGameTests {
                 helper.setBlock(SITE.offset(x, 0, z), Blocks.COBBLESTONE); // the floor, by hand
             }
         }
-        int removed = BuildingOps.demolish(helper.getLevel(), current(helper, settlement), building);
+        int removed = BuildingOps.removeAtOnce(helper.getLevel(), current(helper, settlement), building);
         helper.assertTrue(removed == 25, "Expected the 25 floor blocks removed, got " + removed);
         helper.assertBlockPresent(Blocks.AIR, SITE.offset(2, 0, 2));
         helper.assertFalse(helper.getLevel().getBlockState(building.site()).is(KingdomRts.CONSTRUCTION_SITE.get()), "The site block should be gone");

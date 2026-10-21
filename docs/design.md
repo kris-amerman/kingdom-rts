@@ -163,7 +163,7 @@ Suggested first set: medicinal herb, tin, and one prestige good. Uncertain: iron
 
 ## Builders and construction sites
 Decided while planning S-011:
-- **A pool, not a hut.** A settlement hires builders (at its town hall for now; later perhaps from a settlement-management menu or map). They need no workplace. A builder's hut would only be cosmetic, such as a builders' guild.
+- **A pool, then a hut.** A settlement hires builders at its town hall for now, and they need no workplace. Owner, 2026-10-20: this is moving to a builders' hut (S-043), a workplace where builders are hired, keep their tools and stock, and go back to between sites (see Builders as a business below).
 - **Assigned to sites.** Each builder is assigned to a construction site, from the site's panel (or later the settlement menu), and sets up shop there until it's done. Then it goes back to the pool. How many builders a site can take is open.
 - **The construction site block.** It goes down inside a building when it's commissioned, on a spot the building leaves clear. While the building is built it's the site panel (progress, what's in the way, materials still needed and how many are on site) and the site's stock. Once the building is finished, its builders carry what's left in its stock (spare materials, what clearing broke, tools) to settlement storage, and then the block is taken away (S-040).
 - **Core blocks only where a building does something.** Huts, the town hall, homes (with a residence core) and markets have their own block in code, which manages them once built: a hut's block shows its hut panel, a home's its residents. Those blocks are part of their templates. Buildings that are only blocks (a shed, decorations) have nothing once finished. A generic core for every building was considered and dropped: it would be a meaningless block in every shed, and blocks can't be registered from data, so per-building cores can only exist for buildings with code behind them anyway. Repair and demolition reach plain buildings through the nation management interface.
@@ -175,7 +175,7 @@ Decided while planning S-011:
   - Whatever can't be found is skipped: builders build what they can and wait when nothing is buildable.
 - **Demand.** A site's outstanding materials are visible demand: the player sees what's missing, and markets can read it later.
 - **Builders as a business (direction, open; owner, 2026-10-20).** The pool at the town hall and fetching from settlement storage are where we are now, not where we're going. In a working economy, builders run a construction business:
-  - **A place of business:** perhaps a builder's hut or yard where builders are employed, keep their tools and hold some stock. That would revisit "a pool, not a hut" above: hiring stays the same idea, but builders would work out of a building instead of the town hall.
+  - **A place of business:** a builders' hut (decided, S-043; the name is open, perhaps a builders' guild) where builders are employed, keep their tools and hold some stock, instead of the town hall.
   - **Buying, not taking:** they buy what a commission needs from other workers' shops (their huts' surplus) or a market, paid from the commission (see Money and commissions), instead of taking it from settlement storage.
   - **Base demand:** like any workplace (see Workplaces and supply), a tool kit they can afford, bought as the business's capital, and perhaps a small stock of common materials. Buying to order for each commission fits the contract model best; keeping stock is a way to be faster, at the cost of tying up gold.
   - **Competition:** perhaps several builder businesses in a settlement, with different prices, speed or quality, and the player (or AI) choosing who gets a commission. Not only for builders.
@@ -218,7 +218,7 @@ Every design here is our own, shaped by this mod's needs, but plenty of ideas co
 - How severe material shortages are.
 - How many builders a construction site can take. There should be a cap, but the owner sees it coming from some level (perhaps a builders' guild's), not a fixed number; for now it's `max_builders` in building data, 2 by default. Also whether couriers ever come back to help builders (see Builders and construction sites).
 - Workplaces: how many workers each can employ (building level?), and how worker supply works (markets, shops, couriers; see Workplaces and supply).
-- Builders as a business: whether builders get a hut or yard, what their base demand is (a tool kit, stocked materials), whether they buy to order or keep stock, and whether settlements have competing builder businesses (see Builders and construction sites).
+- Builders as a business: the builders' hut's name, what their base demand is (a tool kit, stocked materials), whether they buy to order or keep stock, and whether settlements have competing builder businesses (see Builders and construction sites).
 - Population: how fast wanderers arrive and what capacity means (housing, jobs, happiness?); see Units.
 - Surrender: does it end hostility, transfer units, settle the war? Military units stay hostile after capture until then.
 - How claims expand. What naturally generated settlements look like (later).

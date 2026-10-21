@@ -142,7 +142,7 @@ public final class BuildingOps {
     // it's built now.
     public static boolean completeIfDone(ServerLevel level, Settlement settlement, Building building) {
         Building current = settlement.buildingAt(building.origin());
-        if (current == null) {
+        if (current == null || current.demolishing()) {
             return false;
         }
         if (!current.isBuilt()) {
@@ -165,7 +165,7 @@ public final class BuildingOps {
         if (current == null || current.site() == null) {
             return true;
         }
-        if (!current.isBuilt() || !level.isLoaded(current.site())) {
+        if (!current.isBuilt() || current.demolishing() || !level.isLoaded(current.site())) {
             return false;
         }
         if (level.getBlockEntity(current.site()) instanceof ConstructionSiteBlockEntity stock && !stock.isEmpty()) {
@@ -214,14 +214,87 @@ public final class BuildingOps {
         return null;
     }
 
-    // Demolishes a building, finished or not: the settlement forgets it (so its ground is free again
-    // and it's no longer listed), a construction site's block is taken away (its stock drops, so
-    // materials gathered there aren't lost), and every block of the building still in place is
-    // removed at once, with no drops. Blocks that aren't part of it (a chest someone put inside) stay.
-    // A stand-in for the build tool's demolish, which will look like an explosion and give some of
-    // the materials back. Returns how many blocks it removed, or -1 if the site isn't loaded (so a
-    // building is never half removed). With its template gone, it's only forgotten.
-    public static int demolish(ServerLevel level, Settlement settlement, Building building) {
+    // Orders a building demolished, built or still being built: the faction's builders take it apart
+    // (see BuilderJob), and the settlement forgets it once nothing of it is left (finishDemolition).
+    // Only the faction that owns the building can. Returns why it can't be, or null.
+    @Nullable
+    public static String orderDemolition(ServerLevel level, Faction faction, Settlement settlement, Building building) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current == null) {
+            return "That building is no longer commissioned";
+        }
+        if (!faction.id().equals(settlement.owner())) {
+            return "The " + typeName(level, current) + " belongs to another faction";
+        }
+        if (current.demolishing()) {
+            return "The " + typeName(level, current) + " is already being demolished";
+        }
+        SettlementData.get(level).setDemolishing(settlement, current, true);
+        return null;
+    }
+
+    // Stops a demolition: the building stays as it is (what's been taken down stays down), and is
+    // built, or a site again, as it was. Its builders stay on it. Neighbours of what was taken down are
+    // told now (see BuilderJob: blocks are taken down without telling them, so nothing pops off).
+    public static boolean stopDemolition(ServerLevel level, Settlement settlement, Building building) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current == null || !current.demolishing()) {
+            return false;
+        }
+        SettlementData.get(level).setDemolishing(settlement, current, false);
+        updateTakenDown(level, current);
+        return true;
+    }
+
+    // If nothing of a building being demolished is left (none of its blocks, and nothing in its
+    // site's stock), the settlement forgets it and its site block goes. Returns whether it's gone.
+    public static boolean finishDemolitionIfDone(ServerLevel level, Settlement settlement, Building building) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current == null) {
+            return true;
+        }
+        BoundingBox box = current.footprint();
+        List<Blueprint.Part> placed = placed(level, current);
+        if (!current.demolishing() || !level.hasChunksAt(box.minX(), box.minZ(), box.maxX(), box.maxZ())) {
+            return false;
+        }
+        if (placed != null && placed.stream().anyMatch(part -> !part.pos().equals(current.site())
+                && BuildingRules.isToTakeDown(part.state(), level.getBlockState(part.pos())))) {
+            return false;
+        }
+        if (current.site() != null && level.getBlockEntity(current.site()) instanceof ConstructionSiteBlockEntity stock && !stock.isEmpty()) {
+            return false;
+        }
+        forget(level, settlement, current);
+        removeSiteBlock(level, current);
+        updateTakenDown(level, current);
+        return true;
+    }
+
+    // Tells the neighbours of every spot of the building that's now empty, once a demolition ends.
+    private static void updateTakenDown(ServerLevel level, Building building) {
+        List<Blueprint.Part> placed = placed(level, building);
+        if (placed == null) {
+            return;
+        }
+        for (Blueprint.Part part : placed) {
+            if (!part.state().isAir() && level.isLoaded(part.pos()) && level.getBlockState(part.pos()).isAir()) {
+                level.blockUpdated(part.pos(), Blocks.AIR);
+            }
+        }
+    }
+
+    private static String typeName(ServerLevel level, Building building) {
+        return BuildingType.get(level, building.type()).map(BuildingType::name).orElse(building.type().toString());
+    }
+
+    // Removes a building at once, finished or not: the settlement forgets it, a construction site's
+    // block is taken away (its stock drops), and every block of the building still in place is
+    // removed, with no drops. Blocks that aren't part of it stay. Not a player or faction action
+    // (demolition goes through builders: orderDemolition); for tests and admin use. Returns how many
+    // blocks it removed, or -1 if the site isn't loaded (so a building is never half removed). With
+    // its template gone, it's only forgotten.
+    public static int removeAtOnce(ServerLevel level, Settlement settlement, Building building) {
         BoundingBox box = building.footprint();
         if (!level.hasChunksAt(box.minX(), box.minZ(), box.maxX(), box.maxZ())) {
             return -1;

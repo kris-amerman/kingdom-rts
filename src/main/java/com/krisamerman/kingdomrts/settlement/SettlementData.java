@@ -193,6 +193,14 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void setDemolishing(Settlement settlement, Building building, boolean demolishing) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current != null && current.demolishing() != demolishing) {
+            settlement.replaceBuilding(current.withDemolishing(demolishing));
+            setDirty();
+        }
+    }
+
     void closeSite(Settlement settlement, Building building) {
         Building current = settlement.buildingAt(building.origin());
         if (current != null && current.site() != null) {

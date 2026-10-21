@@ -60,4 +60,17 @@ class HaulingTest {
         assertEquals(3, from.countItem(Items.TORCH));
         assertFalse(Hauling.hasRoomForAny(from, to), "Now it's full");
     }
+
+    @Test
+    void aLoadFitsOnlyIfAllOfItDoes() {
+        SimpleContainer inventory = new SimpleContainer(2);
+        inventory.setItem(0, new ItemStack(Items.COBBLESTONE, 60));
+        assertTrue(Hauling.hasEmptySlot(inventory));
+        assertTrue(Hauling.fitsAll(inventory, List.of(new ItemStack(Items.COBBLESTONE, 4), new ItemStack(Items.OAK_PLANKS, 64))));
+        assertFalse(Hauling.fitsAll(inventory, List.of(new ItemStack(Items.COBBLESTONE, 5), new ItemStack(Items.OAK_PLANKS, 64))),
+                "The fifth cobblestone would need the slot the planks take");
+        assertEquals(60, inventory.countItem(Items.COBBLESTONE), "Checking doesn't change it");
+        inventory.setItem(1, new ItemStack(Items.DIRT));
+        assertFalse(Hauling.hasEmptySlot(inventory));
+    }
 }

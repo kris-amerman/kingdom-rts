@@ -90,7 +90,7 @@ public final class BuilderOps {
     @Nullable
     public static Building siteOf(Settlement settlement, UUID builder) {
         for (Building building : settlement.buildings()) {
-            if (building.site() != null && building.builders().containsKey(builder)) {
+            if (building.takesBuilders() && building.builders().containsKey(builder)) {
                 return building;
             }
         }
@@ -107,8 +107,8 @@ public final class BuilderOps {
         String name = nameOf(level, builder, settlement.residents().get(builder));
         Building busy = siteOf(settlement, builder);
         int max = BuildingType.get(level, current.type()).map(BuildingType::maxBuilders).orElse(BuildingType.DEFAULT_MAX_BUILDERS);
-        // A built building whose stock is still being cleared out can still take builders.
-        boolean closed = current.isBuilt() && current.site() == null;
+        // A built building whose stock is still being cleared out, or that's being demolished, can still take builders.
+        boolean closed = !current.takesBuilders();
         String problem = BuilderRules.assignProblem(name, isBuilder(level, settlement, builder), typeName(level, current), closed,
                 busy != null ? typeName(level, busy) : null, current.builders().size(), max);
         if (problem != null) {

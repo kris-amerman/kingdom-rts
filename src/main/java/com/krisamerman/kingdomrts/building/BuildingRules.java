@@ -221,6 +221,21 @@ public final class BuildingRules {
         return partner != null && partner.state().is(state.getBlock()) ? Optional.of(partner) : Optional.empty();
     }
 
+    // The order builders take a building apart in, the reverse of BUILD_ORDER: the top layer first,
+    // and within a layer what hangs on other blocks (torches, doors, ladders) before full blocks.
+    public static final Comparator<Blueprint.Part> DEMOLISH_ORDER = Comparator
+            .<Blueprint.Part>comparingInt(part -> -part.pos().getY())
+            .thenComparingInt(part -> part.state().isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO) ? 1 : 0)
+            .thenComparingInt(part -> part.pos().getX())
+            .thenComparingInt(part -> part.pos().getZ());
+
+    // Whether a builder takes this block down when demolishing: it's one of the building's own
+    // blocks (still as the template has it) and it can be broken at all.
+    public static boolean isToTakeDown(BlockState wanted, BlockState actual) {
+        return !wanted.isAir() && matches(wanted, actual) && actual.getBlock().defaultDestroyTime() >= 0
+                && !(actual.getBlock() instanceof LiquidBlock);
+    }
+
     // The order builders place blocks in: the lowest layer first, and within a layer full blocks
     // before the rest (so walls go up before what hangs on them), then a fixed order by position.
     // Whether a block can actually go down yet is checked when placing (see SitePlacement).

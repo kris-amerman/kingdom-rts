@@ -86,7 +86,11 @@ public final class BuildingCommands {
                                                 EntityArgument.getEntities(ctx, "units"), false)))))
                 .then(Commands.literal("demolish")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
-                                .executes(ctx -> demolish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))))
+                                .executes(ctx -> demolish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos"), null))
+                                .then(Commands.literal("faction")
+                                        .then(FactionCommands.factionArgument("faction")
+                                                .executes(ctx -> demolish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos"),
+                                                        FactionCommands.getFaction(ctx, "faction")))))))
                 .then(Commands.literal("finish")
                         .then(Commands.argument("pos", BlockPosArgument.blockPos())
                                 .executes(ctx -> finish(ctx.getSource(), BlockPosArgument.getBlockPos(ctx, "pos")))));
@@ -141,7 +145,8 @@ public final class BuildingCommands {
         source.sendSuccess(() -> Component.literal(settlement.name() + "'s buildings:"), false);
         for (Building building : settlement.buildings()) {
             BuildingOps.RemainingResult result = BuildingOps.remaining(level, building);
-            String progress = building.isBeingClearedOut() ? "built on day " + (building.built() / 24000 + 1) + ", its site's stock being cleared out"
+            String progress = building.demolishing() ? "being demolished"
+                    : building.isBeingClearedOut() ? "built on day " + (building.built() / 24000 + 1) + ", its site's stock being cleared out"
                     : building.isBuilt() ? "built on day " + (building.built() / 24000 + 1)
                     : result.remaining() == null ? result.problem()
                     : result.remaining().isDone() ? "finished, waiting to be completed"
@@ -189,6 +194,12 @@ public final class BuildingCommands {
             return 0;
         }
         ServerLevel level = source.getLevel();
+        if (building.demolishing()) {
+            BuildingOps.stopDemolition(level, settlementOf(level, building), building);
+            source.sendSuccess(() -> Component.literal("Stopped demolishing the " + typeName(level, building.type()) + " at "
+                    + building.origin().toShortString()), true);
+            return 1;
+        }
         if (building.isBuilt()) {
             source.sendFailure(Component.literal("The " + typeName(level, building.type()) + " is already built"));
             return 0;
@@ -233,19 +244,30 @@ public final class BuildingCommands {
         return changed;
     }
 
-    private static int demolish(CommandSourceStack source, BlockPos pos) {
+    // Orders a building demolished, for the player's faction or the one named: its builders take it
+    // apart (assign them as to a site).
+    private static int demolish(CommandSourceStack source, BlockPos pos, @Nullable Faction faction) {
         Building building = buildingAt(source, pos);
         if (building == null) {
             return 0;
         }
+        if (faction == null) {
+            ServerPlayer player = source.getPlayer();
+            faction = player != null ? FactionData.get(source.getServer()).factionOf(player.getUUID()) : null;
+            if (faction == null) {
+                source.sendFailure(Component.literal("You're not in a faction: join one, or add faction <name>"));
+                return 0;
+            }
+        }
         ServerLevel level = source.getLevel();
-        String name = typeName(level, building.type());
-        int removed = BuildingOps.demolish(level, settlementOf(level, building), building);
-        if (removed < 0) {
-            source.sendFailure(Component.literal("The " + name + " isn't loaded"));
+        String problem = BuildingOps.orderDemolition(level, faction, settlementOf(level, building), building);
+        if (problem != null) {
+            source.sendFailure(Component.literal(problem));
             return 0;
         }
-        source.sendSuccess(() -> Component.literal("Demolished the " + name + " (" + removed + " blocks removed)"), true);
+        String name = typeName(level, building.type());
+        source.sendSuccess(() -> Component.literal("Ordered the " + name + " at " + building.origin().toShortString()
+                + " demolished: assign builders to take it apart"), true);
         return 1;
     }
 

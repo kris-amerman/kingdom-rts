@@ -39,6 +39,9 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.LevelEvent;
+import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
@@ -53,6 +56,12 @@ import net.minecraft.world.phys.AABB;
 //   missing, the building is completed (BuildingOps#completeIfDone) -> it clears out the site's
 //   stock (spare materials, what clearing broke, tools), carrying it to settlement storage a load
 //   at a time -> once the stock is empty, the site closes and it's back in the pool.
+// Assigned to a building being demolished, it takes it apart instead: it clears out its site's
+// stock (if it's still a site), then takes the building's own blocks down (top down, what hangs
+// on others first: BuildingRules#DEMOLISH_ORDER), emptying containers before breaking them. Each
+// block gives back what placing it cost, into its inventory; when that's full it drops the load
+// off at storage. Once nothing of the building is left, the settlement forgets it
+// (BuildingOps#finishDemolitionIfDone).
 // Blocks it can't place yet (no materials in the stock, nothing to hang on yet, something in the
 // way) are left for the next plan; with nothing placeable it fetches what the site is missing (one
 // builder per site at a time, see SiteReservations): from the nearest settlement storage that has
@@ -132,7 +141,7 @@ public final class BuilderJob implements Job {
         Building site = settlement != null ? BuilderOps.siteOf(settlement, unit.getUUID()) : null;
         long now = level.getGameTime();
         Container carried = unit.getInventory();
-        if (site == null || site.site() == null) {
+        if (site == null || !site.takesBuilders()) {
             clearPlan();
             endFetch(unit);
             JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now, () -> !assigned(unit));
@@ -144,6 +153,10 @@ public final class BuilderJob implements Job {
         }
         if (!site.origin().equals(planSite)) {
             clearPlan();
+        }
+        if (site.demolishing()) {
+            endFetch(unit);
+            return demolish(level, unit, settlement, site, previous, succeeded, walkFailed, now);
         }
         if (site.isBuilt()) {
             clearPlan();
@@ -353,6 +366,97 @@ public final class BuilderJob implements Job {
         fetchFrom = null;
         fetchWanted = Map.of();
         fetchWalk = null;
+    }
+
+    // Taking a building apart (see the top). Per call it looks at a bounded number of the planned
+    // blocks, like placing.
+    private JobStep demolish(ServerLevel level, Unit unit, Settlement settlement, Building site, @Nullable JobStep previous, boolean succeeded,
+            boolean walkFailed, long now) {
+        Container carried = unit.getInventory();
+        // A full load goes to storage first (or it holds onto it while there's no room).
+        if (!Hauling.hasEmptySlot(carried) || (previous != null && previous == dropWalk)) {
+            JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now, () -> true);
+            if (dropOff != null) {
+                return dropOff;
+            }
+            if (!Hauling.hasEmptySlot(carried)) {
+                return new WaitStep(HOLD_RETRY_TICKS, "holding what it carries: no room in storage");
+            }
+        }
+        // A site's stock is cleared out first.
+        if (previous != null && previous == clearOutWalk) {
+            clearOutWalk = null;
+            if (!succeeded) {
+                return new WaitStep(RETRY_TICKS, "retrying the walk to the site");
+            }
+        }
+        if (site.site() != null && level.getBlockEntity(site.site()) instanceof ConstructionSiteBlockEntity stock && !stock.isEmpty()) {
+            if (unit.position().distanceTo(site.site().getCenter()) <= HAND_OVER_REACH) {
+                return new TakeAllStep(site.site());
+            }
+            clearOutWalk = WalkToStep.near(site.site(), WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+            return clearOutWalk;
+        }
+        boolean justPlanned = previous instanceof DemolishPlanStep;
+        if (previous instanceof DemolishPlanStep planStep) {
+            clearPlan();
+            planSite = site.origin();
+            plan.addAll(planStep.toTakeDown);
+        } else if (planSite == null) {
+            return new DemolishPlanStep(site);
+        }
+        if (walkFailed && walkingTo != null) {
+            unreachable.add(walkingTo);
+            walkingTo = null;
+        }
+        Blueprint.Part toTakeDown = null;
+        Blueprint.Part toWalkTo = null;
+        int looked = 0;
+        for (Iterator<Blueprint.Part> it = plan.iterator(); it.hasNext() && looked < CANDIDATES_PER_LOOK; looked++) {
+            Blueprint.Part part = it.next();
+            if (!BuildingRules.isToTakeDown(part.state(), level.getBlockState(part.pos()))) {
+                it.remove(); // taken down (by it or someone else)
+                continue;
+            }
+            if (SiteReservations.heldByOther(site.origin(), part.pos(), unit.getUUID(), now)) {
+                continue;
+            }
+            // Within reach it's taken, even if it couldn't walk to it (a roof has nowhere to stand
+            // near it, but can be reached from the ground or a wall).
+            if (unit.getEyePosition().distanceTo(part.pos().getCenter()) <= REACH) {
+                toTakeDown = part;
+                break;
+            }
+            if (toWalkTo == null && !unreachable.contains(part.pos())) {
+                toWalkTo = part;
+            }
+        }
+        if (toTakeDown != null && SiteReservations.reserve(site.origin(), toTakeDown.pos(), unit.getUUID(), now)) {
+            walkingTo = null;
+            if (level.getBlockEntity(toTakeDown.pos()) instanceof Container container && !container.isEmpty()) {
+                return new EmptyContainerStep(site, toTakeDown.pos()); // what's in it first; the block once it's empty
+            }
+            if (!Hauling.fitsAll(carried, BuildingRules.costOf(toTakeDown.state()))) {
+                SiteReservations.release(site.origin(), toTakeDown.pos(), unit.getUUID());
+                dropAgainAt = 0;
+                JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now, () -> true);
+                return dropOff != null ? dropOff : new WaitStep(HOLD_RETRY_TICKS, "holding what it carries: no room in storage");
+            }
+            return new TakeDownStep(site, toTakeDown);
+        }
+        if (toWalkTo != null) {
+            walkingTo = toWalkTo.pos();
+            walk = WalkToStep.near(toWalkTo.pos(), WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+            return walk;
+        }
+        // Nothing it can take down now: gone, if a fresh look found nothing left; else look again
+        // after a pause (other builders are on the rest, or it couldn't get to them).
+        boolean nothingLeft = justPlanned && plan.isEmpty();
+        clearPlan();
+        if (nothingLeft && BuildingOps.finishDemolitionIfDone(level, settlement, site)) {
+            return new WaitStep(WAIT_TICKS, "finishing up");
+        }
+        return justPlanned ? new WaitStep(RETRY_TICKS, "waiting to take down the rest") : new DemolishPlanStep(site);
     }
 
     // Clearing out a finished site's stock: whatever it carries goes to settlement storage (or it
@@ -691,6 +795,180 @@ public final class BuilderJob implements Job {
         @Override
         public String describe() {
             return "deliver materials to the site at " + siteBlock.toShortString();
+        }
+    }
+
+    // Works out which of a building's blocks are still there to take down (its template, as placed,
+    // minus what's gone or changed and the site block's spot), a batch per tick, in DEMOLISH_ORDER.
+    private static final class DemolishPlanStep implements JobStep {
+        private static final int CHECKED_PER_TICK = 512;
+        private final Building site;
+        private final List<Blueprint.Part> toTakeDown = new ArrayList<>();
+        @Nullable
+        private List<Blueprint.Part> placed;
+        private int next;
+
+        DemolishPlanStep(Building site) {
+            this.site = site;
+        }
+
+        @Override
+        public void start(Unit unit) {
+            placed = unit.level() instanceof ServerLevel level ? BuildingOps.placed(level, site) : null;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (placed == null) {
+                return Status.FAILED;
+            }
+            for (int i = 0; i < CHECKED_PER_TICK && next < placed.size(); i++, next++) {
+                Blueprint.Part part = placed.get(next);
+                if (!part.pos().equals(site.site()) && unit.level().isLoaded(part.pos())
+                        && BuildingRules.isToTakeDown(part.state(), unit.level().getBlockState(part.pos()))) {
+                    toTakeDown.add(part);
+                }
+            }
+            if (next < placed.size()) {
+                return Status.RUNNING;
+            }
+            toTakeDown.sort(BuildingRules.DEMOLISH_ORDER);
+            return Status.DONE;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 20 * 10;
+        }
+
+        @Override
+        public String describe() {
+            return "plan taking down the building at " + site.origin().toShortString();
+        }
+    }
+
+    // Takes down one of the building's blocks, as a player would break it (as long as vanilla says,
+    // with the best tool it carries, showing the cracks), and keeps what placing it cost. The block
+    // goes without telling its neighbours, so nothing hanging on it pops off as a drop before its own
+    // turn (they're told once the demolition ends: BuildingOps). Fails if pushed out of reach, or if
+    // the block isn't the building's any more. Releases its reservation either way.
+    private static final class TakeDownStep implements JobStep {
+        private static final int SWING_TICKS = 5;
+        private static final int LONGEST_BREAK_TICKS = 20 * 30;
+        private final Building site;
+        private final Blueprint.Part part;
+        private int ticks;
+        private boolean cracking;
+
+        TakeDownStep(Building site, Blueprint.Part part) {
+            this.site = site;
+            this.part = part;
+        }
+
+        @Override
+        public void start(Unit unit) {
+            BlockState state = unit.level().getBlockState(part.pos());
+            int slot = Stock.bestToolFor(unit.getInventory(), state);
+            if (slot >= 0 && unit.getMainHandItem().isEmpty()) {
+                unit.setItemSlot(EquipmentSlot.MAINHAND, unit.getInventory().removeItemNoUpdate(slot));
+            }
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            ServerLevel level = (ServerLevel) unit.level();
+            BlockPos target = part.pos();
+            BlockState state = level.getBlockState(target);
+            if (!BuildingRules.isToTakeDown(part.state(), state) || unit.getEyePosition().distanceTo(target.getCenter()) > REACH + 1
+                    || (level.getBlockEntity(target) instanceof Container container && !container.isEmpty())) {
+                return Status.FAILED;
+            }
+            ItemStack tool = unit.getMainHandItem();
+            unit.getLookControl().setLookAt(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
+            if (ticks % SWING_TICKS == 0) {
+                unit.swing(InteractionHand.MAIN_HAND);
+            }
+            int needed = Math.min(LONGEST_BREAK_TICKS, BreakTime.ticks(unit, tool, state, level, target));
+            if (++ticks < needed) {
+                level.destroyBlockProgress(unit.getId(), target, ticks * 10 / needed);
+                cracking = true;
+                return Status.RUNNING;
+            }
+            level.levelEvent(LevelEvent.PARTICLES_DESTROY_BLOCK, target, Block.getId(state)); // breaking sound and particles
+            level.setBlock(target, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE);
+            level.gameEvent(unit, GameEvent.BLOCK_DESTROY, target);
+            if (!tool.isEmpty()) {
+                tool.hurtAndBreak(1, unit, EquipmentSlot.MAINHAND);
+            }
+            for (ItemStack cost : BuildingRules.costOf(state)) {
+                ItemStack left = Stock.insert(unit.getInventory(), cost);
+                if (!left.isEmpty()) {
+                    unit.spawnAtLocation(left); // checked before it started, so it shouldn't happen
+                }
+            }
+            return Status.DONE;
+        }
+
+        @Override
+        public void stop(Unit unit) {
+            if (cracking) {
+                unit.level().destroyBlockProgress(unit.getId(), part.pos(), -1);
+            }
+            ItemStack held = unit.getMainHandItem();
+            if (!held.isEmpty()) {
+                ItemStack left = Stock.insert(unit.getInventory(), held); // the tool goes back with what it carries
+                unit.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                if (!left.isEmpty()) {
+                    unit.spawnAtLocation(left);
+                }
+            }
+            SiteReservations.release(site.origin(), part.pos(), unit.getUUID());
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return LONGEST_BREAK_TICKS + 20;
+        }
+
+        @Override
+        public String describe() {
+            return "take down " + part.state().getBlock().getName().getString() + " at " + part.pos().toShortString();
+        }
+    }
+
+    // Takes what's in one of the building's containers (a chest that's part of it) into its
+    // inventory, as much as fits, before the container itself is taken down. Releases its reservation.
+    private static final class EmptyContainerStep implements JobStep {
+        private final Building site;
+        private final BlockPos pos;
+
+        EmptyContainerStep(Building site, BlockPos pos) {
+            this.site = site;
+            this.pos = pos;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.getEyePosition().distanceTo(pos.getCenter()) > REACH + 1 || !(unit.level().getBlockEntity(pos) instanceof Container container)) {
+                return Status.FAILED;
+            }
+            unit.swing(InteractionHand.MAIN_HAND);
+            return Hauling.moveAll(container, unit.getInventory()) > 0 ? Status.DONE : Status.FAILED;
+        }
+
+        @Override
+        public void stop(Unit unit) {
+            SiteReservations.release(site.origin(), pos, unit.getUUID());
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "empty the container at " + pos.toShortString();
         }
     }
 

@@ -30,28 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-041 Units open and close doors
-- **Status:** in review | **Branch:** feature/unit-doors | **PR:** #35 | **Depends on:** -
-- **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
-- **Scope:**
-  - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
-  - **Pathing through doors:** units plan paths through closed doors they can open (wooden doors, and probably fence gates), open them as they reach them, and close them once they're through. Vanilla has the pieces (navigation that can open doors, and a door-opening goal mobs use); check them against the 1.21.1 sources, and whether fence gates and trapdoors need our own handling.
-  - **Doors they can't open:** iron doors and the like (redstone-only) stay walls, as for players.
-  - **Every unit,** whatever its occupation, since it's the walking that needs it.
-- **Out of scope:** locks and faction-only doors, breaking doors down in sieges.
-- **Test:** GameTests: a unit walks through a closed wooden door to reach a spot on the other side, and the door is closed again after it; a builder that finishes a shed from inside walks out; an iron door still blocks it. Manual: watch a unit open and close a door.
-- **Notes:**
-  - Owner request, 2026-10-20: units shouldn't get stuck behind doors.
-  - Open: whether units of a hostile faction may open another faction's doors (players can, so probably yes, unless locks come later).
-  - Measure with the stress test, since it changes pathfinding (docs/perf.md).
-  - **What was built:** every unit's ground navigation can open doors (`setCanOpenDoors`), so paths go through closed wooden doors, and every unit has vanilla's `OpenDoorGoal`, closing doors behind it. It takes no goal flags, so it runs alongside whatever else the unit is doing. No code of our own beyond that.
-  - **Found while testing:** a stuck walk ends by hopping the unit to a spot a few blocks away (`WalkToStep`), which can also get a unit out of a closed building. So the shed test checks that the door opened, not only that the builder got out.
-  - **Fence gates and trapdoors:** vanilla paths a closed fence gate as a fence, and nothing opens it, so gates still block units. Trapdoors are walked over, not through. Neither is in a template yet; gates would need our own handling (a goal like `OpenDoorGoal` that toggles `FenceGateBlock.OPEN`, plus a path type change), left for when a template uses one.
-  - **Vanilla's door goal** closes the door as soon as the unit is through, or after a second. It doesn't check whether another unit is in the doorway, which does no harm, since doors don't push.
-  - **Stress:** unchanged. Back to back with main: 4.57 vs 4.59 ms at 400 units, all sheds built. The scenario has no doors, so this measures the goal's own cost, not paths through doors.
-
 ### S-038 Builders demolish buildings
-- **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031, S-040
+- **Status:** in review | **Branch:** feature/builders-demolish | **PR:** #36 | **Depends on:** S-031, S-040
 - **Goal:** demolishing a building is a job for builders, who take it apart block by block and carry every material back to storage.
 - **Scope:**
   - **Policy:** all construction and demolition goes through builders. The instant demolish from S-011 is no longer a player action.
@@ -79,6 +59,36 @@ Story template:
   - Owner, 2026-10-20: all construction and demolition goes through builders, and demolition gives every material back. This replaces design.md's earlier idea of an instant, TNT-style demolish that returned only part of the materials.
   - Owner, 2026-10-20: blocks that aren't the template's are left standing. Containers that are part of the template are emptied by the builders, who come back for whatever they can't carry.
   - GameTests that need a building gone at once can keep a test-only helper.
+  - **What was built:**
+    - `Building.demolishing` (saved), `takesBuilders`;
+    - `BuildingOps.orderDemolition`, `stopDemolition`, `finishDemolitionIfDone`;
+    - the old instant demolish is now `BuildingOps.removeAtOnce`, for tests and admin use only;
+    - `BuildingRules.DEMOLISH_ORDER` and `isToTakeDown` (pure);
+    - in `BuilderJob`: `DemolishPlanStep`, `TakeDownStep`, `EmptyContainerStep`, plus the S-031 and S-040 steps for full loads and a site's stock;
+    - the site panel shows "Being demolished".
+  - **Decisions:**
+    - **Taking a block down** doesn't tell its neighbours, so a torch whose wall goes first, or a door's other half, doesn't pop off as a drop. Neighbours are told once the demolition ends (finished or stopped).
+    - **A door's upper half** gives nothing and its lower half gives the door, so the door comes back once, whichever half goes first.
+    - **Reach:** a block within reach is taken even if the builder couldn't walk next to it. A roof has nowhere to stand within 2 blocks, but can be reached from the ground or a wall.
+    - **When the load goes to storage:** a builder drops it off when its inventory is full, or when it's back in the pool afterwards. Before taking a block down, it checks the block's cost fits in what it carries.
+    - **Tools:** demolition uses the best tool in the builder's inventory. Drop-offs move everything it carries, tools included (as in S-031), so after its first load it carries on by hand. S-042 decides which tools a builder keeps.
+    - **Stopping:** `building cancel` on a building being demolished stops the demolition. The building stays as it is, built or a site again, with its builders.
+    - **The command** takes the player's faction, or `faction <name>`, like `commission`. Only the owning faction can order it.
+  - **Not done:** units living or working in a demolished building aren't affected yet. Workplaces are still placed blocks, not buildings (S-026).
+
+### S-043 Builders' hut
+- **Status:** planned | **Branch:** feature/builders-hut | **PR:** - | **Depends on:** S-031
+- **Goal:** builders work from a builders' hut (the name is open: a builders' guild, a builder's yard), a workplace like the lumberjack hut, instead of from the town hall.
+- **Scope:**
+  - **The hut:** a workplace block, placed directly like the other huts until huts become buildings (S-026). Builders are hired at it, up to a number set in data, and it's their post: they go back there between sites.
+  - **Its stock:** holds the builders' tools and anything they bring back. It's the first place builders take from and put things in, before settlement storage, through the same point in the code as fetching and clearing out (design.md, Builders as a business).
+  - **The pool:** a hut's builders not on a site. Assigning builders to sites works as now (site panel, commands), choosing among the settlement's builders.
+  - **The town hall** stops hiring builders. Its Builders view goes, or points to the huts; decided in the story, along with what happens to builders already hired at the hall (moved to a hut, or left jobless until one hires them).
+- **Out of scope:** gold, buying materials or tools, competing businesses, the hut as a real building (S-026).
+- **Test:** GameTests: builders are hired at the hut and go back to it between sites; leftovers and tools go to the hut's stock first, then settlement storage; the town hall no longer hires builders; old saves with hall-hired builders load. Manual: the hut panel.
+- **Notes:**
+  - Owner, 2026-10-20: we're moving away from keeping builders at the town hall, towards builders as a business with a place of its own (design.md, Builders and construction sites).
+  - S-042 (tools) would fetch from the hut's stock first once this lands.
 
 ### S-032 Nation management interface: opening it
 - **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
@@ -226,12 +236,32 @@ Story template:
 - **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
 - **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
 - **Worker skills:** per-unit skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
-- **Builders as a business:** a builder's hut or yard as their place of business, holding their tools and some stock; builders buying materials from other workers' shops or a market; a baseline tool kit as the business's capital; perhaps competing builder businesses offering different deals (design.md, Builders as a business). Open, owner's direction 2026-10-20.
+- **Builders as a business:** builders' hut is S-043. Later: builders buying materials from other workers' shops or a market; a baseline tool kit as the business's capital; perhaps competing builder businesses offering different deals (design.md, Builders as a business). Open, owner's direction 2026-10-20.
 - **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
 - **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-041 Units open and close doors
+- **Status:** done | **Branch:** feature/unit-doors | **PR:** #35 | **Depends on:** -
+- **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
+- **Scope:**
+  - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
+  - **Pathing through doors:** units plan paths through closed doors they can open (wooden doors, and probably fence gates), open them as they reach them, and close them once they're through. Vanilla has the pieces (navigation that can open doors, and a door-opening goal mobs use); check them against the 1.21.1 sources, and whether fence gates and trapdoors need our own handling.
+  - **Doors they can't open:** iron doors and the like (redstone-only) stay walls, as for players.
+  - **Every unit,** whatever its occupation, since it's the walking that needs it.
+- **Out of scope:** locks and faction-only doors, breaking doors down in sieges.
+- **Test:** GameTests: a unit walks through a closed wooden door to reach a spot on the other side, and the door is closed again after it; a builder that finishes a shed from inside walks out; an iron door still blocks it. Manual: watch a unit open and close a door.
+- **Notes:**
+  - Owner request, 2026-10-20: units shouldn't get stuck behind doors.
+  - Open: whether units of a hostile faction may open another faction's doors (players can, so probably yes, unless locks come later).
+  - Measure with the stress test, since it changes pathfinding (docs/perf.md).
+  - **What was built:** every unit's ground navigation can open doors (`setCanOpenDoors`), so paths go through closed wooden doors, and every unit has vanilla's `OpenDoorGoal`, closing doors behind it. It takes no goal flags, so it runs alongside whatever else the unit is doing. No code of our own beyond that.
+  - **Found while testing:** a stuck walk ends by hopping the unit to a spot a few blocks away (`WalkToStep`), which can also get a unit out of a closed building. So the shed test checks that the door opened, not only that the builder got out.
+  - **Fence gates and trapdoors:** vanilla paths a closed fence gate as a fence, and nothing opens it, so gates still block units. Trapdoors are walked over, not through. Neither is in a template yet; gates would need our own handling (a goal like `OpenDoorGoal` that toggles `FenceGateBlock.OPEN`, plus a path type change), left for when a template uses one.
+  - **Vanilla's door goal** closes the door as soon as the unit is through, or after a second. It doesn't check whether another unit is in the doorway, which does no harm, since doors don't push.
+  - **Stress:** unchanged. Back to back with main: 4.57 vs 4.59 ms at 400 units, all sheds built. The scenario has no doors, so this measures the goal's own cost, not paths through doors.
 
 ### S-040 Builders empty a finished site
 - **Status:** done | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
