@@ -30,31 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-040 Builders empty a finished site
-- **Status:** in review | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
-- **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
-- **Scope:**
-  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
-  - With nowhere to put it, builders hold onto what they carry (S-031) and the site block waits.
-  - The site panel shows that the building is finished and its stock is being cleared out.
-- **Out of scope:** demolition (S-038).
-- **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
-- **Notes:**
-  - **What was built:**
-    - a finished building stays a site (`Building.finishedAt` keeps its site block and builders; `isBeingClearedOut`) until `BuildingOps.closeIfEmpty` closes it (`withSiteClosed`) once its stock is empty;
-    - in `BuilderJob`: clearing out (`TakeAllStep`, a load at a time from the site's stock, then the S-031 drop-off at storage);
-    - the site panel shows "Built, clearing out stock".
-  - **Decisions:**
-    - Every builder on the site helps clear out; there's no limit like the one on fetching.
-    - Builders can still be assigned to a building whose stock is being cleared out.
-    - Breaking the site block of a built building closes its site, and the building stays (its stock drops, since its owner chose to break it). Before it's built, breaking the block still cancels the building.
-    - Whoever empties the stock (a player taking things out, say), the site closes once it's empty. The panel or a builder notices.
-    - `building finish` works the same way: with something left in the stock, the site stays open to be cleared out.
-  - **Still open (from S-031):** a stock filled with what clearing broke while the building is going up leaves no room for fetched materials. Clearing out only happens once it's built.
-  - **Stress:** unchanged (4.46 ms at 400 units, all sheds built). The scenario's sites end up with empty stocks, so they close at once.
-
 ### S-041 Units open and close doors
-- **Status:** planned | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/unit-doors | **PR:** #35 | **Depends on:** -
 - **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
 - **Scope:**
   - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
@@ -67,6 +44,11 @@ Story template:
   - Owner request, 2026-10-20: units shouldn't get stuck behind doors.
   - Open: whether units of a hostile faction may open another faction's doors (players can, so probably yes, unless locks come later).
   - Measure with the stress test, since it changes pathfinding (docs/perf.md).
+  - **What was built:** every unit's ground navigation can open doors (`setCanOpenDoors`), so paths go through closed wooden doors, and every unit has vanilla's `OpenDoorGoal`, closing doors behind it. It takes no goal flags, so it runs alongside whatever else the unit is doing. No code of our own beyond that.
+  - **Found while testing:** a stuck walk ends by hopping the unit to a spot a few blocks away (`WalkToStep`), which can also get a unit out of a closed building. So the shed test checks that the door opened, not only that the builder got out.
+  - **Fence gates and trapdoors:** vanilla paths a closed fence gate as a fence, and nothing opens it, so gates still block units. Trapdoors are walked over, not through. Neither is in a template yet; gates would need our own handling (a goal like `OpenDoorGoal` that toggles `FenceGateBlock.OPEN`, plus a path type change), left for when a template uses one.
+  - **Vanilla's door goal** closes the door as soon as the unit is through, or after a second. It doesn't check whether another unit is in the doorway, which does no harm, since doors don't push.
+  - **Stress:** unchanged. Back to back with main: 4.57 vs 4.59 ms at 400 units, all sheds built. The scenario has no doors, so this measures the goal's own cost, not paths through doors.
 
 ### S-038 Builders demolish buildings
 - **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031, S-040
@@ -211,6 +193,19 @@ Story template:
 - **Test:** decided with the design.
 - **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
 
+### S-042 Builders bring the tools they need (low priority)
+- **Status:** planned (low priority) | **Branch:** feature/builder-tools | **PR:** - | **Depends on:** S-031
+- **Goal:** a builder brings the tools its site's clearing calls for (a shovel for dirt, a pickaxe for stone, an axe for wood), rather than only using what happens to be in the site's stock.
+- **Scope:**
+  - **Today:** clearing uses the best tool in the site's stock, or bare hands. Nobody brings tools, so dirt is dug by hand and stone gives nothing.
+  - **Picking tools:** when a site has things in the way, the builder works out which kinds of tool would help (from what's in the way) and fetches the best of each it can find, before or alongside its first materials fetch, from wherever builders get things from (settlement storage for now; see the note).
+  - **Using them:** clearing uses the best tool the builder carries or the site's stock holds. Tools wear as they do now.
+  - **Putting them back:** tools go back with the rest of the site's stock when the site is cleared out (S-040), or back to where they came from.
+- **Out of scope:** buying tools, a builder's own workplace and its tool kit (see the note), repairing tools.
+- **Test:** GameTests: with a shovel in storage and dirt in the way, the builder fetches the shovel and digs faster than by hand; with no tools anywhere it still clears by hand; the tools end up back in storage. Manual: watch it.
+- **Notes:**
+  - Owner, 2026-10-20: low priority. Where builders keep tools is tied to where they work from. Today that's the town hall pool and settlement storage; later perhaps a builder's hut with a tool kit as the business's base demand (design.md, Builders and construction sites, Builders as a business). Build this against the same "where builders get things" seam as fetching, so it moves with it.
+
 ### S-037 More natural unit movement (low priority)
 - **Status:** planned (low priority) | **Branch:** feature/natural-movement | **PR:** - | **Depends on:** S-025
 - **Goal:** units moving around the same area look natural: they don't all take the same path, queue single file on the same blocks, or walk into each other.
@@ -231,11 +226,35 @@ Story template:
 - **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
 - **Wanderers (population growth):** unemployed, unhoused units arrive in settlements now and then, at a rate scaled to the settlement's capacity, with buildings like an Inn speeding it up (design.md, Population).
 - **Worker skills:** per-unit skills and strengths, and matching units to jobs that suit them. Deferred by the owner to keep things simple.
+- **Builders as a business:** a builder's hut or yard as their place of business, holding their tools and some stock; builders buying materials from other workers' shops or a market; a baseline tool kit as the business's capital; perhaps competing builder businesses offering different deals (design.md, Builders as a business). Open, owner's direction 2026-10-20.
 - **Worker supply:** base demand per workplace, with workers fetching what they need from their workplace, storage, markets or other workplaces' surplus, and couriers as a helper rather than a bottleneck (design.md, Workplaces and supply).
 - **Capture UI later:** faction identity (colour/emblem/banner), a custom-drawn bar, town hall and flag models.
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-040 Builders empty a finished site
+- **Status:** done | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
+- **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
+- **Scope:**
+  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
+  - With nowhere to put it, builders hold onto what they carry (S-031) and the site block waits.
+  - The site panel shows that the building is finished and its stock is being cleared out.
+- **Out of scope:** demolition (S-038).
+- **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
+- **Notes:**
+  - **What was built:**
+    - a finished building stays a site (`Building.finishedAt` keeps its site block and builders; `isBeingClearedOut`) until `BuildingOps.closeIfEmpty` closes it (`withSiteClosed`) once its stock is empty;
+    - in `BuilderJob`: clearing out (`TakeAllStep`, a load at a time from the site's stock, then the S-031 drop-off at storage);
+    - the site panel shows "Built, clearing out stock".
+  - **Decisions:**
+    - Every builder on the site helps clear out; there's no limit like the one on fetching.
+    - Builders can still be assigned to a building whose stock is being cleared out.
+    - Breaking the site block of a built building closes its site, and the building stays (its stock drops, since its owner chose to break it). Before it's built, breaking the block still cancels the building.
+    - Whoever empties the stock (a player taking things out, say), the site closes once it's empty. The panel or a builder notices.
+    - `building finish` works the same way: with something left in the stock, the site stays open to be cleared out.
+  - **Still open (from S-031):** a stock filled with what clearing broke while the building is going up leaves no room for fetched materials. Clearing out only happens once it's built.
+  - **Stress:** unchanged (4.46 ms at 400 units, all sheds built). The scenario's sites end up with empty stocks, so they close at once.
 
 ### S-031 Builders fetch materials
 - **Status:** done | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
