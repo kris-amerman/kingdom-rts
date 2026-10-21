@@ -141,7 +141,8 @@ public final class BuildingCommands {
         source.sendSuccess(() -> Component.literal(settlement.name() + "'s buildings:"), false);
         for (Building building : settlement.buildings()) {
             BuildingOps.RemainingResult result = BuildingOps.remaining(level, building);
-            String progress = building.isBuilt() ? "built on day " + (building.built() / 24000 + 1)
+            String progress = building.isBeingClearedOut() ? "built on day " + (building.built() / 24000 + 1) + ", its site's stock being cleared out"
+                    : building.isBuilt() ? "built on day " + (building.built() / 24000 + 1)
                     : result.remaining() == null ? result.problem()
                     : result.remaining().isDone() ? "finished, waiting to be completed"
                     : result.remaining().missing().size() + " blocks to place";

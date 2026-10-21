@@ -39,7 +39,19 @@ Story template:
   - The site panel shows that the building is finished and its stock is being cleared out.
 - **Out of scope:** demolition (S-038).
 - **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - a finished building stays a site (`Building.finishedAt` keeps its site block and builders; `isBeingClearedOut`) until `BuildingOps.closeIfEmpty` closes it (`withSiteClosed`) once its stock is empty;
+    - in `BuilderJob`: clearing out (`TakeAllStep`, a load at a time from the site's stock, then the S-031 drop-off at storage);
+    - the site panel shows "Built, clearing out stock".
+  - **Decisions:**
+    - Every builder on the site helps clear out; there's no limit like the one on fetching.
+    - Builders can still be assigned to a building whose stock is being cleared out.
+    - Breaking the site block of a built building closes its site, and the building stays (its stock drops, since its owner chose to break it). Before it's built, breaking the block still cancels the building.
+    - Whoever empties the stock (a player taking things out, say), the site closes once it's empty. The panel or a builder notices.
+    - `building finish` works the same way: with something left in the stock, the site stays open to be cleared out.
+  - **Still open (from S-031):** a stock filled with what clearing broke while the building is going up leaves no room for fetched materials. Clearing out only happens once it's built.
+  - **Stress:** unchanged (4.46 ms at 400 units, all sheds built). The scenario's sites end up with empty stocks, so they close at once.
 
 ### S-041 Units open and close doors
 - **Status:** planned | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -

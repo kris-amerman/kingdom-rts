@@ -136,20 +136,43 @@ public final class BuildingOps {
         return new RemainingResult(BuildingRules.remaining(parts, level::getBlockState), null);
     }
 
-    // If nothing is left to do at a site, finishes it: the building is marked built and its
-    // construction site block is taken away (whatever is left in its stock drops, until builders
-    // take leftovers back to storage). Returns whether it's built now.
+    // If nothing is left to do at a site, finishes it: the building is marked built. Its
+    // construction site block stays while anything is left in its stock, for its builders to carry
+    // to storage (see BuilderJob), and goes once the stock is empty (closeIfEmpty). Returns whether
+    // it's built now.
     public static boolean completeIfDone(ServerLevel level, Settlement settlement, Building building) {
-        if (building.isBuilt()) {
-            return true;
-        }
-        RemainingResult result = remaining(level, building);
-        if (result.remaining() == null || !result.remaining().isDone()) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current == null) {
             return false;
         }
-        // Marked built first, so taking the site block away doesn't cancel it (see ConstructionSiteBlock).
-        SettlementData.get(level).finishBuilding(settlement, building, level.getGameTime());
-        removeSiteBlock(level, building);
+        if (!current.isBuilt()) {
+            RemainingResult result = remaining(level, current);
+            if (result.remaining() == null || !result.remaining().isDone()) {
+                return false;
+            }
+            SettlementData.get(level).finishBuilding(settlement, current, level.getGameTime());
+        }
+        closeIfEmpty(level, settlement, current);
+        return true;
+    }
+
+    // Closes a built building's site once its stock is empty (or its block is gone): the settlement
+    // stops recording it as a site, frees its builders, and the construction site block is taken
+    // away (in that order, so taking it away doesn't cancel the building: see ConstructionSiteBlock).
+    // Returns whether the site is closed now.
+    public static boolean closeIfEmpty(ServerLevel level, Settlement settlement, Building building) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current == null || current.site() == null) {
+            return true;
+        }
+        if (!current.isBuilt() || !level.isLoaded(current.site())) {
+            return false;
+        }
+        if (level.getBlockEntity(current.site()) instanceof ConstructionSiteBlockEntity stock && !stock.isEmpty()) {
+            return false;
+        }
+        SettlementData.get(level).closeSite(settlement, current);
+        removeSiteBlock(level, current);
         return true;
     }
 

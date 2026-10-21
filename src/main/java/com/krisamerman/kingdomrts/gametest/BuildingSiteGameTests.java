@@ -74,17 +74,21 @@ public class BuildingSiteGameTests {
     }
 
     @GameTest(template = TEMPLATE, batch = "site_finish")
-    public static void finishingTakesTheSiteAway(GameTestHelper helper) {
+    public static void finishingTakesTheSiteAwayOnceItsStockIsEmpty(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
         Settlement settlement = found(helper, HALL, blue);
         Building building = commission(helper, blue, SITE, Rotation.NONE);
         stock(helper, building).setItem(0, new ItemStack(Items.OAK_PLANKS, 3)); // left over
         BuildingOps.finish(helper.getLevel(), current(helper, settlement), building);
         Building built = current(helper, settlement).buildingAt(building.origin());
-        helper.assertTrue(built != null && built.isBuilt() && built.site() == null, "Expected the building marked built, with no site: " + built);
+        helper.assertTrue(built != null && built.isBeingClearedOut(), "Expected the building marked built, its site open while its stock is cleared out: " + built);
+        helper.assertTrue(helper.getLevel().getBlockState(building.site()).is(KingdomRts.CONSTRUCTION_SITE.get()), "The site block should stay for now");
+        helper.assertTrue(helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(building.site()).inflate(2)).isEmpty(), "Nothing should drop");
+        stock(helper, building).setItem(0, ItemStack.EMPTY); // taken out (by a player, say)
+        BuildingOps.completeIfDone(helper.getLevel(), current(helper, settlement), built);
+        Building closed = current(helper, settlement).buildingAt(building.origin());
+        helper.assertTrue(closed != null && closed.isBuilt() && closed.site() == null, "Expected its site closed: " + closed);
         helper.assertFalse(helper.getLevel().getBlockState(building.site()).is(KingdomRts.CONSTRUCTION_SITE.get()), "The site block should be gone");
-        helper.assertFalse(helper.getLevel().getEntitiesOfClass(ItemEntity.class, new AABB(building.site()).inflate(2),
-                item -> item.getItem().is(Items.OAK_PLANKS)).isEmpty(), "What was left in its stock should drop");
         removeHall(helper, HALL);
         helper.succeed();
     }

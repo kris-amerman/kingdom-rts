@@ -30,12 +30,25 @@ class BuildingTest {
     }
 
     @Test
-    void aFinishedBuildingHasNoSiteAndSurvivesSaving() {
-        Building built = SHED.finishedAt(5678L);
+    void aFinishedBuildingKeepsItsSiteAndBuildersUntilItsStockIsClearedOut() {
+        UUID builder = UUID.randomUUID();
+        Building built = SHED.withBuilder(builder, "Ada Lovelace").finishedAt(5678L);
         assertTrue(built.isBuilt());
-        assertNull(built.site());
+        assertTrue(built.isBeingClearedOut());
+        assertEquals(SHED.site(), built.site());
+        assertEquals(Map.of(builder, "Ada Lovelace"), built.builders());
         assertEquals(5678L, built.built());
         assertEquals(built, Building.load(built.save()));
+    }
+
+    @Test
+    void closingTheSiteFreesItsBuildersAndSurvivesSaving() {
+        Building closed = SHED.withBuilder(UUID.randomUUID(), "Ada Lovelace").finishedAt(5678L).withSiteClosed();
+        assertTrue(closed.isBuilt());
+        assertFalse(closed.isBeingClearedOut());
+        assertNull(closed.site());
+        assertTrue(closed.builders().isEmpty());
+        assertEquals(closed, Building.load(closed.save()));
     }
 
     @Test
@@ -55,13 +68,13 @@ class BuildingTest {
     }
 
     @Test
-    void assignedBuildersSurviveSavingAndAreFreedWhenFinished() {
+    void assignedBuildersSurviveSavingAndAreFreedWhenTheSiteCloses() {
         UUID ada = UUID.randomUUID();
         UUID ben = UUID.randomUUID();
         Building assigned = SHED.withBuilder(ada, "Ada Thorne").withBuilder(ben, "Ben Ash");
         assertEquals(List.of(ada, ben), List.copyOf(assigned.builders().keySet()), "In assignment order");
         assertEquals(assigned, Building.load(assigned.save()));
         assertEquals(Map.of(ben, "Ben Ash"), assigned.withoutBuilder(ada).builders());
-        assertTrue(assigned.finishedAt(99L).builders().isEmpty());
+        assertTrue(assigned.finishedAt(99L).withSiteClosed().builders().isEmpty());
     }
 }

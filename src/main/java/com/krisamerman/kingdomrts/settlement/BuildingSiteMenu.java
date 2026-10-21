@@ -27,8 +27,9 @@ import net.minecraft.world.item.ItemStack;
 // The construction site panel, opened by right-clicking a construction site block (owners only,
 // like its stock): what's being built, how far along it is, what's in the way, and the materials
 // still needed (with how many are already in the site's stock). Buttons open the full materials
-// list and the stock. Builders come in S-024. When it notices the building is finished, it
-// completes it (see BuildingOps#completeIfDone): the site block goes, and the panel with it.
+// list and the stock. When it notices the building is finished, it completes it (see
+// BuildingOps#completeIfDone). While the builders clear out the site's stock it says so; once the
+// stock is empty the site block goes, and the panel with it.
 //
 // Like the hut panel, the server builds a snapshot (SiteInfo) and sends it when the panel opens,
 // checks once a second whether it's out of date (blocks get placed, the stock changes) and, if so,
@@ -72,15 +73,16 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
     }
 
     // What the panel shows. loaded is false when the site's chunks aren't loaded (then only the names
-    // mean anything). total counts the building's blocks (not the air it needs clear); placed, how
+    // mean anything). built is true once the building is finished and its stock is being cleared out. total counts the building's blocks (not the air it needs clear); placed, how
     // many of them are in place. Materials are most needed first. assigned are the builders on this
     // site (up to maxBuilders), available the settlement's builders not working on any site.
-    public record SiteInfo(String buildingName, String settlementName, boolean loaded, int total, int placed, int inTheWay,
+    public record SiteInfo(String buildingName, String settlementName, boolean loaded, boolean built, int total, int placed, int inTheWay,
             List<Material> materials, List<PanelEntry> assigned, List<PanelEntry> available, int maxBuilders, View view, int page) {
         void write(FriendlyByteBuf buf) {
             buf.writeUtf(buildingName);
             buf.writeUtf(settlementName);
             buf.writeBoolean(loaded);
+            buf.writeBoolean(built);
             buf.writeVarInt(total);
             buf.writeVarInt(placed);
             buf.writeVarInt(inTheWay);
@@ -93,7 +95,7 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
         }
 
         static SiteInfo read(FriendlyByteBuf buf) {
-            return new SiteInfo(buf.readUtf(), buf.readUtf(), buf.readBoolean(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(),
+            return new SiteInfo(buf.readUtf(), buf.readUtf(), buf.readBoolean(), buf.readBoolean(), buf.readVarInt(), buf.readVarInt(), buf.readVarInt(),
                     buf.readList(Material::read), buf.readList(PanelEntry::read), buf.readList(PanelEntry::read), buf.readVarInt(),
                     buf.readEnum(View.class), buf.readVarInt());
         }
@@ -187,11 +189,13 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
                 core.getBlockState().getBlock().getName()), info::write);
     }
 
-    // Completes the site if it's finished, telling the player. Returns whether it did.
+    // Completes the site if it's finished, telling the player once its site is closed (its stock
+    // empty). Returns whether the site is closed now.
     private static boolean completeIfDone(ServerPlayer player, ConstructionSiteBlockEntity site) {
         Settlement settlement = site.getSettlement();
         Building building = settlement != null ? BuildingOps.siteAt(settlement, site.getBlockPos()) : null;
-        if (building == null || !(site.getLevel() instanceof ServerLevel level) || !BuildingOps.completeIfDone(level, settlement, building)) {
+        if (building == null || !(site.getLevel() instanceof ServerLevel level) || !BuildingOps.completeIfDone(level, settlement, building)
+                || BuildingOps.siteAt(settlement, site.getBlockPos()) != null) {
             return false;
         }
         String name = BuildingType.get(level, building.type()).map(BuildingType::name).orElse(building.type().toString());
@@ -216,13 +220,13 @@ public class BuildingSiteMenu extends AbstractContainerMenu {
                 .map(builder -> new PanelEntry(builder.id(), builder.name(), "")).toList();
         int maxBuilders = BuildingType.get(level, building.type()).map(BuildingType::maxBuilders).orElse(BuildingType.DEFAULT_MAX_BUILDERS);
         if (remaining == null) {
-            return new SiteInfo(name, settlement.name(), false, 0, 0, 0, List.of(), assigned, available, maxBuilders, View.OVERVIEW, 0);
+            return new SiteInfo(name, settlement.name(), false, building.isBuilt(), 0, 0, 0, List.of(), assigned, available, maxBuilders, View.OVERVIEW, 0);
         }
         List<Material> materials = materials(remaining.materials(), core);
         int total = total(level, building);
         int pages = view == View.BUILDERS ? pagesOf(builderRows(assigned.size(), available.size()).size(), ROWS_PER_PAGE)
                 : pagesOf(materials.size(), MATERIALS_PER_PAGE);
-        return new SiteInfo(name, settlement.name(), true, total, total - remaining.missing().size(), remaining.obstructions().size(),
+        return new SiteInfo(name, settlement.name(), true, building.isBuilt(), total, total - remaining.missing().size(), remaining.obstructions().size(),
                 materials, assigned, available, maxBuilders, view, Math.max(0, Math.min(page, pages - 1)));
     }
 

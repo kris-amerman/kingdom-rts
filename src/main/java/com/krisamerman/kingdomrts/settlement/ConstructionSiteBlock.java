@@ -40,13 +40,16 @@ public class ConstructionSiteBlock extends SettlementContainerBlock {
     protected void register(ServerLevel level, BlockPos pos) {
     }
 
-    // Broken: the building it was the site of is no longer commissioned. (When a building is
-    // finished, it's no longer recorded as a site before its block is taken away, so nothing
-    // happens here then.)
+    // Broken: the building it was the site of is no longer commissioned, or, if it's already built
+    // (its stock being cleared out), its site is closed (its stock drops). When a site is closed
+    // normally, it's no longer recorded as one before its block is taken away, so nothing happens
+    // here then.
     @Override
     protected void unregister(ServerLevel level, Settlement settlement, BlockPos pos) {
         Building building = BuildingOps.siteAt(settlement, pos);
-        if (building != null) {
+        if (building != null && building.isBuilt()) {
+            SettlementData.get(level).closeSite(settlement, building);
+        } else if (building != null) {
             BuildingOps.forget(level, settlement, building);
         }
     }

@@ -50,7 +50,9 @@ import net.minecraft.world.phys.AABB;
 //   for each planned block it can place now: reserve it (so builders sharing the site don't go
 //   for the same block), get within reach, work on it for ticks_per_block, place it from the
 //   site's stock (see SitePlacement) -> when the plan runs out, plan again -> when nothing is
-//   missing, the site is completed (BuildingOps#completeIfDone) and it's back in the pool.
+//   missing, the building is completed (BuildingOps#completeIfDone) -> it clears out the site's
+//   stock (spare materials, what clearing broke, tools), carrying it to settlement storage a load
+//   at a time -> once the stock is empty, the site closes and it's back in the pool.
 // Blocks it can't place yet (no materials in the stock, nothing to hang on yet, something in the
 // way) are left for the next plan; with nothing placeable it fetches what the site is missing (one
 // builder per site at a time, see SiteReservations): from the nearest settlement storage that has
@@ -110,6 +112,8 @@ public final class BuilderJob implements Job {
     @Nullable
     private JobStep dropWalk;
     @Nullable
+    private JobStep clearOutWalk;
+    @Nullable
     private BlockPos dropAt;
     private long deliverAgainAt;
     private long dropAgainAt;
@@ -131,7 +135,7 @@ public final class BuilderJob implements Job {
         if (site == null || site.site() == null) {
             clearPlan();
             endFetch(unit);
-            JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now);
+            JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now, () -> !assigned(unit));
             if (dropOff != null) {
                 return dropOff;
             }
@@ -140,6 +144,11 @@ public final class BuilderJob implements Job {
         }
         if (!site.origin().equals(planSite)) {
             clearPlan();
+        }
+        if (site.isBuilt()) {
+            clearPlan();
+            endFetch(unit);
+            return clearOut(level, unit, settlement, site, previous, succeeded, now);
         }
         // A fetch: at the storage, take what the site wants; then (carrying it) deliver it below.
         if (previous != null && previous == fetchWalk) {
@@ -346,11 +355,41 @@ public final class BuilderJob implements Job {
         fetchWalk = null;
     }
 
-    // Back in the pool and still carrying something: takes it to the nearest settlement storage with
-    // room for it. With no room anywhere, it holds onto it and looks again later. Null when there's
-    // nothing to drop off (or not yet).
+    // Clearing out a finished site's stock: whatever it carries goes to settlement storage (or it
+    // holds onto it while there's no room); with empty hands it takes a load from the site's stock.
+    // Once the stock is empty and it carries nothing, the site closes (BuildingOps#closeIfEmpty).
+    private JobStep clearOut(ServerLevel level, Unit unit, Settlement settlement, Building site, @Nullable JobStep previous, boolean succeeded,
+            long now) {
+        JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now, () -> true);
+        if (dropOff != null) {
+            return dropOff;
+        }
+        if (!unit.getInventory().isEmpty()) {
+            return new WaitStep(HOLD_RETRY_TICKS, "holding what it carries: no room in storage");
+        }
+        if (previous != null && previous == clearOutWalk) {
+            clearOutWalk = null;
+            if (!succeeded) {
+                return new WaitStep(RETRY_TICKS, "retrying the walk to the site");
+            }
+        }
+        if (!(level.getBlockEntity(site.site()) instanceof ConstructionSiteBlockEntity stock) || stock.isEmpty()) {
+            BuildingOps.closeIfEmpty(level, settlement, site);
+            return new WaitStep(WAIT_TICKS, "finishing up");
+        }
+        if (unit.position().distanceTo(site.site().getCenter()) <= HAND_OVER_REACH) {
+            return new TakeAllStep(site.site());
+        }
+        clearOutWalk = WalkToStep.near(site.site(), WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+        return clearOutWalk;
+    }
+
+    // Takes what it carries to the nearest settlement storage with room for it (back in the pool, or
+    // clearing out a site). With no room anywhere, it holds onto it and looks again later. Null when
+    // there's nothing to drop off (or not yet).
     @Nullable
-    private JobStep dropOff(ServerLevel level, Unit unit, @Nullable Settlement settlement, @Nullable JobStep previous, boolean succeeded, long now) {
+    private JobStep dropOff(ServerLevel level, Unit unit, @Nullable Settlement settlement, @Nullable JobStep previous, boolean succeeded, long now,
+            BooleanSupplier stillWanted) {
         Container carried = unit.getInventory();
         if (previous != null && previous == dropWalk) {
             dropWalk = null;
@@ -375,7 +414,7 @@ public final class BuilderJob implements Job {
         if (unit.position().distanceTo(to.getCenter()) <= HAND_OVER_REACH) {
             return new DropOffStep(to);
         }
-        dropWalk = WalkToStep.near(to, WALK_TIMEOUT_TICKS, () -> !assigned(unit));
+        dropWalk = WalkToStep.near(to, WALK_TIMEOUT_TICKS, stillWanted);
         return dropWalk;
     }
 
@@ -652,6 +691,40 @@ public final class BuilderJob implements Job {
         @Override
         public String describe() {
             return "deliver materials to the site at " + siteBlock.toShortString();
+        }
+    }
+
+    // Takes a load from a finished site's stock into its inventory, as much as fits. Fails if it
+    // isn't next to the site block any more, or took nothing.
+    private static final class TakeAllStep implements JobStep {
+        private final BlockPos siteBlock;
+
+        TakeAllStep(BlockPos siteBlock) {
+            this.siteBlock = siteBlock;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.position().distanceTo(siteBlock.getCenter()) > HAND_OVER_REACH
+                    || !(unit.level().getBlockEntity(siteBlock) instanceof ConstructionSiteBlockEntity stock)) {
+                return Status.FAILED;
+            }
+            unit.swing(InteractionHand.MAIN_HAND);
+            int moved = Hauling.moveAll(stock, unit.getInventory());
+            if (moved > 0) {
+                stock.setChanged();
+            }
+            return moved > 0 ? Status.DONE : Status.FAILED;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "take a load from the site's stock at " + siteBlock.toShortString();
         }
     }
 
