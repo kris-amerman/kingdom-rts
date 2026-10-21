@@ -30,34 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-031 Builders fetch materials
-- **Status:** in review | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
-- **Goal:** builders fetch what their site is missing from settlement storage.
-- **Scope:**
-  - At most one builder per site fetches at a time; the others keep building from the site stock.
-  - A builder fetches when it has nothing it can place: it takes the missing materials not yet on site, in build order, as much as it can carry, from the nearest settlement storage that has some (later from shops), and puts them in the site stock.
-  - What can't be found is skipped; builders build what they can, then wait, and look again now and then.
-  - **Holding onto things:** a builder never drops what it carries. What doesn't fit in the site stock it keeps, and delivers later. A builder carrying something its site doesn't need (it was unassigned mid-trip, say) takes it to settlement storage; with nowhere to put it (no storage, or storage full), it keeps it and tries again later. These trips to storage are what S-040 and S-038 build on.
-- **Out of scope:** emptying a finished site (split out to S-040), couriers, gold and shops, workplace stocks (a lumberjack hut's logs aren't settlement storage).
-- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on when they're put in storage; a builder carrying what its site doesn't need takes it to storage, and holds onto it while there's no room. Manual: watch it.
-- **Notes:**
-  - The supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
-  - Split, 2026-10-20: emptying a finished site needs a new state (built, but its site block stays until its stock is empty), so it's its own story, S-040.
-  - **What was built:**
-    - `Hauling` (pure): what's still wanted, moving wanted items or everything between containers, room checks;
-    - `SiteReservations.reserveFetch` and `releaseFetch`: one fetcher per site, lasting 90 s and renewed along the trip;
-    - in `BuilderJob`: fetch (walk to storage, `TakeStep`), deliver (`DeliverStep`) and drop-off (`DropOffStep`) trips.
-  - **Decisions:**
-    - A builder fetches only when it has nothing it can place. Storage is looked through then, not every tick.
-    - A fetch goes to the nearest loaded settlement storage that has any of what's missing, one storage per trip. It takes the missing materials in build order, up to the builder's 9 inventory slots.
-    - While assigned, whatever a builder carries goes into its site's stock (even if it was fetched for another site). With the stock full, it keeps it, carries on building, and tries again every 5 s.
-    - In the pool, whatever it carries goes to the nearest storage with room. With none, it keeps it and looks again every 5 s.
-    - Construction site stocks aren't settlement storage, so builders never take from another site.
-  - **Known limit:** if a site's stock fills up with things it doesn't need (what clearing broke), fetched materials can't go in, and the builder holds them. Builders don't place from their own inventory. S-040's emptying, or a later change, may deal with that.
-  - **Stress:** the scenario's builders now fetch from a settlement storage by the hall, rather than from a stocked site.
-
 ### S-040 Builders empty a finished site
-- **Status:** planned | **Branch:** feature/builders-empty-site | **PR:** - | **Depends on:** S-031
+- **Status:** in progress | **Branch:** feature/builders-empty-site | **PR:** - | **Depends on:** S-031
 - **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
 - **Scope:**
   - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
@@ -250,6 +224,32 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-031 Builders fetch materials
+- **Status:** done | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
+- **Goal:** builders fetch what their site is missing from settlement storage.
+- **Scope:**
+  - At most one builder per site fetches at a time; the others keep building from the site stock.
+  - A builder fetches when it has nothing it can place: it takes the missing materials not yet on site, in build order, as much as it can carry, from the nearest settlement storage that has some (later from shops), and puts them in the site stock.
+  - What can't be found is skipped; builders build what they can, then wait, and look again now and then.
+  - **Holding onto things:** a builder never drops what it carries. What doesn't fit in the site stock it keeps, and delivers later. A builder carrying something its site doesn't need (it was unassigned mid-trip, say) takes it to settlement storage; with nowhere to put it (no storage, or storage full), it keeps it and tries again later. These trips to storage are what S-040 and S-038 build on.
+- **Out of scope:** emptying a finished site (split out to S-040), couriers, gold and shops, workplace stocks (a lumberjack hut's logs aren't settlement storage).
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on when they're put in storage; a builder carrying what its site doesn't need takes it to storage, and holds onto it while there's no room. Manual: watch it.
+- **Notes:**
+  - The supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
+  - Split, 2026-10-20: emptying a finished site needs a new state (built, but its site block stays until its stock is empty), so it's its own story, S-040.
+  - **What was built:**
+    - `Hauling` (pure): what's still wanted, moving wanted items or everything between containers, room checks;
+    - `SiteReservations.reserveFetch` and `releaseFetch`: one fetcher per site, lasting 90 s and renewed along the trip;
+    - in `BuilderJob`: fetch (walk to storage, `TakeStep`), deliver (`DeliverStep`) and drop-off (`DropOffStep`) trips.
+  - **Decisions:**
+    - A builder fetches only when it has nothing it can place. Storage is looked through then, not every tick.
+    - A fetch goes to the nearest loaded settlement storage that has any of what's missing, one storage per trip. It takes the missing materials in build order, up to the builder's 9 inventory slots.
+    - While assigned, whatever a builder carries goes into its site's stock (even if it was fetched for another site). With the stock full, it keeps it, carries on building, and tries again every 5 s.
+    - In the pool, whatever it carries goes to the nearest storage with room. With none, it keeps it and looks again every 5 s.
+    - Construction site stocks aren't settlement storage, so builders never take from another site.
+  - **Known limit:** if a site's stock fills up with things it doesn't need (what clearing broke), fetched materials can't go in, and the builder holds them. Builders don't place from their own inventory. S-040's emptying, or a later change, may deal with that.
+  - **Stress:** the scenario's builders now fetch from a settlement storage by the hall, rather than from a stocked site.
 
 ### S-030 Builders clear the site
 - **Status:** done | **Branch:** feature/builders-clear | **PR:** #31 | **Depends on:** S-025
