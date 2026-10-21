@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-038 Builders demolish buildings
-- **Status:** in progress | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031, S-040
+- **Status:** in review | **Branch:** feature/builders-demolish | **PR:** #36 | **Depends on:** S-031, S-040
 - **Goal:** demolishing a building is a job for builders, who take it apart block by block and carry every material back to storage.
 - **Scope:**
   - **Policy:** all construction and demolition goes through builders. The instant demolish from S-011 is no longer a player action.
