@@ -30,29 +30,6 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-030 Builders clear the site
-- **Status:** in review | **Branch:** feature/builders-clear | **PR:** #31 | **Depends on:** S-025
-- **Goal:** builders clear what's in the way inside a site before building there.
-- **Scope:**
-  - Builders break blocks inside the footprint where the template wants air or another block, taking as long as a player would with their best tool (`BreakTime`).
-  - The drops go into the site stock.
-  - Grass, snow and the like are cleared too.
-  - No levelling or filling below the site.
-- **Out of scope:** terraforming and levelling.
-- **Test:** GameTests: a site with dirt and a tree in the way gets cleared and then built; the drops end up in the site stock. Manual: watch it.
-- **Notes:**
-  - **What was built:**
-    - `BuildingRules.isObstruction` and `CLEAR_ORDER` (pure);
-    - `Stock.bestToolFor`;
-    - clearing in `BuilderJob`: `ClearStep` runs before placing, top down.
-  - **Decisions:**
-    - Something is in the way where the template wants air, or where a block goes and what's there can't simply be built over. Grass, flowers and torches count where air is wanted; grass and snow are built over where a block goes.
-    - Fluids and unbreakable blocks (bedrock) are left, and don't keep a site from finishing. Water flowing over a site can wash out blocks that have been placed (torches); handling that is left for later.
-    - The builder uses the best tool in the site stock, puts it back afterwards (a little worn), and breaks a block as long as a player with that tool would.
-    - Like a player, a builder gets no drops from blocks that need the right tool (stone, ores) unless it has one. The loot table doesn't check this, so `ClearStep` does.
-  - **Known gap:** when the site finishes, whatever is left in its stock (cleared blocks, tools) spills on the floor and vanishes after 5 minutes. S-031 has builders carry it back to storage.
-  - **Also fixed:** `LumberjackReachGameTests` laid out its hut and tree assuming where the hall falls in its chunk, so it failed once more tests shifted the layout.
-
 ### S-031 Builders fetch materials
 - **Status:** planned | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
 - **Goal:** builders fetch what their site is missing from settlement storage.
@@ -60,10 +37,41 @@ Story template:
   - At most one builder per site fetches at a time; the others keep building from the site stock.
   - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later from shops), and deposits them into the site stock.
   - What can't be found is skipped; builders build what they can, then wait.
-  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) back to settlement storage, in as many trips as it takes, so nothing is lost. Only what doesn't fit in storage is dropped. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
+  - **Emptying a finished site:** when the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty, so nothing is lost. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
+  - **Trips to storage** are shared with demolition (S-038). A builder goes as often as it needs to. When there's nowhere to put something (no storage, or storage full), it holds onto it in its own inventory and tries again later, rather than dropping it. If its inventory is full too, it waits and checks again, so it never stalls for good.
 - **Out of scope:** couriers, gold and shops.
-- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on; after the site is finished, what was left in its stock (materials, cleared blocks, a tool) ends up in settlement storage, with nothing dropped. Manual: watch it.
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on; after the site is finished, what was left in its stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: watch it.
 - **Notes:** the supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
+
+### S-038 Builders demolish buildings
+- **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031
+- **Goal:** demolishing a building is a job for builders, who take it apart block by block and carry every material back to storage.
+- **Scope:**
+  - **Policy:** all construction and demolition goes through builders. The instant demolish from S-011 is no longer a player action.
+  - **Ordering a demolition** is a faction operation, for built buildings and ones still under construction. The settlement keeps the building, marked as being demolished, until the last block is gone; then it forgets it and its ground is free. Cancelling stops the work, and what's been removed stays removed.
+  - **Assigning builders:** several builders can work on one demolition, up to the building's `max_builders`, assigned like a construction site: by command, from a construction site's panel, and from a building core's panel once buildings have cores (S-026).
+  - **Taking it apart:** builders break the building's own blocks top down, with things that hang on others (torches, doors, ladders) before what holds them, the reverse of the build order. Each block takes as long as a player would need with the best tool the builder carries. Builders on one demolition never take the same block (`SiteReservations`).
+  - **Every material comes back:** a block that still matches the template gives back what placing it cost (`BuildingRules.costOf`), whatever the tool, so glass, grass and stone return what went in. Blocks that aren't the template's (replaced or damaged) aren't the building's, and are left standing.
+  - **What's stored in the building's blocks** (a chest or furnace that's part of the template) is taken out by the builder before it breaks that block. If it can't carry it all, it takes a trip to storage and comes back for the rest; the block is only broken once it's empty, so nothing spills.
+  - **Carrying it back:** builders put what they remove in their own inventory and take it to settlement storage when it's full or the job's done, in as many trips as it takes. When there's nowhere to put it, they hold onto it (the S-031 trips to storage). A site under construction also has its stock emptied before its site block goes.
+  - **Commands:** `building demolish <pos>` orders the demolition; `building assign` and `unassign` work on demolitions as on sites.
+  - **Cleanup:** units who lived or worked there lose their home or job when it's gone (existing workplace code).
+- **Out of scope:** gold costs, the interface (S-035), demolishing other factions' buildings (never), the town hall (can't be demolished, S-027), containers that aren't part of the template (they're left standing, contents and all).
+- **Test:**
+  - **Unit tests:** the demolition order (top down, attached blocks first) and what a block gives back.
+  - **GameTests:**
+    - a built shed is demolished by a builder, and every material ends up in storage over several trips;
+    - two builders demolish it without taking the same block twice;
+    - with no room in storage, the builder holds onto what it removed and delivers it once there's room;
+    - a site under construction is demolished, with its stock emptied too;
+    - another faction's building can't be demolished, and blocks that aren't the template's are left;
+    - a chest in the template is emptied before it's broken, over two trips when its contents don't fit in one load, with nothing dropped;
+    - the commands.
+  - **Manual:** watch it come down.
+- **Notes:**
+  - Owner, 2026-10-20: all construction and demolition goes through builders, and demolition gives every material back. This replaces design.md's earlier idea of an instant, TNT-style demolish that returned only part of the materials.
+  - Owner, 2026-10-20: blocks that aren't the template's are left standing. Containers that are part of the template are emptied by the builders, who come back for whatever they can't carry.
+  - GameTests that need a building gone at once can keep a test-only helper.
 
 ### S-032 Nation management interface: opening it
 - **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
@@ -101,13 +109,13 @@ Story template:
 - **Notes:** -
 
 ### S-035 Nation interface: demolish
-- **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032
+- **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
 - **Goal:** a player can demolish their own buildings from the interface.
 - **Scope:**
   - **Demolish** shows your settlement's buildings as outlines.
-  - Pick one by looking at it, confirm, and the server runs `BuildingOps.demolish`.
+  - Pick one by looking at it, confirm, and the server runs the demolition operation from S-038, so builders take it apart.
   - Other factions' buildings can't be picked or demolished.
-- **Out of scope:** the explosion effect, rubble and materials returned, gold costs.
+- **Out of scope:** gold costs.
 - **Test:** GameTests for the request (own building demolished, another faction's refused). Manual: outlines and picking.
 - **Notes:** -
 
@@ -133,7 +141,7 @@ Story template:
   - **The workplace starts employing once its building is built.** While under construction it's recorded as a workplace-to-be: no hiring, and it isn't offered to job seekers.
   - **The building's stock:** what's left in the site stock when it's finished stays, as the hut's starting stock (e.g. spare axes).
   - **A lumberjack hut template** (small, wooden) and its building definition.
-  - **Demolishing** the building removes its hut block too, so the workplace goes and its workers lose their jobs (existing workplace code).
+  - **Demolishing** the building (by builders, S-038) removes its hut block too, so the workplace goes and its workers lose their jobs (existing workplace code). The built hut's panel gets a Demolish action and lets you assign builders to the demolition, the same operations as the commands.
 - **Out of scope:** other huts, the town hall (S-027), homes, repair.
 - **Test:**
   - **Unit tests:** a template's core (missing, once, several), and the building definition with and without a core.
@@ -203,6 +211,29 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-030 Builders clear the site
+- **Status:** done | **Branch:** feature/builders-clear | **PR:** #31 | **Depends on:** S-025
+- **Goal:** builders clear what's in the way inside a site before building there.
+- **Scope:**
+  - Builders break blocks inside the footprint where the template wants air or another block, taking as long as a player would with their best tool (`BreakTime`).
+  - The drops go into the site stock.
+  - Grass, snow and the like are cleared too.
+  - No levelling or filling below the site.
+- **Out of scope:** terraforming and levelling.
+- **Test:** GameTests: a site with dirt and a tree in the way gets cleared and then built; the drops end up in the site stock. Manual: watch it.
+- **Notes:**
+  - **What was built:**
+    - `BuildingRules.isObstruction` and `CLEAR_ORDER` (pure);
+    - `Stock.bestToolFor`;
+    - clearing in `BuilderJob`: `ClearStep` runs before placing, top down.
+  - **Decisions:**
+    - Something is in the way where the template wants air, or where a block goes and what's there can't simply be built over. Grass, flowers and torches count where air is wanted; grass and snow are built over where a block goes.
+    - Fluids and unbreakable blocks (bedrock) are left, and don't keep a site from finishing. Water flowing over a site can wash out blocks that have been placed (torches); handling that is left for later.
+    - The builder uses the best tool in the site stock, puts it back afterwards (a little worn), and breaks a block as long as a player with that tool would.
+    - Like a player, a builder gets no drops from blocks that need the right tool (stone, ores) unless it has one. The loot table doesn't check this, so `ClearStep` does.
+  - **Known gap:** when the site finishes, whatever is left in its stock (cleared blocks, tools) spills on the floor and vanishes after 5 minutes. S-031 has builders carry it back to storage.
+  - **Also fixed:** `LumberjackReachGameTests` laid out its hut and tree assuming where the hall falls in its chunk, so it failed once more tests shifted the layout.
 
 ### S-025 Builders place blocks
 - **Status:** done | **Branch:** feature/builders-place | **PR:** #30 | **Depends on:** S-024
