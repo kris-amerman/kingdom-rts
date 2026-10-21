@@ -30,31 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-040 Builders empty a finished site
-- **Status:** in review | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
-- **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
-- **Scope:**
-  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
-  - With nowhere to put it, builders hold onto what they carry (S-031) and the site block waits.
-  - The site panel shows that the building is finished and its stock is being cleared out.
-- **Out of scope:** demolition (S-038).
-- **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
-- **Notes:**
-  - **What was built:**
-    - a finished building stays a site (`Building.finishedAt` keeps its site block and builders; `isBeingClearedOut`) until `BuildingOps.closeIfEmpty` closes it (`withSiteClosed`) once its stock is empty;
-    - in `BuilderJob`: clearing out (`TakeAllStep`, a load at a time from the site's stock, then the S-031 drop-off at storage);
-    - the site panel shows "Built, clearing out stock".
-  - **Decisions:**
-    - Every builder on the site helps clear out; there's no limit like the one on fetching.
-    - Builders can still be assigned to a building whose stock is being cleared out.
-    - Breaking the site block of a built building closes its site, and the building stays (its stock drops, since its owner chose to break it). Before it's built, breaking the block still cancels the building.
-    - Whoever empties the stock (a player taking things out, say), the site closes once it's empty. The panel or a builder notices.
-    - `building finish` works the same way: with something left in the stock, the site stays open to be cleared out.
-  - **Still open (from S-031):** a stock filled with what clearing broke while the building is going up leaves no room for fetched materials. Clearing out only happens once it's built.
-  - **Stress:** unchanged (4.46 ms at 400 units, all sheds built). The scenario's sites end up with empty stocks, so they close at once.
-
 ### S-041 Units open and close doors
-- **Status:** planned | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
+- **Status:** in progress | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
 - **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
 - **Scope:**
   - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
@@ -236,6 +213,29 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-040 Builders empty a finished site
+- **Status:** done | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
+- **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
+- **Scope:**
+  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
+  - With nowhere to put it, builders hold onto what they carry (S-031) and the site block waits.
+  - The site panel shows that the building is finished and its stock is being cleared out.
+- **Out of scope:** demolition (S-038).
+- **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
+- **Notes:**
+  - **What was built:**
+    - a finished building stays a site (`Building.finishedAt` keeps its site block and builders; `isBeingClearedOut`) until `BuildingOps.closeIfEmpty` closes it (`withSiteClosed`) once its stock is empty;
+    - in `BuilderJob`: clearing out (`TakeAllStep`, a load at a time from the site's stock, then the S-031 drop-off at storage);
+    - the site panel shows "Built, clearing out stock".
+  - **Decisions:**
+    - Every builder on the site helps clear out; there's no limit like the one on fetching.
+    - Builders can still be assigned to a building whose stock is being cleared out.
+    - Breaking the site block of a built building closes its site, and the building stays (its stock drops, since its owner chose to break it). Before it's built, breaking the block still cancels the building.
+    - Whoever empties the stock (a player taking things out, say), the site closes once it's empty. The panel or a builder notices.
+    - `building finish` works the same way: with something left in the stock, the site stays open to be cleared out.
+  - **Still open (from S-031):** a stock filled with what clearing broke while the building is going up leaves no room for fetched materials. Clearing out only happens once it's built.
+  - **Stress:** unchanged (4.46 ms at 400 units, all sheds built). The scenario's sites end up with empty stocks, so they close at once.
 
 ### S-031 Builders fetch materials
 - **Status:** done | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
