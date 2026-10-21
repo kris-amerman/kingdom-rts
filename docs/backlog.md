@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-040 Builders empty a finished site
-- **Status:** in progress | **Branch:** feature/builders-empty-site | **PR:** - | **Depends on:** S-031
+- **Status:** in review | **Branch:** feature/builders-empty-site | **PR:** #34 | **Depends on:** S-031
 - **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
 - **Scope:**
   - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
