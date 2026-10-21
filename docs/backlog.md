@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-030 Builders clear the site
-- **Status:** in progress | **Branch:** feature/builders-clear | **PR:** - | **Depends on:** S-025
+- **Status:** in review | **Branch:** feature/builders-clear | **PR:** #31 | **Depends on:** S-025
 - **Goal:** builders clear what's in the way inside a site before building there.
 - **Scope:**
   - Builders break blocks inside the footprint where the template wants air or another block, taking as long as a player would with their best tool (`BreakTime`).
