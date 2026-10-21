@@ -37,10 +37,12 @@ import net.minecraft.world.entity.ai.attributes.AttributeInstance;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.FloatGoal;
+import net.minecraft.world.entity.ai.goal.OpenDoorGoal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
 import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
 import net.minecraft.world.entity.ai.goal.WaterAvoidingRandomStrollGoal;
+import net.minecraft.world.entity.ai.navigation.GroundPathNavigation;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.npc.InventoryCarrier;
@@ -108,6 +110,11 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     public Unit(EntityType<? extends Unit> type, Level level) {
         super(type, level);
         setPersistenceRequired(); // never despawn
+        // Paths may go through wooden doors (not iron ones, which need redstone); OpenDoorGoal opens
+        // them on the way and closes them behind.
+        if (getNavigation() instanceof GroundPathNavigation ground) {
+            ground.setCanOpenDoors(true);
+        }
     }
 
     // Attributes every unit has, registered at game startup (before datapacks load). These values
@@ -128,6 +135,7 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
     @Override
     protected void registerGoals() {
         goalSelector.addGoal(0, new FloatGoal(this));
+        goalSelector.addGoal(1, new OpenDoorGoal(this, true)); // takes no flags, so it runs alongside the rest
         goalSelector.addGoal(3, new WaterAvoidingRandomStrollGoal(this, 0.8));
         goalSelector.addGoal(4, new LookAtPlayerGoal(this, Player.class, 8.0f));
         goalSelector.addGoal(5, new RandomLookAroundGoal(this));
