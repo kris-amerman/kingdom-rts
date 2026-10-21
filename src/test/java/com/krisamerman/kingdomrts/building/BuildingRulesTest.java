@@ -247,4 +247,25 @@ class BuildingRulesTest {
         spots.sort(BuildingRules.CLEAR_ORDER);
         assertEquals(List.of(new BlockPos(0, 2, 1), new BlockPos(1, 2, 0), new BlockPos(0, 1, 0), new BlockPos(0, 0, 0)), spots);
     }
+
+    @Test
+    void buildingsComeDownTopFirstWithWhatHangsOnOthersBeforeItsWall() {
+        Blueprint.Part floor = new Blueprint.Part(new BlockPos(0, 0, 0), Blocks.COBBLESTONE.defaultBlockState());
+        Blueprint.Part wall = new Blueprint.Part(new BlockPos(0, 1, 0), Blocks.OAK_PLANKS.defaultBlockState());
+        Blueprint.Part torch = new Blueprint.Part(new BlockPos(1, 1, 0), Blocks.WALL_TORCH.defaultBlockState());
+        Blueprint.Part roof = new Blueprint.Part(new BlockPos(0, 2, 0), Blocks.OAK_PLANKS.defaultBlockState());
+        List<Blueprint.Part> parts = new ArrayList<>(List.of(floor, wall, torch, roof));
+        parts.sort(BuildingRules.DEMOLISH_ORDER);
+        assertEquals(List.of(roof, torch, wall, floor), parts);
+    }
+
+    @Test
+    void onlyTheBuildingsOwnBlocksAreTakenDown() {
+        BlockState planks = Blocks.OAK_PLANKS.defaultBlockState();
+        assertTrue(BuildingRules.isToTakeDown(planks, planks));
+        assertFalse(BuildingRules.isToTakeDown(planks, Blocks.STONE.defaultBlockState()), "Something else stands there now");
+        assertFalse(BuildingRules.isToTakeDown(planks, Blocks.AIR.defaultBlockState()), "Already gone");
+        assertFalse(BuildingRules.isToTakeDown(Blocks.AIR.defaultBlockState(), Blocks.AIR.defaultBlockState()), "Air isn't taken down");
+        assertFalse(BuildingRules.isToTakeDown(Blocks.BEDROCK.defaultBlockState(), Blocks.BEDROCK.defaultBlockState()), "Unbreakable");
+    }
 }

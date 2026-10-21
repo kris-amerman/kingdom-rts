@@ -22,10 +22,12 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 // construction site block stands (see ConstructionSiteBlock), and builders are the settlement's
 // builders assigned to it (unit UUID to name, in assignment order). It stays a site after it's
 // built, until its builders have carried what's left in the site's stock to storage; then the
-// site is closed: site is null and nobody is assigned. The box is kept so overlap checks don't need the template. Kept on the
+// site is closed: site is null and nobody is assigned. A building being demolished (built or not)
+// has demolishing set, and its builders take it apart (see BuilderJob); the settlement forgets it
+// once nothing of it is left. The box is kept so overlap checks don't need the template. Kept on the
 // Settlement, like workplaces; only SettlementData changes it.
 public record Building(ResourceLocation type, BlockPos origin, Rotation rotation, BoundingBox footprint, @Nullable BlockPos site,
-        long commissioned, long built, Map<UUID, String> builders) {
+        long commissioned, long built, Map<UUID, String> builders, boolean demolishing) {
     public static final long NOT_BUILT = -1;
 
     private static final String TYPE_TAG = "type";
@@ -36,6 +38,7 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
     private static final String COMMISSIONED_TAG = "commissioned";
     private static final String BUILT_TAG = "built";
     private static final String BUILDERS_TAG = "builders";
+    private static final String DEMOLISHING_TAG = "demolishing";
     private static final String ID_TAG = "id";
     private static final String NAME_TAG = "name";
 
@@ -45,10 +48,10 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
         builders = Collections.unmodifiableMap(new LinkedHashMap<>(builders));
     }
 
-    // A building with nobody assigned to it.
+    // A building with nobody assigned to it, not being demolished.
     public Building(ResourceLocation type, BlockPos origin, Rotation rotation, BoundingBox footprint, @Nullable BlockPos site,
             long commissioned, long built) {
-        this(type, origin, rotation, footprint, site, commissioned, built, Map.of());
+        this(type, origin, rotation, footprint, site, commissioned, built, Map.of(), false);
     }
 
     public boolean isBuilt() {
@@ -58,30 +61,40 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
     // The same building, finished at the given game time. It's still a site (with the same
     // builders) until its stock is cleared out.
     Building finishedAt(long gameTime) {
-        return new Building(type, origin, rotation, footprint, site, commissioned, gameTime, builders);
+        return new Building(type, origin, rotation, footprint, site, commissioned, gameTime, builders, demolishing);
     }
 
     // The same building with its site closed: no construction site block, and its builders free again.
     Building withSiteClosed() {
-        return new Building(type, origin, rotation, footprint, null, commissioned, built, Map.of());
+        return new Building(type, origin, rotation, footprint, null, commissioned, built, Map.of(), demolishing);
     }
 
     // Built, but its site's stock is still being cleared out.
     public boolean isBeingClearedOut() {
-        return isBuilt() && site != null;
+        return isBuilt() && site != null && !demolishing;
+    }
+
+    // Whether builders can be assigned to it: it's a site (being built or cleared out) or being demolished.
+    public boolean takesBuilders() {
+        return site != null || demolishing;
+    }
+
+    // The same building, being demolished, or no longer (a demolition stopped). Its builders stay on it.
+    Building withDemolishing(boolean demolishing) {
+        return new Building(type, origin, rotation, footprint, site, commissioned, built, builders, demolishing);
     }
 
     // The same building with a builder assigned, or taken off it.
     Building withBuilder(UUID builder, String name) {
         Map<UUID, String> more = new LinkedHashMap<>(builders);
         more.put(builder, name);
-        return new Building(type, origin, rotation, footprint, site, commissioned, built, more);
+        return new Building(type, origin, rotation, footprint, site, commissioned, built, more, demolishing);
     }
 
     Building withoutBuilder(UUID builder) {
         Map<UUID, String> fewer = new LinkedHashMap<>(builders);
         fewer.remove(builder);
-        return new Building(type, origin, rotation, footprint, site, commissioned, built, fewer);
+        return new Building(type, origin, rotation, footprint, site, commissioned, built, fewer, demolishing);
     }
 
     CompoundTag save() {
@@ -104,6 +117,7 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
             builderList.add(builder);
         });
         tag.put(BUILDERS_TAG, builderList);
+        tag.putBoolean(DEMOLISHING_TAG, demolishing);
         return tag;
     }
 
@@ -125,6 +139,6 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
             builders.put(builder.getUUID(ID_TAG), builder.getString(NAME_TAG));
         }
         return new Building(ResourceLocation.parse(tag.getString(TYPE_TAG)), origin, rotation, footprint, site, tag.getLong(COMMISSIONED_TAG),
-                built, builders);
+                built, builders, tag.getBoolean(DEMOLISHING_TAG));
     }
 }

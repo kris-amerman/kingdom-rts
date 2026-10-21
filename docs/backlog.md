@@ -59,6 +59,22 @@ Story template:
   - Owner, 2026-10-20: all construction and demolition goes through builders, and demolition gives every material back. This replaces design.md's earlier idea of an instant, TNT-style demolish that returned only part of the materials.
   - Owner, 2026-10-20: blocks that aren't the template's are left standing. Containers that are part of the template are emptied by the builders, who come back for whatever they can't carry.
   - GameTests that need a building gone at once can keep a test-only helper.
+  - **What was built:**
+    - `Building.demolishing` (saved), `takesBuilders`;
+    - `BuildingOps.orderDemolition`, `stopDemolition`, `finishDemolitionIfDone`;
+    - the old instant demolish is now `BuildingOps.removeAtOnce`, for tests and admin use only;
+    - `BuildingRules.DEMOLISH_ORDER` and `isToTakeDown` (pure);
+    - in `BuilderJob`: `DemolishPlanStep`, `TakeDownStep`, `EmptyContainerStep`, plus the S-031 and S-040 steps for full loads and a site's stock;
+    - the site panel shows "Being demolished".
+  - **Decisions:**
+    - **Taking a block down** doesn't tell its neighbours, so a torch whose wall goes first, or a door's other half, doesn't pop off as a drop. Neighbours are told once the demolition ends (finished or stopped).
+    - **A door's upper half** gives nothing and its lower half gives the door, so the door comes back once, whichever half goes first.
+    - **Reach:** a block within reach is taken even if the builder couldn't walk next to it. A roof has nowhere to stand within 2 blocks, but can be reached from the ground or a wall.
+    - **When the load goes to storage:** a builder drops it off when its inventory is full, or when it's back in the pool afterwards. Before taking a block down, it checks the block's cost fits in what it carries.
+    - **Tools:** demolition uses the best tool in the builder's inventory. Drop-offs move everything it carries, tools included (as in S-031), so after its first load it carries on by hand. S-042 decides which tools a builder keeps.
+    - **Stopping:** `building cancel` on a building being demolished stops the demolition. The building stays as it is, built or a site again, with its builders.
+    - **The command** takes the player's faction, or `faction <name>`, like `commission`. Only the owning faction can order it.
+  - **Not done:** units living or working in a demolished building aren't affected yet. Workplaces are still placed blocks, not buildings (S-026).
 
 ### S-043 Builders' hut
 - **Status:** planned | **Branch:** feature/builders-hut | **PR:** - | **Depends on:** S-031
