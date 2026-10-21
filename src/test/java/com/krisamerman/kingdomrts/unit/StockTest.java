@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Blocks;
 
 class StockTest {
     @Test
@@ -53,5 +54,15 @@ class StockTest {
         assertFalse(Stock.take(stock, List.of(new ItemStack(Items.OAK_PLANKS, 1), new ItemStack(Items.TORCH, 2))), "Not enough torches");
         assertEquals(1, stock.countItem(Items.OAK_PLANKS), "Nothing taken when it can't take everything");
         assertEquals(1, stock.countItem(Items.TORCH));
+    }
+
+    @Test
+    void theBestToolIsTheFastestThatGetsTheDrops() {
+        SimpleContainer stock = new SimpleContainer(4);
+        stock.setItem(0, new ItemStack(Items.STICK, 10)); // not a tool
+        stock.setItem(1, new ItemStack(Items.WOODEN_SWORD));
+        assertEquals(1, Stock.bestToolFor(stock, Blocks.COBWEB.defaultBlockState()), "A sword cuts cobweb");
+        assertEquals(-1, Stock.bestToolFor(stock, Blocks.DIRT.defaultBlockState()), "Nothing beats bare hands on dirt");
+        assertEquals(-1, Stock.bestToolFor(new SimpleContainer(2), Blocks.COBWEB.defaultBlockState()), "An empty stock has no tools");
     }
 }

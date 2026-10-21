@@ -7,6 +7,7 @@ import java.util.Map;
 import net.minecraft.world.Container;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 
 // Moving items into and out of a container (a workplace's or a site's stock): topping up matching
 // stacks first, then filling empty slots, like a hopper would; and taking a set of items out, all or
@@ -67,5 +68,27 @@ public final class Stock {
         }
         container.setChanged();
         return true;
+    }
+
+    // The slot of the container's best tool for breaking this block (the fastest, preferring one
+    // that gets its drops), or -1 if nothing beats bare hands.
+    public static int bestToolFor(Container container, BlockState state) {
+        int best = -1;
+        float bestSpeed = 1.0f;
+        boolean bestHarvests = !state.requiresCorrectToolForDrops();
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            ItemStack stack = container.getItem(i);
+            if (stack.isEmpty() || stack.getMaxStackSize() != 1) {
+                continue; // tools don't stack
+            }
+            float speed = stack.getDestroySpeed(state);
+            boolean harvests = !state.requiresCorrectToolForDrops() || stack.isCorrectToolForDrops(state);
+            if ((harvests && !bestHarvests) || (harvests == bestHarvests && speed > bestSpeed)) {
+                best = i;
+                bestSpeed = speed;
+                bestHarvests = harvests;
+            }
+        }
+        return best;
     }
 }

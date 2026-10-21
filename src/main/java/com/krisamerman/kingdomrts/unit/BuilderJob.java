@@ -1,6 +1,7 @@
 package com.krisamerman.kingdomrts.unit;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -30,11 +31,17 @@ import com.krisamerman.kingdomrts.unit.job.WalkToStep;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
 // The builder's job, as explicit steps. In the pool (not assigned), it goes back to its post, the
 // town hall, and waits. Assigned to a construction site, it walks there and builds:
-//   plan (work out the missing blocks, a batch per tick, in build order: see BuildingRules) ->
+//   plan (work out what's in the way and the missing blocks, a batch per tick: see BuildingRules) ->
+//   clear what's in the way first, top down, breaking each block as a player would with the best
+//   tool in the site's stock (the drops go into the stock) ->
 //   for each planned block it can place now: reserve it (so builders sharing the site don't go
 //   for the same block), get within reach, work on it for ticks_per_block, place it from the
 //   site's stock (see SitePlacement) -> when the plan runs out, plan again -> when nothing is
@@ -65,6 +72,8 @@ public final class BuilderJob implements Job {
     private BlockPos planSite;
     private final List<Blueprint.Part> plan = new ArrayList<>();
     private final Map<BlockPos, Blueprint.Part> planByPos = new HashMap<>();
+    // What's in the way (inside the footprint), top down, with what the blueprint wants there.
+    private final List<Blueprint.Part> clear = new ArrayList<>();
     // Blocks it couldn't walk to during this plan, and the block it's walking to now.
     private final Set<BlockPos> unreachable = new HashSet<>();
     @Nullable
@@ -103,9 +112,49 @@ public final class BuilderJob implements Job {
             planSite = site.origin();
             plan.addAll(planStep.missing);
             plan.forEach(part -> planByPos.put(part.pos(), part));
-            planFoundMissing = !plan.isEmpty();
+            clear.addAll(planStep.inTheWay);
+            planFoundMissing = !plan.isEmpty() || !clear.isEmpty();
         } else if (planSite == null) {
             return new PlanStep(site);
+        }
+        ConstructionSiteBlockEntity siteStock = level.getBlockEntity(site.site()) instanceof ConstructionSiteBlockEntity entity ? entity : null;
+        // First, clear what's in the way: the first block (top down) it can reach, else walk to one.
+        if (siteStock != null && !clear.isEmpty()) {
+            Blueprint.Part toBreak = null;
+            Blueprint.Part toWalkTo = null;
+            long now = level.getGameTime();
+            int looked = 0;
+            for (Iterator<Blueprint.Part> it = clear.iterator(); it.hasNext() && looked < CANDIDATES_PER_LOOK; looked++) {
+                Blueprint.Part target = it.next();
+                if (!BuildingRules.isObstruction(target.state(), level.getBlockState(target.pos()))) {
+                    it.remove(); // cleared (by it or someone else)
+                    continue;
+                }
+                if (unreachable.contains(target.pos()) || SiteReservations.heldByOther(site.origin(), target.pos(), unit.getUUID(), now)) {
+                    continue;
+                }
+                if (unit.getEyePosition().distanceTo(target.pos().getCenter()) <= REACH) {
+                    toBreak = target;
+                    break;
+                }
+                if (toWalkTo == null) {
+                    toWalkTo = target;
+                }
+            }
+            if (walkFailed && walkingTo != null) {
+                unreachable.add(walkingTo);
+                walkingTo = null;
+            }
+            if (toBreak != null && SiteReservations.reserve(site.origin(), toBreak.pos(), unit.getUUID(), now)) {
+                walkingTo = null;
+                return new ClearStep(site, toBreak.pos(), siteStock);
+            }
+            if (toWalkTo != null && !unreachable.contains(toWalkTo.pos())) {
+                walkingTo = toWalkTo.pos();
+                walk = WalkToStep.near(toWalkTo.pos(), WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+                return walk;
+            }
+            walkFailed = false; // dealt with; on to placing
         }
         // The next block to place: the first planned block (in build order) it can place now and
         // reach from where it stands; failing that, the first it can place at all, to walk to. Only
@@ -169,7 +218,7 @@ public final class BuilderJob implements Job {
         // Nothing it can place now: done if nothing was missing, else plan again after a pause
         // (materials may arrive, or another builder's blocks may give the rest something to stand on).
         boolean foundMissing = planFoundMissing;
-        boolean allPlaced = plan.isEmpty();
+        boolean allPlaced = plan.isEmpty() && clear.isEmpty();
         clearPlan();
         if (foundMissing && allPlaced) {
             return new PlanStep(site); // everything planned is in place: check again straight away
@@ -213,6 +262,7 @@ public final class BuilderJob implements Job {
     private void clearPlan() {
         plan.clear();
         planByPos.clear();
+        clear.clear();
         unreachable.clear();
         walkingTo = null;
         planSite = null;
@@ -235,6 +285,7 @@ public final class BuilderJob implements Job {
         private static final int CHECKED_PER_TICK = 512;
         private final Building site;
         private final List<Blueprint.Part> missing = new ArrayList<>();
+        private final List<Blueprint.Part> inTheWay = new ArrayList<>();
         @Nullable
         private List<Blueprint.Part> placed;
         private int next;
@@ -255,8 +306,14 @@ public final class BuilderJob implements Job {
             }
             for (int i = 0; i < CHECKED_PER_TICK && next < placed.size(); i++, next++) {
                 Blueprint.Part part = placed.get(next);
-                if (!part.state().isAir() && !part.pos().equals(site.site())
-                        && unit.level().isLoaded(part.pos()) && !BuildingRules.matches(part.state(), unit.level().getBlockState(part.pos()))) {
+                if (part.pos().equals(site.site()) || !unit.level().isLoaded(part.pos())) {
+                    continue;
+                }
+                BlockState actual = unit.level().getBlockState(part.pos());
+                if (BuildingRules.isObstruction(part.state(), actual)) {
+                    inTheWay.add(part);
+                }
+                if (!part.state().isAir() && !BuildingRules.matches(part.state(), actual)) {
                     missing.add(part);
                 }
             }
@@ -264,6 +321,7 @@ public final class BuilderJob implements Job {
                 return Status.RUNNING;
             }
             missing.sort(BuildingRules.BUILD_ORDER);
+            inTheWay.sort(Comparator.comparing(Blueprint.Part::pos, BuildingRules.CLEAR_ORDER));
             return Status.DONE;
         }
 
@@ -275,6 +333,96 @@ public final class BuilderJob implements Job {
         @Override
         public String describe() {
             return "plan the site at " + site.origin().toShortString();
+        }
+    }
+
+    // Breaks one block that's in the way, as a player would: for as long as vanilla says it takes with
+    // the best tool in the site's stock (held while it works, wearing as it goes, then put back),
+    // showing the cracks. The drops go into the site's stock (or on the ground if it's full). Fails
+    // if it's pushed out of reach. Releases its reservation either way.
+    private final class ClearStep implements JobStep {
+        private static final int SWING_TICKS = 5;
+        private static final int LONGEST_BREAK_TICKS = 20 * 30;
+        private final Building site;
+        private final BlockPos target;
+        private final ConstructionSiteBlockEntity stock;
+        private int ticks;
+        private boolean cracking;
+
+        ClearStep(Building site, BlockPos target, ConstructionSiteBlockEntity stock) {
+            this.site = site;
+            this.target = target;
+            this.stock = stock;
+        }
+
+        @Override
+        public void start(Unit unit) {
+            int slot = Stock.bestToolFor(stock, unit.level().getBlockState(target));
+            if (slot >= 0 && unit.getMainHandItem().isEmpty()) {
+                unit.setItemSlot(EquipmentSlot.MAINHAND, stock.removeItemNoUpdate(slot));
+                stock.setChanged();
+            }
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            ServerLevel level = (ServerLevel) unit.level();
+            BlockState state = level.getBlockState(target);
+            if (state.isAir() || unit.getEyePosition().distanceTo(target.getCenter()) > REACH + 1 || stock.isRemoved()) {
+                return state.isAir() ? Status.DONE : Status.FAILED;
+            }
+            ItemStack tool = unit.getMainHandItem();
+            unit.getLookControl().setLookAt(target.getX() + 0.5, target.getY() + 0.5, target.getZ() + 0.5);
+            if (ticks % SWING_TICKS == 0) {
+                unit.swing(InteractionHand.MAIN_HAND);
+            }
+            int needed = Math.min(LONGEST_BREAK_TICKS, BreakTime.ticks(unit, tool, state, level, target));
+            if (++ticks < needed) {
+                level.destroyBlockProgress(unit.getId(), target, ticks * 10 / needed); // vanilla's 10 crack stages
+                cracking = true;
+                return Status.RUNNING;
+            }
+            // Like a player: blocks that need the right tool (stone, ores) drop nothing without it.
+            // The loot table doesn't check that itself.
+            boolean harvests = !state.requiresCorrectToolForDrops() || tool.isCorrectToolForDrops(state);
+            List<ItemStack> drops = harvests ? Block.getDrops(state, level, target, level.getBlockEntity(target), unit, tool) : List.of();
+            level.destroyBlock(target, false, unit); // breaking sound and particles; the drops are handled here
+            if (!tool.isEmpty()) {
+                tool.hurtAndBreak(1, unit, EquipmentSlot.MAINHAND);
+            }
+            for (ItemStack drop : drops) {
+                ItemStack left = Stock.insert(stock, drop);
+                if (!left.isEmpty()) {
+                    unit.spawnAtLocation(left);
+                }
+            }
+            return Status.DONE;
+        }
+
+        @Override
+        public void stop(Unit unit) {
+            if (cracking) {
+                unit.level().destroyBlockProgress(unit.getId(), target, -1);
+            }
+            ItemStack held = unit.getMainHandItem();
+            if (!held.isEmpty()) {
+                ItemStack left = Stock.insert(stock, held); // the tool goes back to the site
+                unit.setItemSlot(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+                if (!left.isEmpty()) {
+                    unit.spawnAtLocation(left);
+                }
+            }
+            SiteReservations.release(site.origin(), target, unit.getUUID());
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return LONGEST_BREAK_TICKS + 20;
+        }
+
+        @Override
+        public String describe() {
+            return "clear " + target.toShortString();
         }
     }
 

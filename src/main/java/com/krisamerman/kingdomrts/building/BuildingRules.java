@@ -148,13 +148,10 @@ public final class BuildingRules {
             if (matches(part.state(), actual)) {
                 continue;
             }
-            if (!actual.isAir() && !actual.canBeReplaced()) {
-                obstructions.add(part.pos()); // something solid is in the way: it has to go first
+            if (isObstruction(part.state(), actual)) {
+                obstructions.add(part.pos()); // in the way: it has to go first (see isObstruction)
             }
             if (part.state().isAir()) {
-                if (actual.canBeReplaced() && !actual.isAir()) {
-                    obstructions.add(part.pos()); // grass, snow and the like, where the blueprint wants air
-                }
                 continue;
             }
             missing.add(part);
@@ -232,6 +229,23 @@ public final class BuildingRules {
             .thenComparingInt(part -> part.state().isCollisionShapeFullBlock(EmptyBlockGetter.INSTANCE, BlockPos.ZERO) ? 0 : 1)
             .thenComparingInt(part -> part.pos().getX())
             .thenComparingInt(part -> part.pos().getZ());
+
+    // Whether the block in the world is in the way of what the blueprint wants there, so a builder
+    // breaks it first: something where the blueprint wants air (grass and flowers included), or
+    // something solid where it wants another block (grass, snow and the like are simply replaced
+    // when the block goes down). Fluids aren't broken (a builder can't pick them up yet), nor are
+    // unbreakable blocks such as bedrock.
+    public static boolean isObstruction(BlockState wanted, BlockState actual) {
+        if (actual.isAir() || matches(wanted, actual) || actual.getBlock() instanceof LiquidBlock || actual.getBlock().defaultDestroyTime() < 0) {
+            return false;
+        }
+        return wanted.isAir() || !actual.canBeReplaced();
+    }
+
+    // The order builders clear a site in: top down (so nothing is left hanging or falls into a
+    // cleared spot), then a fixed order by position.
+    public static final Comparator<BlockPos> CLEAR_ORDER = Comparator.<BlockPos>comparingInt(pos -> -pos.getY())
+            .thenComparingInt(BlockPos::getX).thenComparingInt(BlockPos::getZ);
 
     // The state a builder actually places: the blueprint's, but dry (a waterlogged block in a
     // template doesn't bring its own water).

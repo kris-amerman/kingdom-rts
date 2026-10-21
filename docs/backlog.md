@@ -30,75 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-025 Builders place blocks
-- **Status:** in review | **Branch:** feature/builders-place | **PR:** #30 | **Depends on:** S-024
-- **Goal:** assigned builders build their site from its stock until it matches its template.
-- **Scope:**
-  - **Placing** missing blocks from the site stock, a block at a time, at a speed set in the builder's occupation data. Each block placed uses up its materials.
-  - **Build order,** from vanilla's own rules (not from any other mod):
-    - bottom layer first;
-    - a block is only placed once vanilla says it can stay there (`BlockState.canSurvive`), otherwise it waits. That one rule covers torches, lanterns, ladders, buttons, levers, signs, vines, carpets, rails, pressure plates and plants on soil;
-    - falling blocks (sand, gravel, concrete powder, anvils) only once something is under them (`FallingBlock.isFree` on the block below).
-  - **Two-block things** (doors and tall plants by `DoubleBlockHalf`, beds by `BedPart`): both halves go down in the same step, costing one item, so the first half doesn't pop off.
-  - **Shapes and connections** (stairs' corners, fences, walls, panes, redstone, paired chests) come from vanilla's neighbour updates. We place the template's facing, axis and half, and the matching rule already ignores the rest.
-  - **Costs,** a pure rule in `BuildingRules`, unit-tested:
-    - a double slab costs 2 slabs, and a wall torch costs a torch (done);
-    - crops cost their seeds (`asItem`);
-    - a potted plant costs a flower pot plus the plant;
-    - grass blocks, farmland and paths cost dirt;
-    - snow layers, candles and sea pickles cost one per layer or piece;
-    - a water source costs a water bucket, with the empty bucket returned to the site stock.
-  - **What builders don't place:** lava, flowing fluids, fire, portals and piston heads are listed as "not placeable", as now.
-  - **Block entities** (chests, barrels, furnaces, signs, banners) are placed empty and plain; a template never gives away items or text.
-  - **Waterlogged blocks** are placed dry.
-  - **Several builders on one site** never place the same block twice (reservations in memory).
-  - **When nothing's left,** the site is completed (`BuildingOps.completeIfDone`), and its builders return to the pool.
-  - **Performance:** the stress scenario gains a builder and a site per town, and the stress test is run before merging.
-- **Out of scope:**
-  - clearing what's in the way (S-030);
-  - fetching materials (S-031); for now the player fills the site stock;
-  - couriers, gold, levelling, repair.
-- **Test:**
-  - **Unit tests:** costs and build order (rules).
-  - **GameTests:**
-    - one builder finishes the shed from a stocked site;
-    - two builders finish it without duplicates;
-    - a builder with an empty stock waits without crashing, then carries on when materials are added;
-    - doors, beds, torches and falling blocks end up right.
-  - **Manual:** watch it build.
-- **Notes:**
-  - **Placement stays our own** (S-023 decision). The awkward blocks come from vanilla's block classes (`canSurvive`, `FallingBlock.isFree`, `DoubleBlockHalf`, `BedPart`, `FlowerPotBlock`, layer and count properties, fluid sources).
-  - **What was built:**
-    - `BuildingRules.costOf`, `partnerOf`, `BUILD_ORDER` and `placedState` (pure);
-    - `SitePlacement` (check and place one block from a stock);
-    - `SiteReservations` (in memory, expiring);
-    - `Stock.has` and `take`;
-    - `BuilderJob` builds;
-    - `ticks_per_block` in `occupation/builder.json` (10 by default).
-  - **Decisions:**
-    - builders on site use the site stock directly (no carrying);
-    - an emptied water bucket goes back to the stock;
-    - blocks are placed dry and block entities empty.
-  - **Choosing the next block:** the first block in build order that it can place now and reach (5 blocks from its eyes). If none is in reach, the first it can place, to walk to. Each look goes through at most 256 planned blocks, so big buildings stay cheap.
-  - **Standing in the way:** a builder standing where a block goes leaves it for last, then steps at least 2 blocks aside onto a spot that isn't planned. The shed's floor is at walking level, so this always comes up.
-  - **Found while tuning:**
-    - **A step-aside loop:** the spot it chose could be the one it was already on, because a unit can straddle two blocks. It took about 120 zero-distance walks per builder in the stress run.
-    - **Strict build order made builders zigzag** between the shed's sides.
-    - **Walking "to" the solid site block** took about 330 ticks to recover; builders now walk next to it.
-    - **The result:** one builder finishes the shed in about 1180 ticks (the ideal is about 1020).
-  - **Stress:** each town's idle settler is now a builder on a stocked shed. All sheds are built in every size; about 10 µs per unit per tick, 1.03 ms at 100 units and 2.11 at 200 (docs/perf.md). The stress test now also checks that at least half the sheds get built.
-  - **Comments** in `WorkplaceScreen` and `BuildingTemplates` no longer mention MineColonies or Structurize (Independence).
-  - **Flakes:** GameTests ran 3 times in a row without flakes.
-  - **Sabotage checks:**
-    - ignoring `canSurvive` (the awkward-blocks test);
-    - no reservations (two builders went for the same block 82 times);
-    - not using up materials (the leftover and no-materials checks);
-    - placing a door without its other half (the door test, and every shed test).
-    - Each fails.
-  - The site's list of outstanding materials is the demand signal markets can read later.
-
 ### S-030 Builders clear the site
-- **Status:** planned | **Branch:** feature/builders-clear | **PR:** - | **Depends on:** S-025
+- **Status:** in review | **Branch:** feature/builders-clear | **PR:** #31 | **Depends on:** S-025
 - **Goal:** builders clear what's in the way inside a site before building there.
 - **Scope:**
   - Builders break blocks inside the footprint where the template wants air or another block, taking as long as a player would with their best tool (`BreakTime`).
@@ -107,7 +40,18 @@ Story template:
   - No levelling or filling below the site.
 - **Out of scope:** terraforming and levelling.
 - **Test:** GameTests: a site with dirt and a tree in the way gets cleared and then built; the drops end up in the site stock. Manual: watch it.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - `BuildingRules.isObstruction` and `CLEAR_ORDER` (pure);
+    - `Stock.bestToolFor`;
+    - clearing in `BuilderJob`: `ClearStep` runs before placing, top down.
+  - **Decisions:**
+    - Something is in the way where the template wants air, or where a block goes and what's there can't simply be built over. Grass, flowers and torches count where air is wanted; grass and snow are built over where a block goes.
+    - Fluids and unbreakable blocks (bedrock) are left, and don't keep a site from finishing. Water flowing over a site can wash out blocks that have been placed (torches); handling that is left for later.
+    - The builder uses the best tool in the site stock, puts it back afterwards (a little worn), and breaks a block as long as a player with that tool would.
+    - Like a player, a builder gets no drops from blocks that need the right tool (stone, ores) unless it has one. The loot table doesn't check this, so `ClearStep` does.
+  - **Known gap:** when the site finishes, whatever is left in its stock (cleared blocks, tools) spills on the floor and vanishes after 5 minutes. S-031 has builders carry it back to storage.
+  - **Also fixed:** `LumberjackReachGameTests` laid out its hut and tree assuming where the hall falls in its chunk, so it failed once more tests shifted the layout.
 
 ### S-031 Builders fetch materials
 - **Status:** planned | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
@@ -116,9 +60,9 @@ Story template:
   - At most one builder per site fetches at a time; the others keep building from the site stock.
   - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later from shops), and deposits them into the site stock.
   - What can't be found is skipped; builders build what they can, then wait.
-  - Leftover materials go back to storage when the site is finished.
+  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) back to settlement storage, in as many trips as it takes, so nothing is lost. Only what doesn't fit in storage is dropped. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
 - **Out of scope:** couriers, gold and shops.
-- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on. Manual: watch it.
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on; after the site is finished, what was left in its stock (materials, cleared blocks, a tool) ends up in settlement storage, with nothing dropped. Manual: watch it.
 - **Notes:** the supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
 
 ### S-032 Nation management interface: opening it
@@ -234,6 +178,21 @@ Story template:
 - **Test:** decided with the design.
 - **Notes:** deliberately placed after the jobs. With no food production, housing or economy yet, needs would have to be abstract counters, against the "constraints from the world" principle.
 
+### S-037 More natural unit movement (low priority)
+- **Status:** planned (low priority) | **Branch:** feature/natural-movement | **PR:** - | **Depends on:** S-025
+- **Goal:** units moving around the same area look natural: they don't all take the same path, queue single file on the same blocks, or walk into each other.
+- **Scope (to look into first):**
+  - **Why paths match:** vanilla pathfinding gives the same path for the same start and goal, and our walks often share goals (the same stand spot by a site block or tree, the same post).
+  - **Ideas:**
+    - spread goals: pick among several good stand spots, not always the nearest, and avoid spots another unit is heading to or standing on;
+    - a little jitter in where units wait (around a post or site, not one block);
+    - letting units step around each other (vanilla's entity pushing, or a short sidestep when blocked by another unit);
+    - for builders, standing at different sides of a building.
+  - Measure before and after with the stress test, since pathfinding is the expensive part (docs/perf.md).
+- **Out of scope:** formations, crowds and traffic rules.
+- **Test:** decided with the story (e.g. GameTests that several builders on one site don't share a stand spot, and units waiting at a post spread out). Manual: watch a busy site.
+- **Notes:** owner report (20 Oct 2026): builders, and maybe units in general, follow the same robotic paths, wait on the same blocks in a single-file line and run into each other.
+
 ## Later (not yet stories)
 - **Work-area view:** a toggle on the hut panel or in the nation management interface that shows a workplace's work area.
 - **Military buildings:** barracks or guard towers for soldiers (exempt from workplaces for now).
@@ -244,6 +203,73 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-025 Builders place blocks
+- **Status:** done | **Branch:** feature/builders-place | **PR:** #30 | **Depends on:** S-024
+- **Goal:** assigned builders build their site from its stock until it matches its template.
+- **Scope:**
+  - **Placing** missing blocks from the site stock, a block at a time, at a speed set in the builder's occupation data. Each block placed uses up its materials.
+  - **Build order,** from vanilla's own rules (not from any other mod):
+    - bottom layer first;
+    - a block is only placed once vanilla says it can stay there (`BlockState.canSurvive`), otherwise it waits. That one rule covers torches, lanterns, ladders, buttons, levers, signs, vines, carpets, rails, pressure plates and plants on soil;
+    - falling blocks (sand, gravel, concrete powder, anvils) only once something is under them (`FallingBlock.isFree` on the block below).
+  - **Two-block things** (doors and tall plants by `DoubleBlockHalf`, beds by `BedPart`): both halves go down in the same step, costing one item, so the first half doesn't pop off.
+  - **Shapes and connections** (stairs' corners, fences, walls, panes, redstone, paired chests) come from vanilla's neighbour updates. We place the template's facing, axis and half, and the matching rule already ignores the rest.
+  - **Costs,** a pure rule in `BuildingRules`, unit-tested:
+    - a double slab costs 2 slabs, and a wall torch costs a torch (done);
+    - crops cost their seeds (`asItem`);
+    - a potted plant costs a flower pot plus the plant;
+    - grass blocks, farmland and paths cost dirt;
+    - snow layers, candles and sea pickles cost one per layer or piece;
+    - a water source costs a water bucket, with the empty bucket returned to the site stock.
+  - **What builders don't place:** lava, flowing fluids, fire, portals and piston heads are listed as "not placeable", as now.
+  - **Block entities** (chests, barrels, furnaces, signs, banners) are placed empty and plain; a template never gives away items or text.
+  - **Waterlogged blocks** are placed dry.
+  - **Several builders on one site** never place the same block twice (reservations in memory).
+  - **When nothing's left,** the site is completed (`BuildingOps.completeIfDone`), and its builders return to the pool.
+  - **Performance:** the stress scenario gains a builder and a site per town, and the stress test is run before merging.
+- **Out of scope:**
+  - clearing what's in the way (S-030);
+  - fetching materials (S-031); for now the player fills the site stock;
+  - couriers, gold, levelling, repair.
+- **Test:**
+  - **Unit tests:** costs and build order (rules).
+  - **GameTests:**
+    - one builder finishes the shed from a stocked site;
+    - two builders finish it without duplicates;
+    - a builder with an empty stock waits without crashing, then carries on when materials are added;
+    - doors, beds, torches and falling blocks end up right.
+  - **Manual:** watch it build.
+- **Notes:**
+  - **Placement stays our own** (S-023 decision). The awkward blocks come from vanilla's block classes (`canSurvive`, `FallingBlock.isFree`, `DoubleBlockHalf`, `BedPart`, `FlowerPotBlock`, layer and count properties, fluid sources).
+  - **What was built:**
+    - `BuildingRules.costOf`, `partnerOf`, `BUILD_ORDER` and `placedState` (pure);
+    - `SitePlacement` (check and place one block from a stock);
+    - `SiteReservations` (in memory, expiring);
+    - `Stock.has` and `take`;
+    - `BuilderJob` builds;
+    - `ticks_per_block` in `occupation/builder.json` (10 by default).
+  - **Decisions:**
+    - builders on site use the site stock directly (no carrying);
+    - an emptied water bucket goes back to the stock;
+    - blocks are placed dry and block entities empty.
+  - **Choosing the next block:** the first block in build order that it can place now and reach (5 blocks from its eyes). If none is in reach, the first it can place, to walk to. Each look goes through at most 256 planned blocks, so big buildings stay cheap.
+  - **Standing in the way:** a builder standing where a block goes leaves it for last, then steps at least 2 blocks aside onto a spot that isn't planned. The shed's floor is at walking level, so this always comes up.
+  - **Found while tuning:**
+    - **A step-aside loop:** the spot it chose could be the one it was already on, because a unit can straddle two blocks. It took about 120 zero-distance walks per builder in the stress run.
+    - **Strict build order made builders zigzag** between the shed's sides.
+    - **Walking "to" the solid site block** took about 330 ticks to recover; builders now walk next to it.
+    - **The result:** one builder finishes the shed in about 1180 ticks (the ideal is about 1020).
+  - **Stress:** each town's idle settler is now a builder on a stocked shed. All sheds are built in every size; about 10 µs per unit per tick, 1.03 ms at 100 units and 2.11 at 200 (docs/perf.md). The stress test now also checks that at least half the sheds get built.
+  - **Comments** in `WorkplaceScreen` and `BuildingTemplates` no longer mention MineColonies or Structurize (Independence).
+  - **Flakes:** GameTests ran 3 times in a row without flakes.
+  - **Sabotage checks:**
+    - ignoring `canSurvive` (the awkward-blocks test);
+    - no reservations (two builders went for the same block 82 times);
+    - not using up materials (the leftover and no-materials checks);
+    - placing a door without its other half (the door test, and every shed test).
+    - Each fails.
+  - The site's list of outstanding materials is the demand signal markets can read later.
 
 ### S-023 Structurize spike
 - **Status:** done | **Branch:** feature/structurize-spike | **PR:** #29 | **Depends on:** S-011

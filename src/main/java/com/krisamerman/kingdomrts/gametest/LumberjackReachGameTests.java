@@ -95,7 +95,9 @@ public class LumberjackReachGameTests {
         BlockPos hut;
         BlockPos base;
         if (hallInTheWay) {
-            hut = new BlockPos(hall.getX() + 6, hall.getY(), row);
+            // At least 6 past the hall, and far enough along that the tree is inside the claim
+            // wherever the hall falls in its chunk (which depends on where the test is laid out).
+            hut = new BlockPos(Math.max(hall.getX() + 6, minX + 3 + distance), hall.getY(), row);
             base = new BlockPos(hut.getX() - distance, hall.getY(), row);
         } else {
             hut = new BlockPos(minX + 3, hall.getY(), row);
