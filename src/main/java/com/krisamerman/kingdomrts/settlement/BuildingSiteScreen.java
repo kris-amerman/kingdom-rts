@@ -158,7 +158,7 @@ public class BuildingSiteScreen extends AbstractContainerScreen<BuildingSiteMenu
             graphics.drawString(font, "The site isn't loaded", LEFT, PROGRESS_Y, LABEL_COLOR, false);
             return;
         }
-        row(graphics, PROGRESS_Y, "Progress", info.isFinished() ? "Finished" : info.placed() + "/" + info.total() + " blocks");
+        row(graphics, PROGRESS_Y, "Progress", info.built() ? "Built, clearing out stock" : info.isFinished() ? "Finished" : info.placed() + "/" + info.total() + " blocks");
         row(graphics, IN_THE_WAY_Y, "In the way", info.inTheWay() == 0 ? "Nothing" : info.inTheWay() + " blocks");
         List<BuildingSiteMenu.Material> materials = info.materials();
         int more = materials.size() - BuildingSiteMenu.OVERVIEW_MATERIALS;

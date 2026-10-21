@@ -18,10 +18,11 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // A building of a settlement, from when it's commissioned: what it is (a BuildingType id), where its
 // template's corner goes and how it's turned, the box it takes up, and when it was commissioned and
-// built (game time; built is NOT_BUILT until then). While it's being built, site is where its
+// built (game time; built is NOT_BUILT until then). While it's a site, site is where its
 // construction site block stands (see ConstructionSiteBlock), and builders are the settlement's
-// builders assigned to it (unit UUID to name, in assignment order); once built, site is null and
-// nobody is assigned. The box is kept so overlap checks don't need the template. Kept on the
+// builders assigned to it (unit UUID to name, in assignment order). It stays a site after it's
+// built, until its builders have carried what's left in the site's stock to storage; then the
+// site is closed: site is null and nobody is assigned. The box is kept so overlap checks don't need the template. Kept on the
 // Settlement, like workplaces; only SettlementData changes it.
 public record Building(ResourceLocation type, BlockPos origin, Rotation rotation, BoundingBox footprint, @Nullable BlockPos site,
         long commissioned, long built, Map<UUID, String> builders) {
@@ -54,10 +55,20 @@ public record Building(ResourceLocation type, BlockPos origin, Rotation rotation
         return built != NOT_BUILT;
     }
 
-    // The same building, finished at the given game time: no longer a construction site, and its
-    // builders are free again.
+    // The same building, finished at the given game time. It's still a site (with the same
+    // builders) until its stock is cleared out.
     Building finishedAt(long gameTime) {
-        return new Building(type, origin, rotation, footprint, null, commissioned, gameTime, Map.of());
+        return new Building(type, origin, rotation, footprint, site, commissioned, gameTime, builders);
+    }
+
+    // The same building with its site closed: no construction site block, and its builders free again.
+    Building withSiteClosed() {
+        return new Building(type, origin, rotation, footprint, null, commissioned, built, Map.of());
+    }
+
+    // Built, but its site's stock is still being cleared out.
+    public boolean isBeingClearedOut() {
+        return isBuilt() && site != null;
     }
 
     // The same building with a builder assigned, or taken off it.

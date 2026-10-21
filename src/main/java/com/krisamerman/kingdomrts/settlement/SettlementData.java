@@ -193,6 +193,14 @@ public class SettlementData extends SavedData {
         }
     }
 
+    void closeSite(Settlement settlement, Building building) {
+        Building current = settlement.buildingAt(building.origin());
+        if (current != null && current.site() != null) {
+            settlement.replaceBuilding(current.withSiteClosed());
+            setDirty();
+        }
+    }
+
     void removeBuilding(Settlement settlement, BlockPos origin) {
         if (settlement.removeBuilding(origin)) {
             setDirty();
