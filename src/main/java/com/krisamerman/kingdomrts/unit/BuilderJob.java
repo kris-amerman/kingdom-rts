@@ -5,10 +5,12 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import javax.annotation.Nullable;
 
@@ -20,6 +22,7 @@ import com.krisamerman.kingdomrts.settlement.BuildingOps;
 import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlockEntity;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
+import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.SitePlacement;
 import com.krisamerman.kingdomrts.settlement.SiteReservations;
 import com.krisamerman.kingdomrts.unit.job.Footing;
@@ -30,8 +33,10 @@ import com.krisamerman.kingdomrts.unit.job.WalkToStep;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
@@ -47,9 +52,15 @@ import net.minecraft.world.phys.AABB;
 //   site's stock (see SitePlacement) -> when the plan runs out, plan again -> when nothing is
 //   missing, the site is completed (BuildingOps#completeIfDone) and it's back in the pool.
 // Blocks it can't place yet (no materials in the stock, nothing to hang on yet, something in the
-// way) are left for the next plan; with nothing placeable it waits a little and plans again, so
-// it carries on by itself when materials arrive. Per tick it only waits, walks, or counts down to
-// the next block; planning is spread over ticks and only happens when a plan runs out.
+// way) are left for the next plan; with nothing placeable it fetches what the site is missing (one
+// builder per site at a time, see SiteReservations): from the nearest settlement storage that has
+// some, as much as it can carry, into the site's stock. Failing that it waits a little and plans
+// again, so it carries on by itself when materials arrive.
+// It never drops what it carries: what doesn't fit in the site's stock it keeps and delivers later,
+// and anything it still carries once it's back in the pool goes to settlement storage, or stays
+// with it while there's no room. Per tick it only waits, walks, or counts down to the next block;
+// planning is spread over ticks and only happens when a plan runs out, and storage is only looked
+// through when it has nothing else to do.
 public final class BuilderJob implements Job {
     private static final int WAIT_TICKS = 40;
     private static final int RETRY_TICKS = 40;
@@ -62,6 +73,10 @@ public final class BuilderJob implements Job {
     private static final double REACH = 5.0;
     // How many planned blocks one look goes through to choose the next one.
     private static final int CANDIDATES_PER_LOOK = 256;
+    // How close it has to be to a container to take from it or put into it.
+    private static final double HAND_OVER_REACH = 4.0;
+    // How long it waits before trying again to put down what it's holding (no room anywhere).
+    private static final int HOLD_RETRY_TICKS = 100;
 
     private final BuilderOccupation settings;
     @Nullable
@@ -80,6 +95,24 @@ public final class BuilderJob implements Job {
     private BlockPos walkingTo;
     // Whether the last plan found anything missing at all (if not, the site is done).
     private boolean planFoundMissing;
+    // Trips: the site it's fetching for (it holds the site's fetch) and the storage and items it's
+    // fetching; the walks of each kind of trip; the storage it's dropping things off at; and when to
+    // try again to deliver to the site or drop off at storage, after finding no room.
+    @Nullable
+    private BlockPos fetchSite;
+    @Nullable
+    private BlockPos fetchFrom;
+    private Map<Item, Integer> fetchWanted = Map.of();
+    @Nullable
+    private JobStep fetchWalk;
+    @Nullable
+    private JobStep deliverWalk;
+    @Nullable
+    private JobStep dropWalk;
+    @Nullable
+    private BlockPos dropAt;
+    private long deliverAgainAt;
+    private long dropAgainAt;
 
     public BuilderJob(BuilderOccupation settings) {
         this.settings = settings;
@@ -93,12 +126,57 @@ public final class BuilderJob implements Job {
         }
         Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
         Building site = settlement != null ? BuilderOps.siteOf(settlement, unit.getUUID()) : null;
+        long now = level.getGameTime();
+        Container carried = unit.getInventory();
         if (site == null || site.site() == null) {
             clearPlan();
-            return goTo(unit, unit.getPost(), AT_POST, walkFailed, "waiting for a site", () -> !assigned(unit));
+            endFetch(unit);
+            JobStep dropOff = dropOff(level, unit, settlement, previous, succeeded, now);
+            if (dropOff != null) {
+                return dropOff;
+            }
+            return goTo(unit, unit.getPost(), AT_POST, walkFailed, carried.isEmpty() ? "waiting for a site" : "holding what it carries: no room in storage",
+                    () -> !assigned(unit));
         }
         if (!site.origin().equals(planSite)) {
             clearPlan();
+        }
+        // A fetch: at the storage, take what the site wants; then (carrying it) deliver it below.
+        if (previous != null && previous == fetchWalk) {
+            fetchWalk = null;
+            if (succeeded && fetchFrom != null && site.origin().equals(fetchSite)) {
+                return new TakeStep(fetchFrom, fetchWanted);
+            }
+            endFetch(unit);
+        }
+        if (previous instanceof TakeStep) {
+            fetchFrom = null;
+            if (!succeeded) {
+                endFetch(unit);
+            }
+        }
+        if (previous instanceof DeliverStep) {
+            endFetch(unit);
+            if (!carried.isEmpty()) {
+                deliverAgainAt = now + HOLD_RETRY_TICKS; // the site's stock is full: keep it for now
+            }
+        }
+        if (previous != null && previous == deliverWalk) {
+            deliverWalk = null;
+            if (!succeeded) {
+                deliverAgainAt = now + HOLD_RETRY_TICKS;
+            }
+        }
+        // Carrying something: deliver it to the site's stock first.
+        if (!carried.isEmpty() && now >= deliverAgainAt) {
+            if (fetchSite != null) {
+                SiteReservations.reserveFetch(fetchSite, unit.getUUID(), now); // still on its way
+            }
+            if (unit.position().distanceTo(site.site().getCenter()) <= HAND_OVER_REACH) {
+                return new DeliverStep(site.site());
+            }
+            deliverWalk = WalkToStep.near(site.site(), WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+            return deliverWalk;
         }
         if (!site.footprint().inflatedBy(ON_SITE_MARGIN).isInside(unit.blockPosition())) {
             if (walkFailed) {
@@ -122,7 +200,6 @@ public final class BuilderJob implements Job {
         if (siteStock != null && !clear.isEmpty()) {
             Blueprint.Part toBreak = null;
             Blueprint.Part toWalkTo = null;
-            long now = level.getGameTime();
             int looked = 0;
             for (Iterator<Blueprint.Part> it = clear.iterator(); it.hasNext() && looked < CANDIDATES_PER_LOOK; looked++) {
                 Blueprint.Part target = it.next();
@@ -161,7 +238,6 @@ public final class BuilderJob implements Job {
         // the first CANDIDATES_PER_LOOK planned blocks are looked at, so a big building's plan
         // doesn't make each look expensive; placed blocks drop out of the plan as it goes.
         ConstructionSiteBlockEntity stock = level.getBlockEntity(site.site()) instanceof ConstructionSiteBlockEntity entity ? entity : null;
-        long now = level.getGameTime();
         Blueprint.Part standingIn = null;
         Blueprint.Part toWalkTo = null;
         Blueprint.Part toPlace = null;
@@ -219,6 +295,8 @@ public final class BuilderJob implements Job {
         // (materials may arrive, or another builder's blocks may give the rest something to stand on).
         boolean foundMissing = planFoundMissing;
         boolean allPlaced = plan.isEmpty() && clear.isEmpty();
+        List<ItemStack> costs = new ArrayList<>();
+        plan.forEach(part -> costs.addAll(BuildingRules.costOf(part.state())));
         clearPlan();
         if (foundMissing && allPlaced) {
             return new PlanStep(site); // everything planned is in place: check again straight away
@@ -227,7 +305,97 @@ public final class BuilderJob implements Job {
             BuildingOps.completeIfDone(level, settlement, site);
             return new WaitStep(WAIT_TICKS, "finishing up");
         }
-        return new WaitStep(RETRY_TICKS, "waiting for materials");
+        JobStep fetch = startFetch(level, unit, settlement, site, stock, costs, now);
+        return fetch != null ? fetch : new WaitStep(RETRY_TICKS, "waiting for materials");
+    }
+
+    // Starts a fetch for the site, if no other builder is fetching for it and some settlement storage
+    // has something it's missing: walks to the nearest such storage (TakeStep then takes it).
+    @Nullable
+    private JobStep startFetch(ServerLevel level, Unit unit, Settlement settlement, Building site, @Nullable ConstructionSiteBlockEntity stock,
+            List<ItemStack> costs, long now) {
+        if (stock == null) {
+            return null;
+        }
+        Map<Item, Integer> wanted = Hauling.stillWanted(costs, stock, unit.getInventory());
+        if (wanted.isEmpty() || !SiteReservations.reserveFetch(site.origin(), unit.getUUID(), now)) {
+            return null;
+        }
+        BlockPos from = nearestStorage(level, settlement, unit, storage -> Hauling.hasAny(storage, wanted));
+        if (from == null) {
+            SiteReservations.releaseFetch(site.origin(), unit.getUUID());
+            return null;
+        }
+        fetchSite = site.origin();
+        fetchFrom = from;
+        fetchWanted = wanted;
+        if (unit.position().distanceTo(from.getCenter()) <= HAND_OVER_REACH) {
+            return new TakeStep(from, wanted);
+        }
+        fetchWalk = WalkToStep.near(from, WALK_TIMEOUT_TICKS, () -> stillAssignedTo(unit, site));
+        return fetchWalk;
+    }
+
+    private void endFetch(Unit unit) {
+        if (fetchSite != null) {
+            SiteReservations.releaseFetch(fetchSite, unit.getUUID());
+        }
+        fetchSite = null;
+        fetchFrom = null;
+        fetchWanted = Map.of();
+        fetchWalk = null;
+    }
+
+    // Back in the pool and still carrying something: takes it to the nearest settlement storage with
+    // room for it. With no room anywhere, it holds onto it and looks again later. Null when there's
+    // nothing to drop off (or not yet).
+    @Nullable
+    private JobStep dropOff(ServerLevel level, Unit unit, @Nullable Settlement settlement, @Nullable JobStep previous, boolean succeeded, long now) {
+        Container carried = unit.getInventory();
+        if (previous != null && previous == dropWalk) {
+            dropWalk = null;
+            if (succeeded && dropAt != null) {
+                return new DropOffStep(dropAt);
+            }
+            dropAgainAt = now + HOLD_RETRY_TICKS;
+            return null;
+        }
+        if (previous instanceof DropOffStep && !succeeded) {
+            dropAgainAt = now + HOLD_RETRY_TICKS;
+        }
+        if (carried.isEmpty() || now < dropAgainAt || settlement == null) {
+            return null;
+        }
+        BlockPos to = nearestStorage(level, settlement, unit, storage -> Hauling.hasRoomForAny(carried, storage));
+        if (to == null) {
+            dropAgainAt = now + HOLD_RETRY_TICKS;
+            return null;
+        }
+        dropAt = to;
+        if (unit.position().distanceTo(to.getCenter()) <= HAND_OVER_REACH) {
+            return new DropOffStep(to);
+        }
+        dropWalk = WalkToStep.near(to, WALK_TIMEOUT_TICKS, () -> !assigned(unit));
+        return dropWalk;
+    }
+
+    // The settlement's nearest loaded storage that passes the test, or null.
+    @Nullable
+    private static BlockPos nearestStorage(ServerLevel level, Settlement settlement, Unit unit, Predicate<Container> test) {
+        BlockPos best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (BlockPos pos : settlement.storage()) {
+            if (!level.isLoaded(pos) || !(level.getBlockEntity(pos) instanceof SettlementStorageBlockEntity storage)
+                    || storage instanceof ConstructionSiteBlockEntity) {
+                continue;
+            }
+            double distance = unit.blockPosition().distSqr(pos);
+            if (distance < bestDistance && test.test(storage)) {
+                best = pos;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     // A place to stand near a block the builder is in the way of: at least 2 blocks from that
@@ -423,6 +591,96 @@ public final class BuilderJob implements Job {
         @Override
         public String describe() {
             return "clear " + target.toShortString();
+        }
+    }
+
+    // Takes what's wanted (in order, as much as fits) from a settlement storage into its inventory.
+    // Fails if it isn't next to the storage any more, or took nothing.
+    private static final class TakeStep implements JobStep {
+        private final BlockPos storage;
+        private final Map<Item, Integer> wanted;
+
+        TakeStep(BlockPos storage, Map<Item, Integer> wanted) {
+            this.storage = storage;
+            this.wanted = new LinkedHashMap<>(wanted);
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.position().distanceTo(storage.getCenter()) > HAND_OVER_REACH
+                    || !(unit.level().getBlockEntity(storage) instanceof SettlementStorageBlockEntity container)) {
+                return Status.FAILED;
+            }
+            unit.swing(InteractionHand.MAIN_HAND);
+            return Hauling.moveWanted(container, unit.getInventory(), wanted) > 0 ? Status.DONE : Status.FAILED;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "take materials from the storage at " + storage.toShortString();
+        }
+    }
+
+    // Puts everything it carries into the site's stock, as much as fits (the rest it keeps).
+    private static final class DeliverStep implements JobStep {
+        private final BlockPos siteBlock;
+
+        DeliverStep(BlockPos siteBlock) {
+            this.siteBlock = siteBlock;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.position().distanceTo(siteBlock.getCenter()) > HAND_OVER_REACH
+                    || !(unit.level().getBlockEntity(siteBlock) instanceof ConstructionSiteBlockEntity stock)) {
+                return Status.FAILED;
+            }
+            unit.swing(InteractionHand.MAIN_HAND);
+            return Hauling.moveAll(unit.getInventory(), stock) > 0 ? Status.DONE : Status.FAILED;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "deliver materials to the site at " + siteBlock.toShortString();
+        }
+    }
+
+    // Puts everything it carries into a settlement storage, as much as fits (the rest it keeps).
+    private static final class DropOffStep implements JobStep {
+        private final BlockPos storage;
+
+        DropOffStep(BlockPos storage) {
+            this.storage = storage;
+        }
+
+        @Override
+        public Status tick(Unit unit) {
+            if (unit.position().distanceTo(storage.getCenter()) > HAND_OVER_REACH
+                    || !(unit.level().getBlockEntity(storage) instanceof SettlementStorageBlockEntity container)) {
+                return Status.FAILED;
+            }
+            unit.swing(InteractionHand.MAIN_HAND);
+            return Hauling.moveAll(unit.getInventory(), container) > 0 ? Status.DONE : Status.FAILED;
+        }
+
+        @Override
+        public int timeoutTicks() {
+            return 1;
+        }
+
+        @Override
+        public String describe() {
+            return "drop off what it carries at the storage at " + storage.toShortString();
         }
     }
 

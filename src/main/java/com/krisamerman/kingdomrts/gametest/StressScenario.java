@@ -10,7 +10,7 @@ import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.settlement.BuilderOps;
 import com.krisamerman.kingdomrts.settlement.Building;
 import com.krisamerman.kingdomrts.settlement.BuildingOps;
-import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlockEntity;
+import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
@@ -36,7 +36,8 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // The stress test's world (see StressGameTests and docs/perf.md): a grid of settlements, each a
 // small working town of UNITS_PER_SETTLEMENT units: lumberjacks working from their huts in a forest
-// of small oaks, a soldier at the hall, and a builder building a storage shed from a stocked site. Everything is
+// of small oaks, a soldier at the hall, and a builder building a storage shed, fetching its materials
+// from a settlement storage by the hall. Everything is
 // placed the same way every run, so runs can be compared. The settlements' chunks are kept loaded
 // (forced) so they tick like chunks near a player.
 final class StressScenario {
@@ -108,7 +109,7 @@ final class StressScenario {
             throw new IllegalStateException("Couldn't found a stress settlement: " + founded.problem());
         }
         halls.add(hall);
-        // The shed's ground is kept clear of trees (builders don't clear sites yet).
+        // The shed's ground is kept clear of trees, so it's built the same way every run.
         BlockPos shedOrigin = hall.offset(SHED_OFFSET[0], 0, SHED_OFFSET[1]);
         BoundingBox shedGround = new BoundingBox(shedOrigin.getX() - 3, floorY, shedOrigin.getZ() - 3, shedOrigin.getX() + 7, floorY + 8, shedOrigin.getZ() + 7);
         for (int x = TREE_SPACING / 2; x < size - 1; x += TREE_SPACING) {
@@ -134,15 +135,19 @@ final class StressScenario {
             lumberjacks.add(lumberjack);
         }
         spawn(faction, settlement, hall.offset(2, 0, 0), Occupation.SOLDIER); // stands guard at the hall
-        // A builder on a storage shed, its site stocked with everything the shed needs.
+        // A builder on a storage shed, fetching what it needs from a settlement storage by the hall
+        // that holds everything the shed takes.
         BuildingOps.CommissionResult shed = BuildingOps.commission(level, faction, SHED, shedOrigin, Rotation.NONE);
         if (shed.building() == null) {
             throw new IllegalStateException("Couldn't commission a stress shed: " + shed.problem());
         }
         sheds.add(shed.building().origin());
-        if (level.getBlockEntity(shed.building().site()) instanceof ConstructionSiteBlockEntity stock) {
-            BuildingOps.remaining(level, shed.building()).remaining().materials().forEach((item, count) -> Stock.insert(stock, new ItemStack(item, count)));
+        BlockPos storagePos = hall.offset(0, 0, 2);
+        level.setBlockAndUpdate(storagePos, KingdomRts.SETTLEMENT_STORAGE.get().defaultBlockState());
+        if (SettlementOps.registerStorage(level, storagePos) == null || !(level.getBlockEntity(storagePos) instanceof SettlementStorageBlockEntity storage)) {
+            throw new IllegalStateException("Couldn't place a stress storage at " + storagePos.toShortString());
         }
+        BuildingOps.remaining(level, shed.building()).remaining().materials().forEach((item, count) -> Stock.insert(storage, new ItemStack(item, count)));
         Unit builder = spawn(faction, settlement, hall.offset(-2, 0, 0), null);
         String problem = BuilderOps.hire(level, settlement, builder);
         problem = problem != null ? problem : BuilderOps.assign(level, settlement, shed.building(), builder.getUUID());

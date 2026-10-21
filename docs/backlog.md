@@ -31,20 +31,59 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-031 Builders fetch materials
-- **Status:** planned | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
+- **Status:** in review | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
 - **Goal:** builders fetch what their site is missing from settlement storage.
 - **Scope:**
   - At most one builder per site fetches at a time; the others keep building from the site stock.
-  - A fetch takes the missing materials not yet on site, in build order, as much as it can carry, from settlement storage (later from shops), and deposits them into the site stock.
-  - What can't be found is skipped; builders build what they can, then wait.
-  - **Emptying a finished site:** when the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty, so nothing is lost. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
-  - **Trips to storage** are shared with demolition (S-038). A builder goes as often as it needs to. When there's nowhere to put something (no storage, or storage full), it holds onto it in its own inventory and tries again later, rather than dropping it. If its inventory is full too, it waits and checks again, so it never stalls for good.
-- **Out of scope:** couriers, gold and shops.
-- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on; after the site is finished, what was left in its stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: watch it.
-- **Notes:** the supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
+  - A builder fetches when it has nothing it can place: it takes the missing materials not yet on site, in build order, as much as it can carry, from the nearest settlement storage that has some (later from shops), and puts them in the site stock.
+  - What can't be found is skipped; builders build what they can, then wait, and look again now and then.
+  - **Holding onto things:** a builder never drops what it carries. What doesn't fit in the site stock it keeps, and delivers later. A builder carrying something its site doesn't need (it was unassigned mid-trip, say) takes it to settlement storage; with nowhere to put it (no storage, or storage full), it keeps it and tries again later. These trips to storage are what S-040 and S-038 build on.
+- **Out of scope:** emptying a finished site (split out to S-040), couriers, gold and shops, workplace stocks (a lumberjack hut's logs aren't settlement storage).
+- **Test:** GameTests: a builder fetches from storage and the site gets built; two builders on a site have only one fetcher at a time; missing materials make them wait, then carry on when they're put in storage; a builder carrying what its site doesn't need takes it to storage, and holds onto it while there's no room. Manual: watch it.
+- **Notes:**
+  - The supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
+  - Split, 2026-10-20: emptying a finished site needs a new state (built, but its site block stays until its stock is empty), so it's its own story, S-040.
+  - **What was built:**
+    - `Hauling` (pure): what's still wanted, moving wanted items or everything between containers, room checks;
+    - `SiteReservations.reserveFetch` and `releaseFetch`: one fetcher per site, lasting 90 s and renewed along the trip;
+    - in `BuilderJob`: fetch (walk to storage, `TakeStep`), deliver (`DeliverStep`) and drop-off (`DropOffStep`) trips.
+  - **Decisions:**
+    - A builder fetches only when it has nothing it can place. Storage is looked through then, not every tick.
+    - A fetch goes to the nearest loaded settlement storage that has any of what's missing, one storage per trip. It takes the missing materials in build order, up to the builder's 9 inventory slots.
+    - While assigned, whatever a builder carries goes into its site's stock (even if it was fetched for another site). With the stock full, it keeps it, carries on building, and tries again every 5 s.
+    - In the pool, whatever it carries goes to the nearest storage with room. With none, it keeps it and looks again every 5 s.
+    - Construction site stocks aren't settlement storage, so builders never take from another site.
+  - **Known limit:** if a site's stock fills up with things it doesn't need (what clearing broke), fetched materials can't go in, and the builder holds them. Builders don't place from their own inventory. S-040's emptying, or a later change, may deal with that.
+  - **Stress:** the scenario's builders now fetch from a settlement storage by the hall, rather than from a stocked site.
+
+### S-040 Builders empty a finished site
+- **Status:** planned | **Branch:** feature/builders-empty-site | **PR:** - | **Depends on:** S-031
+- **Goal:** nothing left in a finished site's stock is lost: builders carry it to settlement storage before the site block goes.
+- **Scope:**
+  - When the site is finished, its builders empty the site stock before returning to the pool. They carry everything still in it (spare materials, what clearing broke, tools) to settlement storage, in as many trips as it takes. The building counts as built straight away, but its site block stays until the stock is empty. Today the stock spills on the floor when the site block is removed (S-030), and dropped items vanish after 5 minutes.
+  - With nowhere to put it, builders hold onto what they carry (S-031) and the site block waits.
+  - The site panel shows that the building is finished and its stock is being cleared out.
+- **Out of scope:** demolition (S-038).
+- **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
+- **Notes:** -
+
+### S-041 Units open and close doors
+- **Status:** planned | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
+- **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
+- **Scope:**
+  - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
+  - **Pathing through doors:** units plan paths through closed doors they can open (wooden doors, and probably fence gates), open them as they reach them, and close them once they're through. Vanilla has the pieces (navigation that can open doors, and a door-opening goal mobs use); check them against the 1.21.1 sources, and whether fence gates and trapdoors need our own handling.
+  - **Doors they can't open:** iron doors and the like (redstone-only) stay walls, as for players.
+  - **Every unit,** whatever its occupation, since it's the walking that needs it.
+- **Out of scope:** locks and faction-only doors, breaking doors down in sieges.
+- **Test:** GameTests: a unit walks through a closed wooden door to reach a spot on the other side, and the door is closed again after it; a builder that finishes a shed from inside walks out; an iron door still blocks it. Manual: watch a unit open and close a door.
+- **Notes:**
+  - Owner request, 2026-10-20: units shouldn't get stuck behind doors.
+  - Open: whether units of a hostile faction may open another faction's doors (players can, so probably yes, unless locks come later).
+  - Measure with the stress test, since it changes pathfinding (docs/perf.md).
 
 ### S-038 Builders demolish buildings
-- **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031
+- **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031, S-040
 - **Goal:** demolishing a building is a job for builders, who take it apart block by block and carry every material back to storage.
 - **Scope:**
   - **Policy:** all construction and demolition goes through builders. The instant demolish from S-011 is no longer a player action.
@@ -53,7 +92,7 @@ Story template:
   - **Taking it apart:** builders break the building's own blocks top down, with things that hang on others (torches, doors, ladders) before what holds them, the reverse of the build order. Each block takes as long as a player would need with the best tool the builder carries. Builders on one demolition never take the same block (`SiteReservations`).
   - **Every material comes back:** a block that still matches the template gives back what placing it cost (`BuildingRules.costOf`), whatever the tool, so glass, grass and stone return what went in. Blocks that aren't the template's (replaced or damaged) aren't the building's, and are left standing.
   - **What's stored in the building's blocks** (a chest or furnace that's part of the template) is taken out by the builder before it breaks that block. If it can't carry it all, it takes a trip to storage and comes back for the rest; the block is only broken once it's empty, so nothing spills.
-  - **Carrying it back:** builders put what they remove in their own inventory and take it to settlement storage when it's full or the job's done, in as many trips as it takes. When there's nowhere to put it, they hold onto it (the S-031 trips to storage). A site under construction also has its stock emptied before its site block goes.
+  - **Carrying it back:** builders put what they remove in their own inventory and take it to settlement storage when it's full or the job's done, in as many trips as it takes. When there's nowhere to put it, they hold onto it (the S-031 trips to storage). A site under construction also has its stock emptied before its site block goes (as in S-040).
   - **Commands:** `building demolish <pos>` orders the demolition; `building assign` and `unassign` work on demolitions as on sites.
   - **Cleanup:** units who lived or worked there lose their home or job when it's gone (existing workplace code).
 - **Out of scope:** gold costs, the interface (S-035), demolishing other factions' buildings (never), the town hall (can't be demolished, S-027), containers that aren't part of the template (they're left standing, contents and all).
