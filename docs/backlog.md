@@ -43,6 +43,18 @@ Story template:
 - **Notes:**
   - The supply lifecycle recommended to the owner while planning S-011 (design.md, Builders and construction sites).
   - Split, 2026-10-20: emptying a finished site needs a new state (built, but its site block stays until its stock is empty), so it's its own story, S-040.
+  - **What was built:**
+    - `Hauling` (pure): what's still wanted, moving wanted items or everything between containers, room checks;
+    - `SiteReservations.reserveFetch` and `releaseFetch`: one fetcher per site, lasting 90 s and renewed along the trip;
+    - in `BuilderJob`: fetch (walk to storage, `TakeStep`), deliver (`DeliverStep`) and drop-off (`DropOffStep`) trips.
+  - **Decisions:**
+    - A builder fetches only when it has nothing it can place. Storage is looked through then, not every tick.
+    - A fetch goes to the nearest loaded settlement storage that has any of what's missing, one storage per trip. It takes the missing materials in build order, up to the builder's 9 inventory slots.
+    - While assigned, whatever a builder carries goes into its site's stock (even if it was fetched for another site). With the stock full, it keeps it, carries on building, and tries again every 5 s.
+    - In the pool, whatever it carries goes to the nearest storage with room. With none, it keeps it and looks again every 5 s.
+    - Construction site stocks aren't settlement storage, so builders never take from another site.
+  - **Known limit:** if a site's stock fills up with things it doesn't need (what clearing broke), fetched materials can't go in, and the builder holds them. Builders don't place from their own inventory. S-040's emptying, or a later change, may deal with that.
+  - **Stress:** the scenario's builders now fetch from a settlement storage by the hall, rather than from a stocked site.
 
 ### S-040 Builders empty a finished site
 - **Status:** planned | **Branch:** feature/builders-empty-site | **PR:** - | **Depends on:** S-031
@@ -54,6 +66,21 @@ Story template:
 - **Out of scope:** demolition (S-038).
 - **Test:** GameTests: what was left in a finished site's stock (materials, cleared blocks, a tool) ends up in settlement storage over several trips, with nothing dropped, and only then is the site block removed; with storage full, the builder holds onto what it carries and delivers it once there's room. Manual: the site panel while it's emptied.
 - **Notes:** -
+
+### S-041 Units open and close doors
+- **Status:** planned | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
+- **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
+- **Scope:**
+  - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
+  - **Pathing through doors:** units plan paths through closed doors they can open (wooden doors, and probably fence gates), open them as they reach them, and close them once they're through. Vanilla has the pieces (navigation that can open doors, and a door-opening goal mobs use); check them against the 1.21.1 sources, and whether fence gates and trapdoors need our own handling.
+  - **Doors they can't open:** iron doors and the like (redstone-only) stay walls, as for players.
+  - **Every unit,** whatever its occupation, since it's the walking that needs it.
+- **Out of scope:** locks and faction-only doors, breaking doors down in sieges.
+- **Test:** GameTests: a unit walks through a closed wooden door to reach a spot on the other side, and the door is closed again after it; a builder that finishes a shed from inside walks out; an iron door still blocks it. Manual: watch a unit open and close a door.
+- **Notes:**
+  - Owner request, 2026-10-20: units shouldn't get stuck behind doors.
+  - Open: whether units of a hostile faction may open another faction's doors (players can, so probably yes, unless locks come later).
+  - Measure with the stress test, since it changes pathfinding (docs/perf.md).
 
 ### S-038 Builders demolish buildings
 - **Status:** planned | **Branch:** feature/builders-demolish | **PR:** - | **Depends on:** S-031, S-040
