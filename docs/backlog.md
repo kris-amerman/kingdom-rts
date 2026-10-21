@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-041 Units open and close doors
-- **Status:** in progress | **Branch:** feature/unit-doors | **PR:** - | **Depends on:** -
+- **Status:** in review | **Branch:** feature/unit-doors | **PR:** #35 | **Depends on:** -
 - **Goal:** units walk through doors, opening them on the way and closing them behind them, so a door never traps a unit or blocks a path.
 - **Scope:**
   - **Today:** units use vanilla's default ground navigation, which treats a closed door as a wall. A builder that finishes a shed from inside can be shut in, and a unit's path can't go through a building's door.
