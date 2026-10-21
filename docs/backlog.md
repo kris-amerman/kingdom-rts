@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-031 Builders fetch materials
-- **Status:** in progress | **Branch:** feature/builders-fetch | **PR:** - | **Depends on:** S-025
+- **Status:** in review | **Branch:** feature/builders-fetch | **PR:** #33 | **Depends on:** S-025
 - **Goal:** builders fetch what their site is missing from settlement storage.
 - **Scope:**
   - At most one builder per site fetches at a time; the others keep building from the site stock.
