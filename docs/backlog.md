@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-022 Perf commands
-- **Status:** in progress | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-044
+- **Status:** in review | **Branch:** feature/perf-commands | **PR:** #42 | **Depends on:** S-044
 - **Goal:** the owner can record the mod's performance in a real world and hand over a report, or have a summary logged every few seconds, with nothing to set up.
 - **Scope:**
   - **`/kingdomrts perf start` and `/kingdomrts perf stop`** (op): record our Perf sections in the live world, then write a report in the stress test's format (markdown and JSON) to a timestamped file under `<game dir>/kingdomrts-perf/`, with a summary in chat.
