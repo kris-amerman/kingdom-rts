@@ -22,55 +22,6 @@ Story template:
 
 ## Current: Units MVP
 
-### S-022 Perf commands
-- **Status:** in review | **Branch:** feature/perf-commands | **PR:** #42 | **Depends on:** S-044
-- **Goal:** the owner can record the mod's performance in a real world and hand over a report, or have a summary logged every few seconds, with nothing to set up.
-- **Scope:**
-  - **`/kingdomrts perf start` and `/kingdomrts perf stop`** (op): record our Perf sections in the live world, then write a report in the stress test's format (markdown and JSON) to a timestamped file under `<game dir>/kingdomrts-perf/`, with a summary in chat.
-  - **`/kingdomrts perf log on [seconds]` and `/kingdomrts perf log off`** (op): one summary line in the game log every N seconds (10 by default) while it's on.
-  - **Client numbers:** while a report is recording, the client of the player who started it collects its preview frame times (average, 95th percentile, maximum, blocks drawn) and overall frame rate, and they're added to the report. This works in singleplayer and on servers.
-  - **Off costs nothing:** with nothing recording, only the existing profiler push and pop run.
-- **Out of scope:** stress scenarios in a real world (S-045), and optimisation.
-- **Test:**
-  - GameTests through `TestSupport.runCommand`: start and stop write a report with our sections; logging logs; stop without start, and starting twice, are refused; client stats are added to a pending report.
-  - JUnit for the pure parts (window maths, percentiles, the log line).
-  - Manual: a real session's report, and client numbers in it.
-- **Notes:**
-  - Split from the original S-022 (perf commands and stress commands) when it was revived after S-044, with the owner's go-ahead (2026-10-21). The stress half is S-045.
-  - **What was built:**
-    - `/kingdomrts perf start|stop` and `/kingdomrts perf log on [seconds]|off` (`util/PerfCommands`, op only), as scoped;
-    - reports go to `<game dir>/kingdomrts-perf/perf-<date>-<time>.md` and `.json`, with `-2` and so on if two land in one second;
-    - the starting player's client measures frames (`client/ClientPerf`) and sends them back over two payloads (`util/PerfPayloads`), and they're added to the report;
-    - docs/perf.md says how to use it all.
-  - **Decisions:**
-    - **Perf windows:** `Perf.openWindow` gives each recording its own view of what happened since it opened (worst tick included), so a report and the log can run together. Recording is on while any window is open, or while the stress test records. `startRecording`/`stopRecording` stay as they were for the stress test.
-    - **Units:** a live world's units come and go as chunks load, so a report uses the average of the units loaded at start and at stop, and says both.
-    - **Client numbers** come only from the player who ran `start`, and only within 5 seconds of `stop`; otherwise the report stays as written. Each frame's time is from its start to the next frame's start. Up to about an hour of frames is kept.
-    - **Shared writer:** the report writing (git commit, machine, JSON) moved out of `StressGameTests` into `util/PerfReportFiles`, so both reports use it. The table gained a "requests" column (`kingdomrts:nation_request`).
-    - **Server stops:** a stopping server closes any recording, so the next singleplayer world doesn't inherit one.
-  - **Tests:**
-    - GameTests (`PerfCommandGameTests`, each in its own batch since recording is global):
-      - start and stop write a report with the table, ticks and our sections, and a summary in chat;
-      - stop without start, and a second start, are refused;
-      - the log writes a line every second, and off works, then is refused when already off;
-      - the starting player's client is told to measure, its numbers are added to the markdown and JSON, and another player's are ignored.
-    - JUnit:
-      - windows (each from when it opened, its own worst tick, restart, recording off once all close);
-      - percentiles, client stats and their section;
-      - the log line;
-      - the table's requests column.
-    - Sabotage checks, each caught:
-      - any player's client numbers accepted;
-      - the client never asked;
-      - windows sharing one worst tick;
-      - the log never logging.
-    - **Stress:** passes within budget with the shared writer. Nothing per-unit was added.
-  - **Bare `/kingdomrts perf log`** says whether the log is on and how to use it. Typing it in the owner's first try gave "Unknown or incomplete command".
-  - **The owner's first live report** (2026-10-22, 155 s, 3 units):
-    - Our code took 0.28 ms per tick, and logging worked.
-    - The client section showed the building preview **over its budget**: 1.45 ms per frame on average (2.82 ms 95th percentile) for 167 blocks, against 1 ms. That's S-046.
-  - **Flaky tests seen again:** S-038's demolition tests time out "waiting for the shed to be gone" now and then: `withNoRoomInStorageItHoldsOntoItsLoad` before, and `everyMaterialGoesBackToStorage` during this story. Worth a story of its own.
-
 ### S-045 Stress scenario in a real world
 - **Status:** planned | **Branch:** feature/stress-command | **PR:** - | **Depends on:** S-022
 - **Goal:** the stress scenario can be built next to the player in a real world, to watch it or profile it (with `/kingdomrts perf` or Spark).
@@ -80,7 +31,7 @@ Story template:
 - **Notes:** the stress half of the original S-022.
 
 ### S-046 Bake the preview into a mesh
-- **Status:** planned | **Branch:** feature/preview-mesh | **PR:** - | **Depends on:** S-022
+- **Status:** in progress | **Branch:** feature/preview-mesh | **PR:** - | **Depends on:** S-022
 - **Goal:** drawing a building preview and the unfinished sites around it stays under its 1 ms per frame budget, whatever their size.
 - **Scope:**
   - **The ghost:** build its blocks into a cached mesh (a vertex buffer) once per building and rotation, and draw that each frame, moved to where the ghost is. Moving it costs nothing, and turning it rebuilds the mesh.
@@ -221,6 +172,55 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-022 Perf commands
+- **Status:** done | **Branch:** feature/perf-commands | **PR:** #42 | **Depends on:** S-044
+- **Goal:** the owner can record the mod's performance in a real world and hand over a report, or have a summary logged every few seconds, with nothing to set up.
+- **Scope:**
+  - **`/kingdomrts perf start` and `/kingdomrts perf stop`** (op): record our Perf sections in the live world, then write a report in the stress test's format (markdown and JSON) to a timestamped file under `<game dir>/kingdomrts-perf/`, with a summary in chat.
+  - **`/kingdomrts perf log on [seconds]` and `/kingdomrts perf log off`** (op): one summary line in the game log every N seconds (10 by default) while it's on.
+  - **Client numbers:** while a report is recording, the client of the player who started it collects its preview frame times (average, 95th percentile, maximum, blocks drawn) and overall frame rate, and they're added to the report. This works in singleplayer and on servers.
+  - **Off costs nothing:** with nothing recording, only the existing profiler push and pop run.
+- **Out of scope:** stress scenarios in a real world (S-045), and optimisation.
+- **Test:**
+  - GameTests through `TestSupport.runCommand`: start and stop write a report with our sections; logging logs; stop without start, and starting twice, are refused; client stats are added to a pending report.
+  - JUnit for the pure parts (window maths, percentiles, the log line).
+  - Manual: a real session's report, and client numbers in it.
+- **Notes:**
+  - Split from the original S-022 (perf commands and stress commands) when it was revived after S-044, with the owner's go-ahead (2026-10-21). The stress half is S-045.
+  - **What was built:**
+    - `/kingdomrts perf start|stop` and `/kingdomrts perf log on [seconds]|off` (`util/PerfCommands`, op only), as scoped;
+    - reports go to `<game dir>/kingdomrts-perf/perf-<date>-<time>.md` and `.json`, with `-2` and so on if two land in one second;
+    - the starting player's client measures frames (`client/ClientPerf`) and sends them back over two payloads (`util/PerfPayloads`), and they're added to the report;
+    - docs/perf.md says how to use it all.
+  - **Decisions:**
+    - **Perf windows:** `Perf.openWindow` gives each recording its own view of what happened since it opened (worst tick included), so a report and the log can run together. Recording is on while any window is open, or while the stress test records. `startRecording`/`stopRecording` stay as they were for the stress test.
+    - **Units:** a live world's units come and go as chunks load, so a report uses the average of the units loaded at start and at stop, and says both.
+    - **Client numbers** come only from the player who ran `start`, and only within 5 seconds of `stop`; otherwise the report stays as written. Each frame's time is from its start to the next frame's start. Up to about an hour of frames is kept.
+    - **Shared writer:** the report writing (git commit, machine, JSON) moved out of `StressGameTests` into `util/PerfReportFiles`, so both reports use it. The table gained a "requests" column (`kingdomrts:nation_request`).
+    - **Server stops:** a stopping server closes any recording, so the next singleplayer world doesn't inherit one.
+  - **Tests:**
+    - GameTests (`PerfCommandGameTests`, each in its own batch since recording is global):
+      - start and stop write a report with the table, ticks and our sections, and a summary in chat;
+      - stop without start, and a second start, are refused;
+      - the log writes a line every second, and off works, then is refused when already off;
+      - the starting player's client is told to measure, its numbers are added to the markdown and JSON, and another player's are ignored.
+    - JUnit:
+      - windows (each from when it opened, its own worst tick, restart, recording off once all close);
+      - percentiles, client stats and their section;
+      - the log line;
+      - the table's requests column.
+    - Sabotage checks, each caught:
+      - any player's client numbers accepted;
+      - the client never asked;
+      - windows sharing one worst tick;
+      - the log never logging.
+    - **Stress:** passes within budget with the shared writer. Nothing per-unit was added.
+  - **Bare `/kingdomrts perf log`** says whether the log is on and how to use it. Typing it in the owner's first try gave "Unknown or incomplete command".
+  - **The owner's first live report** (2026-10-22, 155 s, 3 units):
+    - Our code took 0.28 ms per tick, and logging worked.
+    - The client section showed the building preview **over its budget**: 1.45 ms per frame on average (2.82 ms 95th percentile) for 167 blocks, against 1 ms. That's S-046.
+  - **Flaky tests seen again:** S-038's demolition tests time out "waiting for the shed to be gone" now and then: `withNoRoomInStorageItHoldsOntoItsLoad` before, and `everyMaterialGoesBackToStorage` during this story. Worth a story of its own.
 
 ### S-044 Interface performance guardrails
 - **Status:** done | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
