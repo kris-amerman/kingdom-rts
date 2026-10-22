@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-043 Builders' hut
-- **Status:** in progress | **Branch:** feature/builders-hut | **PR:** - | **Depends on:** S-031
+- **Status:** in review | **Branch:** feature/builders-hut | **PR:** #37 | **Depends on:** S-031
 - **Goal:** builders work from a builders' hut (the name is open: a builders' guild, a builder's yard), a workplace like the lumberjack hut, instead of from the town hall.
 - **Scope:**
   - **The hut:** a workplace block, placed directly like the other huts until huts become buildings (S-026). Builders are hired at it, up to a number set in data, and it's their post: they go back there between sites.
