@@ -40,7 +40,35 @@ Story template:
   - Our own ghost renderer, using vanilla's block rendering.
 - **Out of scope:** confirming (S-034), mirroring, styles and levels.
 - **Test:** unit tests for the placement maths (reusing `BuildingRules.place` and `footprint`); a GameTest for the catalog and template payloads. Manual: the ghost and its controls.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - **Build** on the first screen asks the server for the catalog: every building whose template can be built, by name, with its size. Picking one asks for its blueprint and closes the screen.
+    - **The preview:** a see-through ghost of the building where the player looks (up to 48 blocks away), with the middle of its bottom layer on the spot in front of the block they look at, and a white outline of its box. A hint at the top of the screen names the building and its keys.
+    - **Keys:** rebindable, in the Kingdom RTS section of Controls:
+      - R turns it a quarter turn;
+      - the arrow keys move it forward, back, left and right, relative to where the player faces;
+      - Page Up and Page Down raise and lower it;
+      - Backspace cancels it.
+    - Picking another building replaces the preview, and leaving the world ends it.
+  - **Decisions:**
+    - **The placement maths** is `building/BuildingPreview`, which is pure, so S-034's commission request can use exactly what the ghost shows. It reuses `BuildingRules.pivot`, `place` and `footprint`: a building turns on its pivot, so rotating spins it on the spot.
+    - **The ghost follows the player's view**, and nudges are an offset from it that stays while they look around and turn it. Freezing the ghost after the first nudge is an option if following feels fiddly in play.
+    - **Blueprints are sent without air** (nothing to draw there), as a palette of block-state network ids plus one packed position and palette index per block. Even the biggest allowed building (32768 blocks) is well under a packet's size limit.
+    - **The ghost is drawn every frame** with vanilla's single-block rendering, made see-through and evenly lit, after the world's particles (the stage NeoForge suggests for see-through things). That's cheap for the shed. Caching it as a mesh is for later, if big buildings need it.
+    - Blocks drawn like entities (chests and the like) come out solid rather than see-through.
+    - The server checks the player is in a faction before sending the catalog or a blueprint.
+  - **Tests:**
+    - JUnit (`BuildingPreviewTest`):
+      - the building's pivot is on the anchor for every rotation, with its bottom level with it;
+      - the ghost's blocks are exactly the blocks `BuildingRules.place` would build;
+      - nudges move relative to facing, and the offset stays while turning.
+    - GameTests (`BuildCatalogGameTests`):
+      - a member gets every buildable building, by name, including the shed with its size;
+      - a player without a faction gets neither the catalog nor a blueprint, and is told why;
+      - the shed's blueprint survives the network codec without its air, and a turned preview of it matches what would be built;
+      - an unknown building is refused.
+    - Sabotage checks, each caught: the codec swapping x and z, the preview ignoring the pivot, and the catalog skipping the faction check.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-034 Nation interface: commission from the preview
 - **Status:** planned | **Branch:** feature/preview-commission | **PR:** - | **Depends on:** S-033

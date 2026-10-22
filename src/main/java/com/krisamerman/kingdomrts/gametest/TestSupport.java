@@ -42,6 +42,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.network.payload.AdvancedOpenScreenPayload;
 import net.neoforged.neoforge.network.connection.ConnectionType;
 import net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket;
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.network.protocol.game.ClientboundSystemChatPacket;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.MinecraftServer;
@@ -285,12 +287,25 @@ final class TestSupport {
     // The last nation management screen the server sent a recording player, or null if none.
     @Nullable
     static NationOverview lastNationScreen(RecordingPlayer player) {
+        NationPayloads.ShowNation show = lastPayload(player, NationPayloads.ShowNation.class);
+        return show != null ? show.overview() : null;
+    }
+
+    // The last of our network messages of this kind the server sent a recording player, or null if none.
+    @Nullable
+    static <T extends CustomPacketPayload> T lastPayload(RecordingPlayer player, Class<T> kind) {
         for (int i = player.sent.size() - 1; i >= 0; i--) {
-            if (player.sent.get(i) instanceof ClientboundCustomPayloadPacket custom && custom.payload() instanceof NationPayloads.ShowNation show) {
-                return show.overview();
+            if (player.sent.get(i) instanceof ClientboundCustomPayloadPacket custom && kind.isInstance(custom.payload())) {
+                return kind.cast(custom.payload());
             }
         }
         return null;
+    }
+
+    // Every chat message the server sent a recording player, oldest first.
+    static List<String> chat(RecordingPlayer player) {
+        return player.sent.stream().filter(packet -> packet instanceof ClientboundSystemChatPacket)
+                .map(packet -> ((ClientboundSystemChatPacket) packet).content().getString()).toList();
     }
 
     static final class RecordingPlayer extends ServerPlayer {

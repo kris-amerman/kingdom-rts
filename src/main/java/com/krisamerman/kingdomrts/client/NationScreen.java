@@ -3,17 +3,19 @@ package com.krisamerman.kingdomrts.client;
 import java.util.List;
 
 import com.krisamerman.kingdomrts.nation.NationOverview;
+import com.krisamerman.kingdomrts.nation.NationPayloads;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 // Client only. The nation management interface's first screen, in the same panel style as the
-// town hall and hut panels: your faction, its settlements, and the interface's actions (Build,
-// Demolish, Borders), which later stories fill in. A player without a faction sees how to get one
-// instead.
+// town hall and hut panels: your faction, its settlements, and the interface's actions: Build
+// (the catalog), and Demolish and Borders, which later stories fill in. A player without a faction
+// sees how to get one instead.
 //
 // Unlike the panels, this is a plain Screen rather than a menu: it isn't tied to a block, so the
 // server just sends what to show (NationOverview) and the screen sends requests back.
@@ -51,16 +53,20 @@ public class NationScreen extends Screen {
                     .bounds(leftPos + LEFT, topPos + BUTTON_Y, WIDTH - 2 * LEFT, BUTTON_HEIGHT).build());
             return;
         }
-        // The actions come in later stories; until then their buttons are shown but greyed out.
+        // Build asks the server for the catalog. Demolish and Borders come in later stories; until
+        // then their buttons are shown but greyed out.
         List<String> actions = List.of("Build", "Demolish", "Borders");
         int buttonWidth = (WIDTH - 2 * LEFT - (actions.size() - 1) * BUTTON_GAP) / actions.size();
         for (int i = 0; i < actions.size(); i++) {
-            Button button = addRenderableWidget(Button.builder(Component.literal(actions.get(i)), b -> {
+            boolean build = i == 0;
+            Button.Builder builder = Button.builder(Component.literal(actions.get(i)), b -> {
+                        if (build) {
+                            PacketDistributor.sendToServer(new NationPayloads.RequestCatalog());
+                        }
                     })
                     .bounds(leftPos + LEFT + i * (buttonWidth + BUTTON_GAP), topPos + BUTTON_Y, buttonWidth, BUTTON_HEIGHT)
-                    .tooltip(Tooltip.create(Component.literal("Coming soon")))
-                    .build());
-            button.active = false;
+                    .tooltip(Tooltip.create(Component.literal(build ? "Pick a building and see where it would go" : "Coming soon")));
+            addRenderableWidget(builder.build()).active = build;
         }
     }
 
