@@ -128,6 +128,7 @@ public class BuilderFetchGameTests {
             storage.setItem(i, new ItemStack(Items.DIRT, 64)); // full
         }
         Unit builder = builder(helper, settlement, blue, HALL.east(2));
+        TestSupport.fill(TestSupport.buildersHutStock(helper)); // no room in the builders' hut either
         builder.getInventory().addItem(new ItemStack(Items.OAK_PLANKS, 20)); // left over from a trip
         helper.startSequence()
                 .thenIdle(300)
@@ -177,7 +178,7 @@ public class BuilderFetchGameTests {
     private static Unit builder(GameTestHelper helper, Settlement settlement, Faction faction, BlockPos pos) {
         Unit unit = unit(helper, pos, faction, null, true);
         SettlementOps.setUnitSettlement(helper.getLevel(), unit, settlement);
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), unit);
+        String problem = TestSupport.hireBuilder(helper, unit);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }

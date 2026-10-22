@@ -40,11 +40,9 @@ public final class UnitCommands {
                 .then(Commands.literal("leave")
                         .then(Commands.argument("units", EntityArgument.entities())
                                 .executes(ctx -> join(ctx.getSource(), EntityArgument.getEntities(ctx, "units"), null))))
-                // /kingdomrts unit hire <units> <workplace>, or <units> builder (one of their settlement's builders)
+                // /kingdomrts unit hire <units> <workplace> (builders are hired at a builders' hut)
                 .then(Commands.literal("hire")
                         .then(Commands.argument("units", EntityArgument.entities())
-                                .then(Commands.literal("builder")
-                                        .executes(ctx -> hireBuilders(ctx.getSource(), EntityArgument.getEntities(ctx, "units"))))
                                 .then(Commands.argument("workplace", BlockPosArgument.blockPos())
                                         .executes(ctx -> hire(ctx.getSource(), EntityArgument.getEntities(ctx, "units"),
                                                 BlockPosArgument.getLoadedBlockPos(ctx, "workplace"))))))
@@ -93,29 +91,6 @@ public final class UnitCommands {
         if (hired > 0) {
             int total = hired;
             source.sendSuccess(() -> Component.literal("Hired " + total + " unit(s) at " + workplace.toShortString()), true);
-        }
-        return hired;
-    }
-
-    // Hires units as builders of the settlement each belongs to. Reports each one that couldn't be.
-    private static int hireBuilders(CommandSourceStack source, Collection<? extends Entity> entities) {
-        int hired = 0;
-        for (Entity entity : entities) {
-            if (entity instanceof Unit unit) {
-                ServerLevel level = (ServerLevel) unit.level();
-                Settlement settlement = SettlementData.get(level).byId(unit.getSettlementId());
-                String problem = settlement != null ? BuilderOps.hire(level, settlement, unit)
-                        : unit.getName().getString() + " doesn't belong to a settlement";
-                if (problem != null) {
-                    source.sendFailure(Component.literal(problem));
-                } else {
-                    hired++;
-                }
-            }
-        }
-        if (hired > 0) {
-            int total = hired;
-            source.sendSuccess(() -> Component.literal("Hired " + total + " unit(s) as builders"), true);
         }
         return hired;
     }

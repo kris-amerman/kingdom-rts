@@ -8,8 +8,8 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 
-// The builder occupation (type "kingdomrts:builder"): one of its settlement's pool of builders,
-// hired at the town hall (no workplace), and assigned to construction sites, where it works until
+// The builder occupation (type "kingdomrts:builder"): one of its settlement's builders, hired at a
+// builders' hut (its workplace), and assigned to construction sites, where it works until
 // the building is done (see BuilderJob). Its settings come from the JSON entry, e.g.
 //   { "type": "kingdomrts:builder", "movement_speed": 0.3, "ticks_per_block": 10 }
 // where ticks_per_block is how long it works on each block it places (optional, 10 by default:

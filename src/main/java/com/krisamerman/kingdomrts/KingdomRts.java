@@ -87,9 +87,15 @@ public class KingdomRts {
     public static final DeferredBlock<WorkplaceBlock> LUMBERJACK_HUT = BLOCKS.registerBlock("lumberjack_hut", WorkplaceBlock::new,
             BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5f).sound(SoundType.WOOD));
     public static final DeferredItem<BlockItem> LUMBERJACK_HUT_ITEM = ITEMS.registerSimpleBlockItem("lumberjack_hut", LUMBERJACK_HUT);
+    // The builders' workplace, id "kingdomrts:builders_hut" (placed directly, like the lumberjack hut):
+    // builders are hired here, keep their tools and leftovers in its stock, and come back to it between
+    // sites. From data/kingdomrts/kingdomrts/workplace/builders_hut.json.
+    public static final DeferredBlock<WorkplaceBlock> BUILDERS_HUT = BLOCKS.registerBlock("builders_hut", WorkplaceBlock::new,
+            BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(2.5f).sound(SoundType.WOOD));
+    public static final DeferredItem<BlockItem> BUILDERS_HUT_ITEM = ITEMS.registerSimpleBlockItem("builders_hut", BUILDERS_HUT);
     // A workplace's stock, shared by every workplace block.
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorkplaceBlockEntity>> WORKPLACE_BLOCK_ENTITY =
-            BLOCK_ENTITY_TYPES.register("workplace", () -> BlockEntityType.Builder.of(WorkplaceBlockEntity::new, LUMBERJACK_HUT.get()).build(null));
+            BLOCK_ENTITY_TYPES.register("workplace", () -> BlockEntityType.Builder.of(WorkplaceBlockEntity::new, LUMBERJACK_HUT.get(), BUILDERS_HUT.get()).build(null));
 
     // A construction site, id "kingdomrts:construction_site": put down inside a building when it's
     // commissioned and taken away when it's finished. It holds the site's stock and opens the site
@@ -134,6 +140,7 @@ public class KingdomRts {
                 output.accept(TOWN_HALL_ITEM.get());
                 output.accept(SETTLEMENT_STORAGE_ITEM.get());
                 output.accept(LUMBERJACK_HUT_ITEM.get());
+                output.accept(BUILDERS_HUT_ITEM.get());
             }).build());
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.

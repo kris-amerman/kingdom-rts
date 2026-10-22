@@ -11,18 +11,6 @@ class BuilderRulesTest {
     private static final UUID HOME = UUID.randomUUID();
 
     @Test
-    void anUnemployedSettlerCanBeHired() {
-        assertNull(BuilderRules.hireProblem("Ada", HOME, HOME, "Mossvale", false));
-    }
-
-    @Test
-    void outsidersAndWorkersCantBeHired() {
-        assertEquals("Ada doesn't belong to Mossvale", BuilderRules.hireProblem("Ada", UUID.randomUUID(), HOME, "Mossvale", false));
-        assertEquals("Ada doesn't belong to Mossvale", BuilderRules.hireProblem("Ada", null, HOME, "Mossvale", false));
-        assertEquals("Ada already has a job", BuilderRules.hireProblem("Ada", HOME, HOME, "Mossvale", true));
-    }
-
-    @Test
     void anIdleBuilderCanBeAssignedToASiteWithRoom() {
         assertNull(BuilderRules.assignProblem("Ada", true, "storage shed", false, null, 1, 2));
     }

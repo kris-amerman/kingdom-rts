@@ -14,9 +14,10 @@ import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.server.level.ServerLevel;
 
-// A settlement's builders, as actions of its faction: hiring settlers into the pool (at the town
-// hall), firing them, and assigning them to construction sites. Builders have no workplace; their
-// assignments are kept on the buildings (see Building#builders), so they're known while unloaded.
+// A settlement's builders, as actions of its faction: firing them, and assigning them to
+// construction sites. Builders are hired at a builders' hut, a workplace like any other (see
+// WorkplaceOps). Their assignments are kept on the buildings (see Building#builders), so they're
+// known while unloaded.
 public final class BuilderOps {
     private BuilderOps() {
     }
@@ -25,35 +26,19 @@ public final class BuilderOps {
     public record Listed(UUID id, String name) {
     }
 
-    // Hires one of the settlement's unemployed settlers as a builder. Its post becomes the town
-    // hall, where idle builders wait. Returns why it can't be hired, or null.
-    @Nullable
-    public static String hire(ServerLevel level, Settlement settlement, Unit unit) {
-        String name = unit.getName().getString();
-        String problem = BuilderRules.hireProblem(name, unit.getSettlementId(), settlement.id(), settlement.name(), unit.getOccupationId() != null);
-        if (problem != null) {
-            return problem;
-        }
-        unit.setOccupation(Occupation.BUILDER);
-        unit.movePost(settlement.townHall());
-        SettlementOps.refreshResident(level, unit);
-        return null;
-    }
-
-    // Fires a builder: it's taken off its site and has no occupation any more. An unloaded builder
-    // loses the job when it next loads (see SettlementOps#catchUp).
+    // Fires a builder: it's taken off its site and leaves its builders' hut, with no occupation any
+    // more. An unloaded builder loses the job when it next loads (see WorkplaceOps#catchUp).
     public static void fire(ServerLevel level, Settlement settlement, UUID builder) {
         unassignEverywhere(level, settlement, builder);
-        if (level.getEntity(builder) instanceof Unit unit) {
-            if (Occupation.BUILDER.equals(unit.getOccupationId())) {
-                unit.setOccupation(null);
-                SettlementOps.refreshResident(level, unit);
+        for (Workplace workplace : settlement.workplaces()) {
+            if (workplace.workers().containsKey(builder)) {
+                WorkplaceOps.fire(level, workplace, builder);
+                return;
             }
-            return;
         }
-        Resident resident = settlement.residents().get(builder);
-        if (resident != null && Occupation.BUILDER.equals(resident.occupation())) {
-            SettlementData.get(level).updateResident(settlement, builder, new Resident(resident.name(), null));
+        if (level.getEntity(builder) instanceof Unit unit && Occupation.BUILDER.equals(unit.getOccupationId())) {
+            unit.setOccupation(null); // a builder with no hut (see SettlementOps#catchUp)
+            SettlementOps.refreshResident(level, unit);
         }
     }
 

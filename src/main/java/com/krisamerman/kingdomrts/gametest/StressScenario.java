@@ -14,6 +14,7 @@ import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
+import com.krisamerman.kingdomrts.settlement.Workplace;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Stock;
@@ -36,8 +37,8 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // The stress test's world (see StressGameTests and docs/perf.md): a grid of settlements, each a
 // small working town of UNITS_PER_SETTLEMENT units: lumberjacks working from their huts in a forest
-// of small oaks, a soldier at the hall, and a builder building a storage shed, fetching its materials
-// from a settlement storage by the hall. Everything is
+// of small oaks, a soldier at the hall, and a builder from a builders' hut building a storage shed,
+// fetching its materials from a settlement storage by the hall. Everything is
 // placed the same way every run, so runs can be compared. The settlements' chunks are kept loaded
 // (forced) so they tick like chunks near a player.
 final class StressScenario {
@@ -148,8 +149,17 @@ final class StressScenario {
             throw new IllegalStateException("Couldn't place a stress storage at " + storagePos.toShortString());
         }
         BuildingOps.remaining(level, shed.building()).remaining().materials().forEach((item, count) -> Stock.insert(storage, new ItemStack(item, count)));
+        // Its builder works from a builders' hut by the hall (automatic hiring off: the town's other
+        // settlers have jobs already, but this keeps it the same every run).
+        BlockPos buildersHut = hall.offset(-2, 0, 2);
+        level.setBlockAndUpdate(buildersHut, KingdomRts.BUILDERS_HUT.get().defaultBlockState());
+        Workplace hut = WorkplaceOps.register(level, buildersHut);
+        if (hut == null) {
+            throw new IllegalStateException("Couldn't register a stress builders' hut at " + buildersHut.toShortString());
+        }
+        WorkplaceOps.setAutoHire(level, hut, false);
         Unit builder = spawn(faction, settlement, hall.offset(-2, 0, 0), null);
-        String problem = BuilderOps.hire(level, settlement, builder);
+        String problem = WorkplaceOps.hire(level, builder, buildersHut);
         problem = problem != null ? problem : BuilderOps.assign(level, settlement, shed.building(), builder.getUUID());
         if (problem != null) {
             throw new IllegalStateException("Couldn't set up a stress builder: " + problem);

@@ -43,6 +43,18 @@ Story template:
 - **Notes:**
   - Owner, 2026-10-20: we're moving away from keeping builders at the town hall, towards builders as a business with a place of its own (design.md, Builders and construction sites).
   - S-042 (tools) would fetch from the hut's stock first once this lands.
+  - **What was built:**
+    - the `kingdomrts:builders_hut` block, a workplace like the lumberjack hut, from data (`workplace/builders_hut.json`: builders, 4 per hut). It looks like a crafting table on spruce;
+    - builders hired there go back to it between sites;
+    - `BuilderJob`'s one "where builders take and put things" point tries the hut's stock first, then settlement storage;
+    - the hut panel hides the work area for builders' huts (builders go wherever their sites are).
+  - **Decisions:**
+    - **Hiring:** builders are hired at a hut like any workplace: from its panel, automatically (job seeking fills its openings), or with `unit hire <units> <hut pos>`.
+    - **Owner, 2026-10-20: builders are removed from the town hall completely.** Its panel is back to the overview and the Population page, as before S-024. Hiring at the hall (`BuilderOps.hire`, `BuilderRules.hireProblem`) and `unit hire <units> builder` are gone.
+    - **Builders hired at the hall before huts** (an occupation, no workplace) lose the job when they next load (`SettlementOps.catchUp`), and come off their sites, so they can be hired at a hut.
+    - **Tests** hire their builders at a builders' hut in a corner of the platform (`TestSupport.hireBuilder`, automatic hiring off). Assertions about what builders put away count that hut's stock as well as settlement storage. The stress scenario gives each town a builders' hut.
+    - **Losing the job:** a builder fired from its hut, or whose hut is removed, is taken off its site, as when fired at the hall.
+  - **Stress:** with each town's builder hired at a builders' hut: all sheds built. 4.43 ms at 400 units before the hall was removed. A later run on a busy machine read 5.10.
 
 ### S-032 Nation management interface: opening it
 - **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024

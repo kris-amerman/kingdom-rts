@@ -3,6 +3,7 @@ package com.krisamerman.kingdomrts.gametest;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.FLOOR_Y;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.HALL;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.TEMPLATE;
+import static com.krisamerman.kingdomrts.gametest.TestSupport.buildersHut;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.current;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.faction;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.found;
@@ -343,6 +344,28 @@ public class WorkplacePanelGameTests {
             helper.assertTrue(stock.stillValid(player), "The stock should be open for its owner");
             stock.clickMenuButton(player, WorkplaceStockMenu.BACK_BUTTON);
             helper.assertTrue(player.containerMenu instanceof WorkplaceMenu, "Back should return to the panel, got " + player.containerMenu);
+            assertNoScreenClosed(helper, player);
+        } finally {
+            leave(helper, player);
+        }
+        removeHall(helper, HALL);
+        helper.succeed();
+    }
+
+    // A builders' hut's panel: its job is builder, with no work area or job settings, and its stock
+    // opens like any hut's (builders keep their tools and leftovers there).
+    @GameTest(template = TEMPLATE, batch = "hut_panel_builders")
+    public static void aBuildersHutsPanelOpensItsStock(GameTestHelper helper) {
+        Faction blue = faction(helper, "Blue");
+        found(helper, HALL, blue);
+        buildersHut(helper, HUT);
+        RecordingPlayer player = ownerAtHut(helper, blue);
+        try {
+            WorkplaceMenu.WorkplaceInfo info = rightClick(helper, player).getInfo();
+            helper.assertTrue(info.occupation().equals("kingdomrts:builder") && !info.hasWorkArea() && !info.jobSettings() && info.capacity() == 4,
+                    "Expected a builders' hut for 4 builders, with no work area or job settings: " + info);
+            press(player, WorkplaceMenu.STOCK_BUTTON);
+            helper.assertTrue(player.containerMenu instanceof WorkplaceStockMenu, "Expected the stock's chest screen, got " + player.containerMenu);
             assertNoScreenClosed(helper, player);
         } finally {
             leave(helper, player);

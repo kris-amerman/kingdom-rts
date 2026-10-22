@@ -10,6 +10,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
+import com.krisamerman.kingdomrts.unit.BuilderOccupation;
 import com.krisamerman.kingdomrts.unit.LumberjackOccupation;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.TreeWood;
@@ -97,9 +98,10 @@ public class WorkplaceMenu extends AbstractContainerMenu {
 
     // What the panel shows: the workplace's details and settings, everyone working there, the
     // settlement's unemployed settlers (nearest first, up to MAX_CANDIDATES), and the job settings
-    // (only for jobs that have them, i.e. lumberjacks: replanting and the known woods).
+    // (only for jobs that have them, i.e. lumberjacks: replanting and the known woods). hasWorkArea is
+    // false for builders, who go wherever their sites are.
     public record WorkplaceInfo(ResourceLocation type, String settlementName, String occupation, int capacity, boolean autoHire,
-            int workRadius, int maxWorkRadius, List<Person> workers, List<Person> candidates, boolean jobSettings, boolean replant,
+            boolean hasWorkArea, int workRadius, int maxWorkRadius, List<Person> workers, List<Person> candidates, boolean jobSettings, boolean replant,
             List<Wood> woods, View view, int page) {
         void write(FriendlyByteBuf buf) {
             buf.writeResourceLocation(type);
@@ -107,6 +109,7 @@ public class WorkplaceMenu extends AbstractContainerMenu {
             buf.writeUtf(occupation);
             buf.writeVarInt(capacity);
             buf.writeBoolean(autoHire);
+            buf.writeBoolean(hasWorkArea);
             buf.writeVarInt(workRadius);
             buf.writeVarInt(maxWorkRadius);
             buf.writeCollection(workers, (b, person) -> person.write(b));
@@ -120,7 +123,7 @@ public class WorkplaceMenu extends AbstractContainerMenu {
 
         static WorkplaceInfo read(FriendlyByteBuf buf) {
             return new WorkplaceInfo(buf.readResourceLocation(), buf.readUtf(), buf.readUtf(), buf.readVarInt(), buf.readBoolean(),
-                    buf.readVarInt(), buf.readVarInt(), buf.readList(Person::read), buf.readList(Person::read), buf.readBoolean(),
+                    buf.readBoolean(), buf.readVarInt(), buf.readVarInt(), buf.readList(Person::read), buf.readList(Person::read), buf.readBoolean(),
                     buf.readBoolean(), buf.readList(Wood::read), buf.readEnum(View.class), buf.readVarInt());
         }
 
@@ -234,13 +237,15 @@ public class WorkplaceMenu extends AbstractContainerMenu {
         workplace.workers().forEach((id, name) -> workers.add(new Person(id, name)));
         List<Person> all = candidates(level, settlement, pos);
         List<Person> candidates = List.copyOf(all.subList(0, Math.min(all.size(), MAX_CANDIDATES)));
-        boolean jobSettings = type != null && Occupation.get(level, type.occupation()).orElse(null) instanceof LumberjackOccupation;
+        Occupation occupation = type != null ? Occupation.get(level, type.occupation()).orElse(null) : null;
+        boolean jobSettings = occupation instanceof LumberjackOccupation;
+        boolean hasWorkArea = !(occupation instanceof BuilderOccupation);
         List<Wood> woods = jobSettings ? woods(workplace) : List.of();
         View shownView = view == View.SETTINGS && !jobSettings ? View.OVERVIEW : view;
         int rows = (shownView == View.SETTINGS ? settingsRows(woods.size()) : workerRows(workers.size(), candidates.size())).size();
         int shownPage = Math.max(0, Math.min(page, pages(rows) - 1));
         return new WorkplaceInfo(workplace.type(), settlement.name(), type != null ? type.occupation().toString() : "",
-                type != null ? type.workers() : 0, workplace.autoHire(), workplace.workRadius(),
+                type != null ? type.workers() : 0, workplace.autoHire(), hasWorkArea, workplace.workRadius(),
                 type != null ? type.maxWorkRadius() : WorkplaceType.DEFAULT_MAX_WORK_RADIUS, workers, candidates, jobSettings,
                 workplace.replant(), woods, shownView, shownPage);
     }

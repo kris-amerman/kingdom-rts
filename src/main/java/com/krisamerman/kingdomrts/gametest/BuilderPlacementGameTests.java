@@ -224,7 +224,7 @@ public class BuilderPlacementGameTests {
     private static Unit builder(GameTestHelper helper, Settlement settlement, Faction faction, BlockPos pos) {
         Unit unit = unit(helper, pos, faction, null, true);
         SettlementOps.setUnitSettlement(helper.getLevel(), unit, settlement);
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), unit);
+        String problem = TestSupport.hireBuilder(helper, unit);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }

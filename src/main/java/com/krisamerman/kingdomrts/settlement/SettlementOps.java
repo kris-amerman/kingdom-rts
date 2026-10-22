@@ -138,10 +138,13 @@ public final class SettlementOps {
             }
         }
         WorkplaceOps.catchUp(level, unit);
-        // A builder fired while it was away (see BuilderOps#fire) loses the job now.
-        Settlement current = SettlementData.get(level).byId(unit.getSettlementId());
-        Resident remembered = current != null ? current.residents().get(unit.getUUID()) : null;
-        if (Occupation.BUILDER.equals(unit.getOccupationId()) && (remembered == null || !Occupation.BUILDER.equals(remembered.occupation()))) {
+        // A builder with no builders' hut (hired at the town hall, before huts) loses the job: builders
+        // are hired at a hut now. (One fired from its hut while away is caught by WorkplaceOps#catchUp.)
+        if (Occupation.BUILDER.equals(unit.getOccupationId()) && unit.getWorkplace() == null) {
+            Settlement current = SettlementData.get(level).byId(unit.getSettlementId());
+            if (current != null) {
+                BuilderOps.unassignEverywhere(level, current, unit.getUUID());
+            }
             unit.setOccupation(null);
         }
         refreshResident(level, unit);

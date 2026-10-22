@@ -24,6 +24,10 @@ import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.Container;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.Connection;
@@ -105,6 +109,47 @@ final class TestSupport {
 
     // Places a lumberjack hut and records it on the settlement whose claim it's in, as placing it by
     // hand does.
+    // Where the tests' builders are hired: a builders' hut in a corner of the platform, put down the
+    // first time a test needs one, with automatic hiring off (so it doesn't take other settlers).
+    static final BlockPos BUILDERS_HUT = new BlockPos(16, FLOOR_Y + 1, 4);
+
+    // Hires a settler as a builder at the test's builders' hut. Returns why it can't be, or null.
+    @Nullable
+    static String hireBuilder(GameTestHelper helper, Unit unit) {
+        if (!helper.getBlockState(BUILDERS_HUT).is(KingdomRts.BUILDERS_HUT.get())) {
+            buildersHut(helper, BUILDERS_HUT);
+            WorkplaceOps.setAutoHire(helper.getLevel(), WorkplaceOps.workplaceAt(helper.getLevel(), helper.absolutePos(BUILDERS_HUT)), false);
+        }
+        return WorkplaceOps.hire(helper.getLevel(), unit, helper.absolutePos(BUILDERS_HUT));
+    }
+
+    // The stock of the test's builders' hut (where its builders put things before settlement storage).
+    static Container buildersHutStock(GameTestHelper helper) {
+        if (!(helper.getLevel().getBlockEntity(helper.absolutePos(BUILDERS_HUT)) instanceof Container stock)) {
+            throw new GameTestAssertException("There's no builders' hut");
+        }
+        return stock;
+    }
+
+    // How many of an item the builders have put away: in settlement storage and the builders' hut.
+    static int stored(GameTestHelper helper, Container storage, Item item) {
+        return storage.countItem(item) + buildersHutStock(helper).countItem(item);
+    }
+
+    // Fills a container to the brim (so there's no room in it).
+    static void fill(Container container) {
+        for (int i = 0; i < container.getContainerSize(); i++) {
+            container.setItem(i, new ItemStack(Items.COBBLESTONE, 64));
+        }
+    }
+
+    static void buildersHut(GameTestHelper helper, BlockPos relativePos) {
+        helper.setBlock(relativePos, KingdomRts.BUILDERS_HUT.get());
+        if (WorkplaceOps.register(helper.getLevel(), helper.absolutePos(relativePos)) == null) {
+            throw new GameTestAssertException("Couldn't register the builders' hut");
+        }
+    }
+
     static void lumberjackHut(GameTestHelper helper, BlockPos relativePos) {
         helper.setBlock(relativePos, KingdomRts.LUMBERJACK_HUT.get());
         if (WorkplaceOps.register(helper.getLevel(), helper.absolutePos(relativePos)) == null) {
