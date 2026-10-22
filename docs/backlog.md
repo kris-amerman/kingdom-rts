@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-032 Nation management interface: opening it
-- **Status:** in progress | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
+- **Status:** in review | **Branch:** feature/nation-interface | **PR:** #38 | **Depends on:** S-024
 - **Goal:** a player can open the nation management interface, and its actions run on the server as faction operations, however they're triggered.
 - **Scope:**
   - **Opening it:** a rebindable hotkey, N by default, in a "Kingdom RTS" category under Controls (vanilla doesn't use N). Also `/kingdomrts nation`, which opens the same screen. No item.
