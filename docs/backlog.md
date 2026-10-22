@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-033 Nation interface: building preview
-- **Status:** in progress | **Branch:** feature/building-preview | **PR:** - | **Depends on:** S-032
+- **Status:** in review | **Branch:** feature/building-preview | **PR:** #39 | **Depends on:** S-032
 - **Goal:** a player can pick a building from the catalog and see it as a ghost in the world, moving and turning it.
 - **Scope:**
   - **Build** lists the building catalog, sent from the server (building data isn't on the client).
