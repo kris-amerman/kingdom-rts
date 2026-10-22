@@ -42,7 +42,24 @@ Story template:
   - **Payload size budgets** as JUnit tests.
 - **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
 - **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
-- **Notes:** owner, 2026-10-21: keep performance top of mind as the interface grows.
+- **Notes:**
+  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
+  - **What was built:**
+    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
+    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
+    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
+    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
+    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
+    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
+  - **Decisions:**
+    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
+    - **The client budget is read by hand** from the F3 line: there's no client in CI.
+    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
+    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
+  - **Tests:**
+    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
+    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
+    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038

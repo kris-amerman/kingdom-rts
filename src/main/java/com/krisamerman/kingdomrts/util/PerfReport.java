@@ -24,10 +24,10 @@ public final class PerfReport {
             return perTick(snapshot.nanos(section));
         }
 
-        // Our share of the tick: units' whole ticks (everything else of ours runs inside them) plus
-        // town hall capture checks.
+        // Our share of the tick: units' whole ticks (everything else of ours runs inside them), town
+        // hall capture checks, and answering players' nation interface requests.
         public double ourMsPerTick() {
-            return perTick(snapshot.nanos(Perf.Section.UNIT) + snapshot.nanos(Perf.Section.CAPTURE));
+            return perTick(snapshot.nanos(Perf.Section.UNIT) + snapshot.nanos(Perf.Section.CAPTURE) + snapshot.nanos(Perf.Section.NATION_REQUEST));
         }
 
         public double usPerUnit() {
@@ -71,6 +71,37 @@ public final class PerfReport {
             out.append(String.format("| %d | %.2f / %.2f | %.2f | %.1f | %.2f | %.2f | %.2f | %.2f | %s |\n", r.units(), r.serverMsPerTick(),
                     r.worstTickMs(), r.ourMsPerTick(), r.usPerUnit(), r.msPerTick(Perf.Section.UNIT), r.msPerTick(Perf.Section.JOB),
                     r.msPerTick(Perf.Section.JOB_SEEKING), r.msPerTick(Perf.Section.CAPTURE), verdict));
+        }
+        return out.toString();
+    }
+
+    // How long one kind of nation interface request took to answer, on average over many calls in
+    // the stress world, and its budget, both in microseconds per call.
+    public record RequestTiming(String request, double usPerCall, double budgetUs) {
+        public boolean overBudget() {
+            return usPerCall > budgetUs;
+        }
+    }
+
+    // Why a request timing is over budget, or null if every one is within it.
+    @Nullable
+    public static String overBudget(List<RequestTiming> timings) {
+        for (RequestTiming timing : timings) {
+            if (timing.overBudget()) {
+                return String.format("Answering %s took %.0f µs per call, over its %.0f µs budget", timing.request(), timing.usPerCall(), timing.budgetUs());
+            }
+        }
+        return null;
+    }
+
+    // The request timings as a Markdown table.
+    public static String requestTable(List<RequestTiming> timings) {
+        StringBuilder out = new StringBuilder();
+        out.append("| Request | µs per call | Budget |\n");
+        out.append("|---|---|---|\n");
+        for (RequestTiming timing : timings) {
+            out.append(String.format("| %s | %.1f | %s (%.0f) |\n", timing.request(), timing.usPerCall(), timing.overBudget() ? "OVER" : "ok",
+                    timing.budgetUs()));
         }
         return out.toString();
     }

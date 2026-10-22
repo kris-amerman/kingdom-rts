@@ -3,11 +3,13 @@ package com.krisamerman.kingdomrts.nation;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.building.Blueprint;
 import com.krisamerman.kingdomrts.client.BuildPreviewClient;
 import com.krisamerman.kingdomrts.client.NationClient;
+import com.krisamerman.kingdomrts.util.Perf;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
@@ -21,6 +23,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.network.codec.NeoForgeStreamCodecs;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 // The nation management interface's network messages. A "payload" is a message of our own sent
@@ -216,18 +219,19 @@ public final class NationPayloads {
     @SubscribeEvent
     static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(VERSION);
+        // Every request is timed as one Perf section (kingdomrts:nation_request).
         registrar.playToServer(OpenNation.TYPE, OpenNation.STREAM_CODEC,
-                (payload, context) -> NationRequests.open((ServerPlayer) context.player()));
+                (payload, context) -> timed(context, NationRequests::open));
         registrar.playToServer(RequestCatalog.TYPE, RequestCatalog.STREAM_CODEC,
-                (payload, context) -> NationRequests.catalog((ServerPlayer) context.player()));
+                (payload, context) -> timed(context, NationRequests::catalog));
         registrar.playToServer(RequestBlueprint.TYPE, RequestBlueprint.STREAM_CODEC,
-                (payload, context) -> NationRequests.blueprint((ServerPlayer) context.player(), payload.building()));
+                (payload, context) -> timed(context, player -> NationRequests.blueprint(player, payload.building())));
         registrar.playToServer(CommissionBuilding.TYPE, CommissionBuilding.STREAM_CODEC,
-                (payload, context) -> NationRequests.commission((ServerPlayer) context.player(), payload));
+                (payload, context) -> timed(context, player -> NationRequests.commission(player, payload)));
         registrar.playToServer(RequestSites.TYPE, RequestSites.STREAM_CODEC,
-                (payload, context) -> NationRequests.sites((ServerPlayer) context.player()));
+                (payload, context) -> timed(context, NationRequests::sites));
         registrar.playToServer(CheckPlacement.TYPE, CheckPlacement.STREAM_CODEC,
-                (payload, context) -> NationRequests.checkPlacement((ServerPlayer) context.player(), payload));
+                (payload, context) -> timed(context, player -> NationRequests.checkPlacement(player, payload)));
         // These lambdas only touch the client-only classes (NationClient, BuildPreviewClient) when a
         // payload arrives, which only happens on a client, so a dedicated server never loads them.
         registrar.playToClient(ShowNation.TYPE, ShowNation.STREAM_CODEC, (payload, context) -> NationClient.show(payload.overview()));
@@ -236,5 +240,16 @@ public final class NationPayloads {
         registrar.playToClient(CommissionAnswer.TYPE, CommissionAnswer.STREAM_CODEC, (payload, context) -> BuildPreviewClient.commissionAnswered(payload));
         registrar.playToClient(ShowSites.TYPE, ShowSites.STREAM_CODEC, (payload, context) -> BuildPreviewClient.showSites(payload));
         registrar.playToClient(PlacementAnswer.TYPE, PlacementAnswer.STREAM_CODEC, (payload, context) -> BuildPreviewClient.placementAnswered(payload));
+    }
+
+    // Runs a request's handler for the player who sent it, inside the request Perf section.
+    private static void timed(IPayloadContext context, Consumer<ServerPlayer> handler) {
+        ServerPlayer player = (ServerPlayer) context.player();
+        long start = Perf.start(player.serverLevel(), Perf.Section.NATION_REQUEST);
+        try {
+            handler.accept(player);
+        } finally {
+            Perf.end(player.serverLevel(), Perf.Section.NATION_REQUEST, start);
+        }
     }
 }

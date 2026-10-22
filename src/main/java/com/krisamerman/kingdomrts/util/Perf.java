@@ -29,7 +29,9 @@ public final class Perf {
         JOB("kingdomrts:job"),
         JOB_SEEKING("kingdomrts:job_seeking"),
         // A town hall's capture check (a block entity tick, outside any unit).
-        CAPTURE("kingdomrts:capture");
+        CAPTURE("kingdomrts:capture"),
+        // Answering a request from a player's nation management interface (outside any unit).
+        NATION_REQUEST("kingdomrts:nation_request");
 
         private final String profilerName;
 
@@ -48,6 +50,35 @@ public final class Perf {
         public long nanos(Section section) {
             return sectionNanos[section.ordinal()];
         }
+    }
+
+    // Client-only sections: profiler names only, never timed or counted (frames aren't ticks, and
+    // the stress test has no client). They show in the F3 profiler pie chart (Shift+F3, under
+    // gameRenderer), in /debug profiles and in Spark's client profiler. Use them as
+    //   Perf.push(profiler, Perf.ClientSection.PREVIEW_RENDER);
+    //   ... the work ...
+    //   profiler.pop();
+    public enum ClientSection {
+        // Each client tick while previewing a building: keys, where the player looks, checks.
+        PREVIEW_TICK("kingdomrts:preview_tick"),
+        // Drawing the previewed building's ghost and outline.
+        PREVIEW_RENDER("kingdomrts:preview_render"),
+        // Drawing the faction's unfinished buildings finished, while previewing.
+        SITES_RENDER("kingdomrts:sites_render");
+
+        private final String profilerName;
+
+        ClientSection(String profilerName) {
+            this.profilerName = profilerName;
+        }
+
+        public String profilerName() {
+            return profilerName;
+        }
+    }
+
+    public static void push(ProfilerFiller profiler, ClientSection section) {
+        profiler.push(section.profilerName());
     }
 
     private static boolean recording;

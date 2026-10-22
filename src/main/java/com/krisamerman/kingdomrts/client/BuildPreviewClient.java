@@ -15,6 +15,7 @@ import com.krisamerman.kingdomrts.building.Blueprint;
 import com.krisamerman.kingdomrts.building.BuildingPreview;
 import com.krisamerman.kingdomrts.building.BuildingRules;
 import com.krisamerman.kingdomrts.nation.NationPayloads;
+import com.krisamerman.kingdomrts.util.Perf;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -39,6 +40,7 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
+import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.LightLayer;
@@ -58,6 +60,7 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
@@ -197,6 +200,7 @@ public final class BuildPreviewClient {
     public static void start(NationPayloads.ShowBlueprint payload) {
         preview = new BuildingPreview(payload.building(), payload.name(), payload.blueprint());
         anchor = null;
+        FRAMES.clear();
         forgetChecks();
         shownAnswer = null;
         commissioning = false;
@@ -323,6 +327,16 @@ public final class BuildPreviewClient {
             });
             return;
         }
+        ProfilerFiller profiler = minecraft.getProfiler();
+        Perf.push(profiler, Perf.ClientSection.PREVIEW_TICK);
+        try {
+            previewTick(player);
+        } finally {
+            profiler.pop();
+        }
+    }
+
+    private static void previewTick(LocalPlayer player) {
         while (ROTATE_KEY.consumeClick()) {
             preview.rotate();
         }
@@ -406,7 +420,12 @@ public final class BuildPreviewClient {
         float[] tint = refused ? PROBLEM_TINT : NO_TINT;
         MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA, tint);
         BlockRenderDispatcher blocks = minecraft.getBlockRenderer();
+        long frameStart = System.nanoTime();
+        ProfilerFiller profiler = minecraft.getProfiler();
+        Perf.push(profiler, Perf.ClientSection.SITES_RENDER);
         renderSites(pose, camera, buffers, blocks);
+        profiler.pop();
+        Perf.push(profiler, Perf.ClientSection.PREVIEW_RENDER);
 
         // Drawn against a stand-in level made of the ghost's own blocks, so faces where two of its
         // blocks touch are left out, as the world leaves them out between real blocks.
@@ -441,6 +460,8 @@ public final class BuildPreviewClient {
         AABB box = AABB.of(preview.footprint(anchor)).move(-camera.x, -camera.y, -camera.z);
         LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, refused ? 0.3f : 1.0f, refused ? 0.3f : 1.0f, 0.8f);
         buffers.endBatch(RenderType.lines());
+        profiler.pop();
+        FRAMES.add(System.nanoTime() - frameStart);
     }
 
     // The unfinished buildings, finished: solid, and lit and shaded like the world, drawn the way
@@ -477,6 +498,18 @@ public final class BuildPreviewClient {
         }
         ghostLevel.origin = origin;
         return ghostLevel;
+    }
+
+    // With the F3 screen open while previewing, one line on its left: how many blocks the preview
+    // draws and what drawing them costs a frame (see docs/perf.md, Interface budget).
+    @SubscribeEvent
+    static void onDebugText(CustomizeGuiOverlayEvent.DebugText event) {
+        if (preview == null) {
+            return;
+        }
+        int siteBlocks = sites.stream().mapToInt(site -> site.shown.size()).sum();
+        event.getLeft().add(String.format("Kingdom RTS preview: %d ghost + %d site blocks, %.2f ms/frame (max %.2f)",
+                preview.turnedParts().size(), siteBlocks, FRAMES.averageMs(), FRAMES.maxMs()));
     }
 
     // What the player can do, at the top of the screen while previewing.
@@ -669,6 +702,47 @@ public final class BuildPreviewClient {
         @Override
         public int getMinBuildHeight() {
             return world.getMinBuildHeight();
+        }
+    }
+
+    // How long drawing the preview took over the last FRAME_WINDOW frames, for the F3 line.
+    private static final int FRAME_WINDOW = 60;
+    private static final FrameTimes FRAMES = new FrameTimes(FRAME_WINDOW);
+
+    private static final class FrameTimes {
+        private final long[] nanos;
+        private int next;
+        private int count;
+
+        FrameTimes(int window) {
+            nanos = new long[window];
+        }
+
+        void add(long took) {
+            nanos[next] = took;
+            next = (next + 1) % nanos.length;
+            count = Math.min(count + 1, nanos.length);
+        }
+
+        void clear() {
+            next = 0;
+            count = 0;
+        }
+
+        double averageMs() {
+            long total = 0;
+            for (int i = 0; i < count; i++) {
+                total += nanos[i];
+            }
+            return count == 0 ? 0 : total / 1_000_000.0 / count;
+        }
+
+        double maxMs() {
+            long max = 0;
+            for (int i = 0; i < count; i++) {
+                max = Math.max(max, nanos[i]);
+            }
+            return max / 1_000_000.0;
         }
     }
 

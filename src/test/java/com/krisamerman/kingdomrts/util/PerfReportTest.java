@@ -52,4 +52,22 @@ class PerfReportTest {
         assertEquals(0.0, empty.ourMsPerTick());
         assertEquals(0.0, empty.usPerUnit());
     }
+
+    @Test
+    void requestTimingsAgainstTheirBudgets() {
+        List<PerfReport.RequestTiming> fine = List.of(new PerfReport.RequestTiming("check", 150, 200), new PerfReport.RequestTiming("sites", 900, 1000));
+        assertNull(PerfReport.overBudget(fine));
+        assertTrue(PerfReport.requestTable(fine).contains("| check | 150.0 | ok (200) |"));
+        List<PerfReport.RequestTiming> slow = List.of(new PerfReport.RequestTiming("check", 150, 200), new PerfReport.RequestTiming("sites", 1200, 1000));
+        assertTrue(PerfReport.overBudget(slow).contains("sites"), "The slow one is named");
+        assertTrue(PerfReport.requestTable(slow).contains("OVER"));
+    }
+
+    @Test
+    void interfaceRequestsCountAsOurs() {
+        long[] nanos = new long[Perf.Section.values().length];
+        nanos[Perf.Section.UNIT.ordinal()] = 3 * MS * 100;
+        nanos[Perf.Section.NATION_REQUEST.ordinal()] = MS * 100;
+        assertEquals(4.0, new PerfReport.Result(100, new Perf.Snapshot(nanos, 100, 0, 0)).ourMsPerTick(), 1e-9);
+    }
 }
