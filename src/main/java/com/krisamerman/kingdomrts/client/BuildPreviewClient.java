@@ -1,6 +1,8 @@
 package com.krisamerman.kingdomrts.client;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -11,6 +13,7 @@ import org.lwjgl.glfw.GLFW;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.building.Blueprint;
 import com.krisamerman.kingdomrts.building.BuildingPreview;
+import com.krisamerman.kingdomrts.building.BuildingRules;
 import com.krisamerman.kingdomrts.nation.NationPayloads;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -29,7 +32,11 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -37,6 +44,7 @@ import net.minecraft.world.level.ColorResolver;
 import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
@@ -50,18 +58,27 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientPlayerNetworkEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
+import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
+import net.neoforged.neoforge.client.RenderTypeHelper;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import net.neoforged.neoforge.client.settings.KeyModifier;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 // Client only. Previewing a building picked from the Build catalog: a see-through ghost of it where
-// the player is looking, which they can nudge, raise, lower and turn, until they cancel it (Esc,
-// or the cancel key).
-// Commissioning from the preview comes in S-034.
+// the player is looking, which they can nudge, raise, lower and turn. Right-clicking commissions
+// it there, as right-clicking places a block (Shift-right-click keeps the preview, to build
+// another); Esc or the cancel key drops it.
+//
+// As the ghost moves, the server is asked whether the building could go there, and the ghost turns
+// red, with the reason shown, where it couldn't. The server still decides when it's commissioned.
+//
+// While previewing, the faction's unfinished buildings nearby are drawn finished (solid, lit like
+// the world), so the player sees how the place will look when everything's built.
 //
 // The ghost is drawn with vanilla's own block rendering (each block's model, as the world draws
 // it, hiding faces where its blocks touch), made see-through and evenly lit, plus an outline of
@@ -72,6 +89,9 @@ public final class BuildPreviewClient {
     // by looking at the ground where it goes.
     private static final double LOOK_RANGE = 48.0;
     private static final float GHOST_ALPHA = 0.55f;
+    // How much each ghost block is grown, so it doesn't flicker where it overlaps a block (see
+    // growSlightly): 0.002 of a block on each side, too little to see.
+    private static final float GHOST_SCALE = 1.004f;
     // A see-through render type on the block texture atlas, which vanilla uses for translucent
     // blocks drawn outside the world's chunks.
     private static final RenderType GHOST_TYPE = Sheets.translucentCullBlockSheet();
@@ -85,6 +105,18 @@ public final class BuildPreviewClient {
             Sheets.signSheet(), RenderType.entityTranslucentCull(Sheets.SIGN_SHEET),
             Sheets.bannerSheet(), RenderType.entityTranslucentCull(Sheets.BANNER_SHEET));
     private static final int HINT_COLOR = 0xFFFFFFFF;
+    private static final int PROBLEM_COLOR = 0xFFFF6060;
+    // The ghost's colour where the building couldn't go: its blocks keep their texture, in red.
+    private static final float[] NO_TINT = {1.0f, 1.0f, 1.0f};
+    private static final float[] PROBLEM_TINT = {1.0f, 0.35f, 0.35f};
+    // How often the server is asked whether the building fits: when the ghost has moved and at least
+    // this long since the last ask (more than NationRequests.CHECK_INTERVAL_TICKS, which the server
+    // allows), and again every RECHECK_TICKS while it stays put, in case the world changed.
+    private static final int CHECK_TICKS = 3;
+    private static final int RECHECK_TICKS = 20;
+    // How often the unfinished buildings nearby are asked for again while previewing, as builders
+    // finish them and the player walks around.
+    private static final int SITES_REFRESH_TICKS = 100;
     private static final int HINT_MARGIN = 6;
     private static final int HINT_LINE = 11;
     private static final String HINT_GAP = "    ";
@@ -108,6 +140,38 @@ public final class BuildPreviewClient {
     @Nullable
     private static BlockPos anchor;
 
+    // Where and how the ghost was last checked with the server, and how long ago.
+    @Nullable
+    private static NationPayloads.CheckPlacement lastCheck;
+    private static int ticksSinceCheck;
+    // The server's answers for the spots the ghost has been checked at lately, so going back to one
+    // shows its answer at once. Forgotten after a commission and whenever the unfinished buildings
+    // are asked for again, since either may change which spots work.
+    private static final int REMEMBERED_ANSWERS = 64;
+    private static final Map<Spot, NationPayloads.PlacementAnswer> answers = new LinkedHashMap<>(16, 0.75f, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<Spot, NationPayloads.PlacementAnswer> eldest) {
+            return size() > REMEMBERED_ANSWERS;
+        }
+    };
+    // The answer the ghost shows: the one for where it is when there is one, otherwise the last one
+    // shown. Keeping the last one while the answer for a new spot is on its way stops the tint
+    // flickering off and on as the ghost moves.
+    @Nullable
+    private static NationPayloads.PlacementAnswer shownAnswer;
+    // A commission request is waiting for its answer (so a second click doesn't send another), and
+    // whether the preview stays afterwards (Shift was held).
+    private static boolean commissioning;
+    private static boolean keepPlacing;
+    // The use button (right-click) is still held since the last commission: holding it repeats
+    // "use" every few ticks, which mustn't commission again.
+    private static boolean waitingForRelease;
+
+    // The faction's unfinished buildings nearby, each with its blocks where they go, and how long
+    // since they were asked for.
+    private static List<Site> sites = List.of();
+    private static int ticksSinceSites;
+
     // The stand-in level for the current preview's blocks, rebuilt when the building turns.
     @Nullable
     private static GhostLevel ghostLevel;
@@ -130,12 +194,108 @@ public final class BuildPreviewClient {
     public static void start(NationPayloads.ShowBlueprint payload) {
         preview = new BuildingPreview(payload.building(), payload.name(), payload.blueprint());
         anchor = null;
+        forgetChecks();
+        shownAnswer = null;
+        commissioning = false;
+        requestSites();
     }
 
     public static void cancel() {
         preview = null;
         anchor = null;
         ghostLevel = null;
+        forgetChecks();
+        shownAnswer = null;
+        commissioning = false;
+        sites = List.of();
+    }
+
+    private static void requestSites() {
+        ticksSinceSites = 0;
+        answers.clear();
+        PacketDistributor.sendToServer(new NationPayloads.RequestSites());
+    }
+
+    // The server sent the unfinished buildings around the player.
+    public static void showSites(NationPayloads.ShowSites payload) {
+        ClientLevel world = Minecraft.getInstance().level;
+        if (preview == null || world == null) {
+            return;
+        }
+        List<Site> shown = new ArrayList<>();
+        for (NationPayloads.SiteView view : payload.sites()) {
+            Blueprint blueprint = payload.blueprints().get(view.building());
+            if (blueprint != null) {
+                shown.add(new Site(BuildingRules.place(blueprint, view.origin(), view.rotation()), world));
+            }
+        }
+        sites = shown;
+    }
+
+    private static void forgetChecks() {
+        lastCheck = null;
+        answers.clear();
+        ticksSinceCheck = 0;
+    }
+
+    // The server answered a commission request (the player is told how it went on the action bar).
+    public static void commissionAnswered(NationPayloads.CommissionAnswer commissionAnswer) {
+        commissioning = false;
+        if (commissionAnswer.commissioned()) {
+            requestSites(); // the new site is one of them now
+        }
+        if (commissionAnswer.commissioned() && !keepPlacing) {
+            cancel();
+        } else {
+            // The spot has changed (now taken, or still refused): check it again straight away.
+            forgetChecks();
+            ticksSinceCheck = CHECK_TICKS;
+        }
+    }
+
+    // The server answered a placement check.
+    public static void placementAnswered(NationPayloads.PlacementAnswer placementAnswer) {
+        if (preview != null && placementAnswer.building().equals(preview.type())) {
+            answers.put(new Spot(placementAnswer.origin(), placementAnswer.rotation()), placementAnswer);
+        }
+    }
+
+    // The answer the ghost shows (see shownAnswer), or null before the first one arrives.
+    @Nullable
+    private static NationPayloads.PlacementAnswer currentAnswer() {
+        if (preview == null || anchor == null) {
+            return null;
+        }
+        NationPayloads.PlacementAnswer here = answers.get(new Spot(preview.origin(anchor), preview.rotation()));
+        if (here != null) {
+            shownAnswer = here;
+        }
+        return shownAnswer;
+    }
+
+    // Where a building's preview stands: its template corner and how it's turned.
+    private record Spot(BlockPos origin, Rotation rotation) {
+    }
+
+    // Right-click while previewing commissions the building where the ghost is, instead of using
+    // whatever the player holds. The event comes once per hand (and again every few ticks while the
+    // button is held); every one is cancelled so nothing is placed or used, and only the first
+    // main-hand one of a click sends the request.
+    @SubscribeEvent
+    static void onInteraction(InputEvent.InteractionKeyMappingTriggered event) {
+        if (preview == null || !event.isUseItem()) {
+            return;
+        }
+        event.setCanceled(true);
+        event.setSwingHand(false);
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (event.getHand() != InteractionHand.MAIN_HAND || waitingForRelease || commissioning || anchor == null || player == null) {
+            return;
+        }
+        waitingForRelease = true;
+        commissioning = true;
+        keepPlacing = player.isShiftKeyDown();
+        PacketDistributor.sendToServer(new NationPayloads.CommissionBuilding(preview.type(), preview.origin(anchor), preview.rotation()));
     }
 
     @Nullable
@@ -146,7 +306,11 @@ public final class BuildPreviewClient {
     // Once per client tick: the keys, and where the player is looking.
     @SubscribeEvent
     static void onClientTick(ClientTickEvent.Post event) {
-        LocalPlayer player = Minecraft.getInstance().player;
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        if (waitingForRelease && !minecraft.options.keyUse.isDown()) {
+            waitingForRelease = false;
+        }
         if (preview == null || player == null) {
             // Presses while there's nothing to preview are dropped, so they don't pile up.
             KEYS.forEach(key -> {
@@ -172,6 +336,27 @@ public final class BuildPreviewClient {
         HitResult hit = player.pick(LOOK_RANGE, 1.0f, false);
         if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult block) {
             anchor = block.getBlockPos().relative(block.getDirection());
+        }
+        checkPlacement();
+        if (++ticksSinceSites >= SITES_REFRESH_TICKS) {
+            requestSites();
+        }
+        sites.forEach(Site::update);
+    }
+
+    // Asks the server whether the building fits where the ghost is, when it's moved (and often
+    // enough after the last ask) or every RECHECK_TICKS.
+    private static void checkPlacement() {
+        ticksSinceCheck++;
+        if (anchor == null) {
+            return;
+        }
+        NationPayloads.CheckPlacement check = new NationPayloads.CheckPlacement(preview.type(), preview.origin(anchor), preview.rotation());
+        boolean moved = !check.equals(lastCheck);
+        if ((moved && ticksSinceCheck >= CHECK_TICKS) || ticksSinceCheck >= RECHECK_TICKS) {
+            PacketDistributor.sendToServer(check);
+            lastCheck = check;
+            ticksSinceCheck = 0;
         }
     }
 
@@ -213,8 +398,12 @@ public final class BuildPreviewClient {
         Vec3 camera = event.getCamera().getPosition();
         BlockPos origin = preview.origin(anchor);
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA);
+        NationPayloads.PlacementAnswer placement = currentAnswer();
+        boolean refused = placement != null && !placement.fits();
+        float[] tint = refused ? PROBLEM_TINT : NO_TINT;
+        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA, tint);
         BlockRenderDispatcher blocks = minecraft.getBlockRenderer();
+        renderSites(pose, camera, buffers, blocks);
 
         // Drawn against a stand-in level made of the ghost's own blocks, so faces where two of its
         // blocks touch are left out, as the world leaves them out between real blocks.
@@ -229,6 +418,7 @@ public final class BuildPreviewClient {
             if (part.state().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED) {
                 pose.pushPose();
                 pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
+                growSlightly(pose);
                 blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, GHOST_TYPE);
                 pose.popPose();
             }
@@ -238,6 +428,7 @@ public final class BuildPreviewClient {
             if (part.state().getRenderShape() == RenderShape.MODEL) {
                 pose.pushPose();
                 pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
+                growSlightly(pose);
                 blocks.renderBatched(part.state(), part.pos(), ghostLevel, pose, ghost.getBuffer(GHOST_TYPE), true, random, ModelData.EMPTY, null);
                 pose.popPose();
             }
@@ -246,8 +437,45 @@ public final class BuildPreviewClient {
         buffers.endBatch(GHOST_TYPE);
 
         AABB box = AABB.of(preview.footprint(anchor)).move(-camera.x, -camera.y, -camera.z);
-        LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, 1.0f, 1.0f, 0.8f);
+        LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, refused ? 0.3f : 1.0f, refused ? 0.3f : 1.0f, 0.8f);
         buffers.endBatch(RenderType.lines());
+    }
+
+    // The unfinished buildings, finished: solid, and lit and shaded like the world, drawn the way
+    // vanilla draws falling blocks (each block's own render types, in their moving-block form).
+    private static void renderSites(PoseStack pose, Vec3 camera, MultiBufferSource.BufferSource buffers, BlockRenderDispatcher blocks) {
+        if (sites.isEmpty()) {
+            return;
+        }
+        RandomSource random = RandomSource.create();
+        for (Site site : sites) {
+            for (Blueprint.Part part : site.shown) {
+                BlockPos pos = part.pos();
+                pose.pushPose();
+                pose.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
+                if (part.state().getRenderShape() == RenderShape.MODEL) {
+                    BakedModel model = blocks.getBlockModel(part.state());
+                    for (RenderType type : model.getRenderTypes(part.state(), random, ModelData.EMPTY)) {
+                        blocks.renderBatched(part.state(), pos, site, pose, buffers.getBuffer(RenderTypeHelper.getMovingBlockRenderType(type)), true,
+                                random, ModelData.EMPTY, type);
+                    }
+                } else {
+                    blocks.renderSingleBlock(part.state(), pose, buffers, LevelRenderer.getLightColor(site.world, pos), OverlayTexture.NO_OVERLAY,
+                            ModelData.EMPTY, null);
+                }
+                pose.popPose();
+            }
+        }
+        buffers.endBatch();
+    }
+
+    // Grows a ghost block a hair around its own middle. Where the ghost overlaps a real or shown
+    // block, its faces would lie exactly on that block's and flicker against them (z-fighting);
+    // this way they sit just in front, and faces against a neighbour sit just inside it.
+    private static void growSlightly(PoseStack pose) {
+        pose.translate(0.5, 0.5, 0.5);
+        pose.scale(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE);
+        pose.translate(-0.5, -0.5, -0.5);
     }
 
     private static GhostLevel ghostLevel(Minecraft minecraft, BlockPos origin) {
@@ -266,14 +494,22 @@ public final class BuildPreviewClient {
             return;
         }
         GuiGraphics graphics = event.getGuiGraphics();
-        List<String> hints = List.of(keyName(ROTATE_KEY) + ": turn", moveKeysName() + ": move",
+        List<String> hints = List.of("Right-click: build", "Shift+right-click: build another", keyName(ROTATE_KEY) + ": turn", moveKeysName() + ": move",
                 keyName(RAISE_KEY) + "/" + keyName(LOWER_KEY) + ": up/down", "Esc/" + keyName(CANCEL_KEY) + ": cancel");
         String title = anchor == null ? preview.name() + ": look at the ground where it goes" : preview.name();
         int middle = graphics.guiWidth() / 2;
         int room = graphics.guiWidth() - 2 * HINT_MARGIN;
         int y = HINT_MARGIN;
         graphics.drawCenteredString(minecraft.font, title, middle, y, HINT_COLOR);
-        y += HINT_LINE + 2;
+        y += HINT_LINE;
+        NationPayloads.PlacementAnswer placement = currentAnswer();
+        if (placement != null && !placement.fits()) {
+            for (FormattedCharSequence line : minecraft.font.split(Component.literal(placement.problem()), room)) {
+                graphics.drawCenteredString(minecraft.font, line, middle, y, PROBLEM_COLOR);
+                y += HINT_LINE;
+            }
+        }
+        y += 2;
         // As many hints to a line as fit across the screen, so they wrap on narrow windows and
         // with long key names.
         StringBuilder line = new StringBuilder();
@@ -379,10 +615,74 @@ public final class BuildPreviewClient {
         }
     }
 
+    // An unfinished building shown finished, and the level its blocks are drawn against: the world,
+    // with the building's planned blocks standing in it, so faces against its own blocks (planned or
+    // already built) and against the ground are left out, as the world leaves them out.
+    private static final class Site implements BlockAndTintGetter {
+        private final List<Blueprint.Part> placed;
+        private final ClientLevel world;
+        private final Map<BlockPos, BlockState> planned = new HashMap<>();
+        // The blocks to draw, worked out once a tick (BuildingRules.stillToShow).
+        private List<Blueprint.Part> shown = List.of();
+
+        Site(List<Blueprint.Part> placed, ClientLevel world) {
+            this.placed = placed;
+            this.world = world;
+            placed.stream().filter(part -> !part.state().isAir()).forEach(part -> planned.put(part.pos(), part.state()));
+            update();
+        }
+
+        void update() {
+            shown = BuildingRules.stillToShow(placed, world::getBlockState);
+        }
+
+        @Override
+        public BlockState getBlockState(BlockPos pos) {
+            BlockState state = planned.get(pos);
+            return state != null ? state : world.getBlockState(pos);
+        }
+
+        @Override
+        public FluidState getFluidState(BlockPos pos) {
+            return getBlockState(pos).getFluidState();
+        }
+
+        @Nullable
+        @Override
+        public BlockEntity getBlockEntity(BlockPos pos) {
+            return null;
+        }
+
+        @Override
+        public float getShade(Direction direction, boolean shade) {
+            return world.getShade(direction, shade);
+        }
+
+        @Override
+        public LevelLightEngine getLightEngine() {
+            return world.getLightEngine();
+        }
+
+        @Override
+        public int getBlockTint(BlockPos pos, ColorResolver colorResolver) {
+            return world.getBlockTint(pos, colorResolver);
+        }
+
+        @Override
+        public int getHeight() {
+            return world.getHeight();
+        }
+
+        @Override
+        public int getMinBuildHeight() {
+            return world.getMinBuildHeight();
+        }
+    }
+
     // Passes vertices through to the real buffer, with their alpha scaled down so the ghost is
-    // see-through. (A VertexConsumer is what block and entity rendering writes each vertex's
+    // see-through, and their colour tinted (red where the building can't go). (A VertexConsumer is what block and entity rendering writes each vertex's
     // position, colour, texture coordinates, light and normal to.)
-    private record GhostConsumer(VertexConsumer delegate, float alpha) implements VertexConsumer {
+    private record GhostConsumer(VertexConsumer delegate, float alpha, float[] tint) implements VertexConsumer {
         @Override
         public VertexConsumer addVertex(float x, float y, float z) {
             delegate.addVertex(x, y, z);
@@ -391,7 +691,7 @@ public final class BuildPreviewClient {
 
         @Override
         public VertexConsumer setColor(int red, int green, int blue, int alpha) {
-            delegate.setColor(red, green, blue, Math.round(alpha * this.alpha));
+            delegate.setColor(Math.round(red * tint[0]), Math.round(green * tint[1]), Math.round(blue * tint[2]), Math.round(alpha * this.alpha));
             return this;
         }
 

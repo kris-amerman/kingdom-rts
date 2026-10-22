@@ -268,4 +268,21 @@ class BuildingRulesTest {
         assertFalse(BuildingRules.isToTakeDown(Blocks.AIR.defaultBlockState(), Blocks.AIR.defaultBlockState()), "Air isn't taken down");
         assertFalse(BuildingRules.isToTakeDown(Blocks.BEDROCK.defaultBlockState(), Blocks.BEDROCK.defaultBlockState()), "Unbreakable");
     }
+
+    @Test
+    void anUnfinishedBuildingShowsOnlyBlocksNotInPlaceAtFreeSpots() {
+        BlockPos free = new BlockPos(0, 0, 0);
+        BlockPos built = new BlockPos(1, 0, 0);
+        BlockPos taken = new BlockPos(2, 0, 0);
+        BlockPos grassy = new BlockPos(3, 0, 0);
+        BlockPos clear = new BlockPos(4, 0, 0);
+        Blueprint.Part stone = new Blueprint.Part(free, Blocks.STONE.defaultBlockState());
+        Blueprint.Part torch = new Blueprint.Part(grassy, Blocks.TORCH.defaultBlockState());
+        List<Blueprint.Part> placed = List.of(stone, new Blueprint.Part(built, Blocks.OAK_PLANKS.defaultBlockState()),
+                new Blueprint.Part(taken, Blocks.GLASS.defaultBlockState()), torch, new Blueprint.Part(clear, Blocks.AIR.defaultBlockState()));
+        Map<BlockPos, BlockState> world = Map.of(built, Blocks.OAK_PLANKS.defaultBlockState(), taken, Blocks.DIRT.defaultBlockState(),
+                grassy, Blocks.SHORT_GRASS.defaultBlockState(), clear, Blocks.COBBLESTONE.defaultBlockState());
+        assertEquals(List.of(stone, torch), BuildingRules.stillToShow(placed, pos -> world.getOrDefault(pos, Blocks.AIR.defaultBlockState())),
+                "Not the planks already built, the glass where dirt stands, or the spot to keep clear; the torch over grass, yes");
+    }
 }

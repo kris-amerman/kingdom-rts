@@ -44,44 +44,66 @@ public final class BuildingOps {
     // stays within build height, and doesn't overlap another building, the town hall, a workplace
     // or a storage block.
     public static CommissionResult commission(ServerLevel level, Faction faction, ResourceLocation typeId, BlockPos origin, Rotation rotation) {
+        Plan plan = plan(level, faction, typeId, origin, rotation);
+        if (plan.problem() != null) {
+            return refused(plan.problem());
+        }
+        Building building = new Building(typeId, origin, rotation, plan.footprint(), plan.siteSpot(), level.getGameTime(), Building.NOT_BUILT);
+        SettlementData.get(level).addBuilding(plan.settlement(), building);
+        // The site block goes down now: it's the site's panel and the stock its materials are pooled in.
+        level.setBlockAndUpdate(plan.siteSpot(), KingdomRts.CONSTRUCTION_SITE.get().defaultBlockState());
+        if (level.getBlockEntity(plan.siteSpot()) instanceof ConstructionSiteBlockEntity stock) {
+            stock.setSettlement(plan.settlement().id());
+        }
+        return new CommissionResult(building, null);
+    }
+
+    // Why commissioning this building there would be refused, or null if it would go ahead. Changes
+    // nothing: the nation interface asks this as the player moves a preview, to tint it.
+    @Nullable
+    public static String commissionProblem(ServerLevel level, Faction faction, ResourceLocation typeId, BlockPos origin, Rotation rotation) {
+        return plan(level, faction, typeId, origin, rotation).problem();
+    }
+
+    // Where a commissioned building would go, worked out and checked without changing anything.
+    // Either problem is set, or everything else is.
+    private record Plan(@Nullable String problem, @Nullable Settlement settlement, @Nullable BoundingBox footprint, @Nullable BlockPos siteSpot) {
+        static Plan refused(String problem) {
+            return new Plan(problem, null, null, null);
+        }
+    }
+
+    private static Plan plan(ServerLevel level, Faction faction, ResourceLocation typeId, BlockPos origin, Rotation rotation) {
         Optional<BuildingType> type = BuildingType.get(level, typeId);
         if (type.isEmpty()) {
-            return refused("Unknown building: " + typeId);
+            return Plan.refused("Unknown building: " + typeId);
         }
         Optional<Blueprint> blueprint = BuildingTemplates.blueprint(level, type.get());
         if (blueprint.isEmpty()) {
-            return refused("The building " + typeId + " has no usable structure (" + type.get().structure() + ")");
+            return Plan.refused("The building " + typeId + " has no usable structure (" + type.get().structure() + ")");
         }
         List<Blueprint.Part> placed = BuildingRules.place(blueprint.get(), origin, rotation);
         Optional<BlockPos> siteSpot = BuildingRules.siteSpot(placed);
         if (siteSpot.isEmpty()) {
-            return refused("The building " + typeId + " has no clear spot inside for its construction site");
+            return Plan.refused("The building " + typeId + " has no clear spot inside for its construction site");
         }
         BoundingBox footprint = BuildingRules.footprint(blueprint.get().size(), origin, rotation);
         if (level.isOutsideBuildHeight(footprint.minY()) || level.isOutsideBuildHeight(footprint.maxY())) {
-            return refused("It doesn't fit between the world's floor and ceiling");
+            return Plan.refused("It doesn't fit between the world's floor and ceiling");
         }
-        SettlementData data = SettlementData.get(level);
-        Settlement settlement = data.claimAt(level.dimension(), new ChunkPos(origin));
+        Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(origin));
         if (settlement == null) {
-            return refused("That isn't in a settlement's claim");
+            return Plan.refused("That isn't in a settlement's claim");
         }
         if (!settlement.owner().equals(faction.id())) {
             Faction owner = FactionData.get(level).byId(settlement.owner());
-            return refused("That's " + (owner != null ? owner.name() : "another faction") + "'s claim, not " + faction.name() + "'s");
+            return Plan.refused("That's " + (owner != null ? owner.name() : "another faction") + "'s claim, not " + faction.name() + "'s");
         }
         String problem = siteProblem(settlement, footprint);
         if (problem != null) {
-            return refused(problem);
+            return Plan.refused(problem);
         }
-        Building building = new Building(typeId, origin, rotation, footprint, siteSpot.get(), level.getGameTime(), Building.NOT_BUILT);
-        data.addBuilding(settlement, building);
-        // The site block goes down now: it's the site's panel and the stock its materials are pooled in.
-        level.setBlockAndUpdate(siteSpot.get(), KingdomRts.CONSTRUCTION_SITE.get().defaultBlockState());
-        if (level.getBlockEntity(siteSpot.get()) instanceof ConstructionSiteBlockEntity stock) {
-            stock.setSettlement(settlement.id());
-        }
-        return new CommissionResult(building, null);
+        return new Plan(null, settlement, footprint, siteSpot.get());
     }
 
     // Why a footprint can't be built on in this settlement, or null if it can.

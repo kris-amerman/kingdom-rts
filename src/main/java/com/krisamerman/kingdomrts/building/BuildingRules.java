@@ -137,6 +137,24 @@ public final class BuildingRules {
         return placed.stream().filter(part -> part.state().isAir()).min(preference).map(Blueprint.Part::pos);
     }
 
+    // The blocks of an unfinished building to draw where they'll go, so a player planning nearby
+    // sees it finished: the ones not in place yet, at spots that are free now (air, or something a
+    // block simply replaces, like grass). Blocks already in place are real, and a spot taken by
+    // something else would be drawn through it, so both are left out.
+    public static List<Blueprint.Part> stillToShow(List<Blueprint.Part> placed, Function<BlockPos, BlockState> stateAt) {
+        List<Blueprint.Part> shown = new ArrayList<>();
+        for (Blueprint.Part part : placed) {
+            if (part.state().isAir()) {
+                continue;
+            }
+            BlockState actual = stateAt.apply(part.pos());
+            if (!matches(part.state(), actual) && (actual.isAir() || actual.canBeReplaced())) {
+                shown.add(part);
+            }
+        }
+        return shown;
+    }
+
     // What's left to do at a site, given its placed blueprint and what's in the world.
     public static Remaining remaining(List<Blueprint.Part> placed, Function<BlockPos, BlockState> stateAt) {
         List<Blueprint.Part> missing = new ArrayList<>();
