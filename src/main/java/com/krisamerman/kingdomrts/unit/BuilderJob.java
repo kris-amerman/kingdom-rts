@@ -23,6 +23,7 @@ import com.krisamerman.kingdomrts.settlement.ConstructionSiteBlockEntity;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementStorageBlockEntity;
+import com.krisamerman.kingdomrts.settlement.WorkplaceBlockEntity;
 import com.krisamerman.kingdomrts.settlement.SitePlacement;
 import com.krisamerman.kingdomrts.settlement.SiteReservations;
 import com.krisamerman.kingdomrts.unit.job.Footing;
@@ -45,8 +46,8 @@ import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 
-// The builder's job, as explicit steps. In the pool (not assigned), it goes back to its post, the
-// town hall, and waits. Assigned to a construction site, it walks there and builds:
+// The builder's job, as explicit steps. In the pool (not assigned), it goes back to its builders'
+// hut and waits. Assigned to a construction site, it walks there and builds:
 //   plan (work out what's in the way and the missing blocks, a batch per tick: see BuildingRules) ->
 //   clear what's in the way first, top down, breaking each block as a player would with the best
 //   tool in the site's stock (the drops go into the stock) ->
@@ -148,7 +149,8 @@ public final class BuilderJob implements Job {
             if (dropOff != null) {
                 return dropOff;
             }
-            return goTo(unit, unit.getPost(), AT_POST, walkFailed, carried.isEmpty() ? "waiting for a site" : "holding what it carries: no room in storage",
+            // Between sites it goes back to its builders' hut.
+            return goTo(unit, unit.getWorkplace(), AT_POST, walkFailed, carried.isEmpty() ? "waiting for a site" : "holding what it carries: no room in storage",
                     () -> !assigned(unit));
         }
         if (!site.origin().equals(planSite)) {
@@ -522,9 +524,16 @@ public final class BuilderJob implements Job {
         return dropWalk;
     }
 
-    // The settlement's nearest loaded storage that passes the test, or null.
+    // Where a builder takes things from and puts things back: its builders' hut's stock first (if
+    // it was hired at one), then the settlement's nearest loaded storage, whichever first passes the
+    // test; or null. The one place this is decided, so it can move to shops or a market later
+    // (design.md, Builders as a business).
     @Nullable
     private static BlockPos nearestStorage(ServerLevel level, Settlement settlement, Unit unit, Predicate<Container> test) {
+        BlockPos hut = unit.getWorkplace();
+        if (hut != null && level.isLoaded(hut) && level.getBlockEntity(hut) instanceof WorkplaceBlockEntity stock && test.test(stock)) {
+            return hut;
+        }
         BlockPos best = null;
         double bestDistance = Double.MAX_VALUE;
         for (BlockPos pos : settlement.storage()) {

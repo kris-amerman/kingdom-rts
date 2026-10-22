@@ -8,6 +8,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.KingdomRts;
+import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
@@ -53,6 +54,7 @@ public final class WorkplaceOps {
         }
         SettlementData.get(level).removeWorkplace(settlement, pos);
         for (UUID id : List.copyOf(workplace.workers().keySet())) {
+            BuilderOps.unassignEverywhere(level, settlement, id); // a builders' hut's builders leave their sites too
             if (level.getEntity(id) instanceof Unit unit) {
                 unemploy(unit);
             }
@@ -191,6 +193,10 @@ public final class WorkplaceOps {
     }
 
     private static void unemploy(Unit unit) {
+        if (Occupation.BUILDER.equals(unit.getOccupationId()) && unit.level() instanceof ServerLevel level
+                && SettlementData.get(level).byId(unit.getSettlementId()) instanceof Settlement settlement) {
+            BuilderOps.unassignEverywhere(level, settlement, unit.getUUID()); // off its site, as when fired at the hall
+        }
         unit.setWorkplace(null);
         unit.setOccupation(null);
         if (unit.level() instanceof ServerLevel level) {

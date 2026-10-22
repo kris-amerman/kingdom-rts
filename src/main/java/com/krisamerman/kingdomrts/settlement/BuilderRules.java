@@ -5,23 +5,9 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 
 // The rules for a settlement's builders, as pure functions (so they can be unit tested): who can be
-// hired as a builder, and who can be assigned to a construction site. Each returns why not, or null.
+// assigned to a construction site. Returns why not, or null. (Hiring is at a builders' hut: WorkplaceRules.)
 public final class BuilderRules {
     private BuilderRules() {
-    }
-
-    // A unit can become one of a settlement's builders if it belongs to the settlement and has no
-    // occupation (a worker or soldier keeps its own).
-    @Nullable
-    public static String hireProblem(String unitName, @Nullable UUID unitSettlement, UUID settlementId, String settlementName,
-            boolean hasOccupation) {
-        if (!settlementId.equals(unitSettlement)) {
-            return unitName + " doesn't belong to " + settlementName;
-        }
-        if (hasOccupation) {
-            return unitName + " already has a job";
-        }
-        return null;
     }
 
     // A builder can be assigned to a site if it's one of the settlement's builders, isn't working on

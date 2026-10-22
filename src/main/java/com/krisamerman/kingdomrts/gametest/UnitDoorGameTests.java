@@ -82,7 +82,7 @@ public class UnitDoorGameTests {
                 .thenSucceed();
     }
 
-    // The shed's own door: a builder inside the finished shed walks out to its post.
+    // The shed's own door: a builder inside the finished shed walks out to its builders' hut.
     @GameTest(template = TEMPLATE, batch = "unit_doors_shed", timeoutTicks = 20 * 40)
     public static void aBuilderWalksOutOfAShedThroughItsDoor(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
@@ -101,9 +101,9 @@ public class UnitDoorGameTests {
                 .filter(pos -> wanted.get(pos).isAir() && wanted.getOrDefault(pos.above(), Blocks.STONE.defaultBlockState()).isAir()
                         && !wanted.getOrDefault(pos.below(), Blocks.AIR.defaultBlockState()).isAir() && !pos.equals(door))
                 .findFirst().orElseThrow(() -> new GameTestAssertException("The shed has no room inside"));
-        Unit builder = unit(helper, HALL.east(2), blue, null, true); // its post, outside the shed
+        Unit builder = unit(helper, HALL.east(2), blue, null, true);
         SettlementOps.setUnitSettlement(helper.getLevel(), builder, settlement);
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), builder);
+        String problem = TestSupport.hireBuilder(helper, builder);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }
@@ -113,8 +113,8 @@ public class UnitDoorGameTests {
         boolean[] opened = {false};
         helper.onEachTick(() -> opened[0] |= helper.getLevel().getBlockState(door).getValue(DoorBlock.OPEN));
         helper.startSequence()
-                .thenWaitUntil(() -> helper.assertTrue(builder.position().distanceTo(Vec3.atBottomCenterOf(helper.absolutePos(HALL.east(2)))) < 4,
-                        "Waiting for the builder to walk out of the shed to its post"))
+                .thenWaitUntil(() -> helper.assertTrue(builder.position().distanceTo(Vec3.atBottomCenterOf(helper.absolutePos(TestSupport.BUILDERS_HUT))) < 4,
+                        "Waiting for the builder to walk out of the shed to its hut"))
                 .thenWaitUntil(() -> helper.assertFalse(helper.getLevel().getBlockState(door).getValue(DoorBlock.OPEN), "Waiting for the door to be closed behind it"))
                 .thenExecute(() -> {
                     helper.assertTrue(opened[0], "The builder should have gone out through the door");

@@ -19,7 +19,8 @@ import net.minecraft.world.level.block.Block;
 
 // Client only. Draws the hut panel in the vanilla style, as pages of the same fixed size (so it fits
 // any screen, however many settlers there are):
-//   - Overview: the workplace's details (settlement, job, workers, work area with -/+), then buttons
+//   - Overview: the workplace's details (settlement, job, workers, work area with -/+ unless it's a
+//     builders' hut), then buttons
 //     for automatic hiring, the workers page, the stock and (for jobs that have them) job settings.
 //   - Workers: who works here (each with a Fire button) and who's looking for work (each with a
 //     Hire button, hidden when the hut is full), a page of rows at a time, with Back and paging.
@@ -82,14 +83,16 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
 
     private void initOverview() {
         WorkplaceMenu.WorkplaceInfo info = info();
-        addRenderableWidget(Button.builder(Component.literal("-"), button -> click(WorkplaceMenu.SMALLER_AREA_BUTTON))
-                .bounds(leftPos + RIGHT - 2 * SMALL_BUTTON - 2, topPos + WORK_AREA_Y, SMALL_BUTTON, SMALL_BUTTON)
-                .tooltip(Tooltip.create(Component.literal("Smaller work area")))
-                .build()).active = info.workRadius() > WorkArea.MIN_RADIUS;
-        addRenderableWidget(Button.builder(Component.literal("+"), button -> click(WorkplaceMenu.LARGER_AREA_BUTTON))
-                .bounds(leftPos + RIGHT - SMALL_BUTTON, topPos + WORK_AREA_Y, SMALL_BUTTON, SMALL_BUTTON)
-                .tooltip(Tooltip.create(Component.literal("Larger work area (up to " + info.maxWorkRadius() + " blocks)")))
-                .build()).active = info.workRadius() < info.maxWorkRadius();
+        if (info.hasWorkArea()) {
+            addRenderableWidget(Button.builder(Component.literal("-"), button -> click(WorkplaceMenu.SMALLER_AREA_BUTTON))
+                    .bounds(leftPos + RIGHT - 2 * SMALL_BUTTON - 2, topPos + WORK_AREA_Y, SMALL_BUTTON, SMALL_BUTTON)
+                    .tooltip(Tooltip.create(Component.literal("Smaller work area")))
+                    .build()).active = info.workRadius() > WorkArea.MIN_RADIUS;
+            addRenderableWidget(Button.builder(Component.literal("+"), button -> click(WorkplaceMenu.LARGER_AREA_BUTTON))
+                    .bounds(leftPos + RIGHT - SMALL_BUTTON, topPos + WORK_AREA_Y, SMALL_BUTTON, SMALL_BUTTON)
+                    .tooltip(Tooltip.create(Component.literal("Larger work area (up to " + info.maxWorkRadius() + " blocks)")))
+                    .build()).active = info.workRadius() < info.maxWorkRadius();
+        }
         wideButton("Automatic hiring: " + (info.autoHire() ? "On" : "Off"), AUTO_HIRE_Y, WorkplaceMenu.AUTO_HIRE_BUTTON,
                 "When on, unemployed settlers take this hut's openings by themselves. Firing someone here turns it off.");
         button("Workers (" + info.workers().size() + "/" + info.capacity() + ")", LEFT, WORKERS_BUTTON_Y, HALF_BUTTON_WIDTH,
@@ -190,6 +193,9 @@ public class WorkplaceScreen extends AbstractContainerScreen<WorkplaceMenu> {
         row(graphics, TOP, "Settlement", info.settlementName());
         row(graphics, TOP + ROW, "Job", info.occupation().isEmpty() ? "None" : DisplayNames.occupation(info.occupation()));
         row(graphics, TOP + 2 * ROW, "Workers", info.workers().size() + "/" + info.capacity());
+        if (!info.hasWorkArea()) {
+            return; // builders go wherever their sites are
+        }
         int areaTextY = centred(WORK_AREA_Y, SMALL_BUTTON);
         graphics.drawString(font, "Work area", LEFT, areaTextY, LABEL_COLOR, false);
         String area = info.workRadius() + " blocks";

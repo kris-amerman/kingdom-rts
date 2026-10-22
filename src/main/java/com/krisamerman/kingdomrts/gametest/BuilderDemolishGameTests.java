@@ -78,9 +78,9 @@ public class BuilderDemolishGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone"))
                 .thenWaitUntil(() -> helper.assertTrue(builder.getInventory().isEmpty(), "Waiting for the builder to put its last load away"))
                 .thenExecute(() -> {
-                    cost.forEach((item, count) -> helper.assertTrue(storage.countItem(item) == count,
-                            "Expected " + count + " " + item + " in storage, found " + storage.countItem(item)));
-                    helper.assertTrue(storage.countItem(Items.DIRT) == 64 * DIRT_STACKS, "What was in the chest should be in storage");
+                    cost.forEach((item, count) -> helper.assertTrue(TestSupport.stored(helper, storage, item) == count,
+                            "Expected " + count + " " + item + " in storage, found " + TestSupport.stored(helper, storage, item)));
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.DIRT) == 64 * DIRT_STACKS, "What was in the chest should be in storage");
                     helper.assertTrue(helper.getLevel().getBlockState(extra).is(Blocks.STONE), "Blocks that aren't the shed's are left");
                     helper.assertTrue(chest.isEmpty(), "The chest was emptied before it went");
                     assertNothingDropped(helper);
@@ -104,8 +104,8 @@ public class BuilderDemolishGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(builders.stream().allMatch(builder -> builder.getInventory().isEmpty()),
                         "Waiting for the builders to put their loads away"))
                 .thenExecute(() -> {
-                    cost.forEach((item, count) -> helper.assertTrue(storage.countItem(item) == count,
-                            "Expected " + count + " " + item + " in storage, found " + storage.countItem(item)));
+                    cost.forEach((item, count) -> helper.assertTrue(TestSupport.stored(helper, storage, item) == count,
+                            "Expected " + count + " " + item + " in storage, found " + TestSupport.stored(helper, storage, item)));
                     assertNothingDropped(helper);
                     removeHall(helper, HALL);
                 })
@@ -124,6 +124,7 @@ public class BuilderDemolishGameTests {
         }
         order(helper, settlement, blue, shed);
         Unit builder = builder(helper, settlement, blue, HALL.east(2));
+        TestSupport.fill(TestSupport.buildersHutStock(helper)); // no room in the builders' hut either
         assign(helper, settlement, shed, builder);
         helper.startSequence()
                 .thenIdle(20 * 30)
@@ -138,7 +139,7 @@ public class BuilderDemolishGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone"))
                 .thenWaitUntil(() -> helper.assertTrue(builder.getInventory().isEmpty(), "Waiting for the builder to put its last load away"))
                 .thenExecute(() -> {
-                    helper.assertTrue(storage.countItem(Items.DIRT) == 64 * DIRT_STACKS, "What was in the chest should be in storage");
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.DIRT) == 64 * DIRT_STACKS, "What was in the chest should be in storage");
                     assertNothingDropped(helper);
                     removeHall(helper, HALL);
                 })
@@ -169,8 +170,8 @@ public class BuilderDemolishGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(builder.getInventory().isEmpty(), "Waiting for the builder to put its last load away"))
                 .thenExecute(() -> {
                     helper.assertFalse(helper.getLevel().getBlockState(shed.site()).is(KingdomRts.CONSTRUCTION_SITE.get()), "The site block should be gone");
-                    helper.assertTrue(storage.countItem(Items.OAK_PLANKS) == 10, "The site's stock should be in storage");
-                    helper.assertTrue(storage.countItem(Items.COBBLESTONE) == floor, "The floor laid so far should be in storage");
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.OAK_PLANKS) == 10, "The site's stock should be in storage");
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.COBBLESTONE) == floor, "The floor laid so far should be in storage");
                     assertNothingDropped(helper);
                     removeHall(helper, HALL);
                 })
@@ -287,7 +288,7 @@ public class BuilderDemolishGameTests {
         unit.getInventory().addItem(new ItemStack(Items.IRON_PICKAXE));
         unit.getInventory().addItem(new ItemStack(Items.IRON_AXE));
         SettlementOps.setUnitSettlement(helper.getLevel(), unit, settlement);
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), unit);
+        String problem = TestSupport.hireBuilder(helper, unit);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }

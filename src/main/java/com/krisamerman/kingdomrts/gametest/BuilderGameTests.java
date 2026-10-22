@@ -3,6 +3,7 @@ package com.krisamerman.kingdomrts.gametest;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.FLOOR_Y;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.HALL;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.TEMPLATE;
+import static com.krisamerman.kingdomrts.gametest.TestSupport.buildersHut;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.current;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.faction;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.found;
@@ -25,7 +26,7 @@ import com.krisamerman.kingdomrts.settlement.BuildingOps;
 import com.krisamerman.kingdomrts.settlement.BuildingSiteMenu;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
-import com.krisamerman.kingdomrts.settlement.TownHallMenu;
+import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 
@@ -42,9 +43,9 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.gametest.GameTestHolder;
 import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 
-// A settlement's builders: hired and fired at the town hall, assigned to and taken off construction
-// sites at the site panel (up to the building's max_builders), walking to their site and back to
-// the hall, and kept consistent when a builder dies or leaves, or its site is finished or cancelled.
+// A settlement's builders (hired at a builders' hut): assigned to and taken off construction sites
+// at the site panel (up to the building's max_builders), walking to their site and back to their
+// hut, and kept consistent when a builder dies or leaves, or its site is finished or cancelled.
 // Each test founds a settlement, so each has its own batch.
 @GameTestHolder(KingdomRts.MODID)
 @PrefixGameTestTemplate(false)
@@ -52,57 +53,7 @@ public class BuilderGameTests {
     private static final ResourceLocation SHED = ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "storage_shed");
     private static final BlockPos SITE = new BlockPos(1, FLOOR_Y + 1, 1);
     private static final BlockPos OTHER_SITE = new BlockPos(1, FLOOR_Y + 1, 9);
-
-    @GameTest(template = TEMPLATE, batch = "builders_hall")
-    public static void hiringAndFiringAtTheTownHall(GameTestHelper helper) {
-        Faction blue = faction(helper, "Blue");
-        Settlement settlement = found(helper, HALL, blue);
-        Unit first = settler(helper, settlement, blue, HALL.east(2), false);
-        settler(helper, settlement, blue, HALL.east(3), false);
-        RecordingPlayer player = playerAt(helper, blue, helper.absolutePos(HALL.west()));
-        try {
-            useBlock(helper, player, helper.absolutePos(HALL));
-            hallPress(player, TownHallMenu.SHOW_BUILDERS_BUTTON);
-            TownHallMenu.HallInfo info = hallMenu(helper, player).getInfo();
-            helper.assertTrue(info.view() == TownHallMenu.View.BUILDERS && info.builders().isEmpty() && info.unemployed().size() == 2,
-                    "Expected no builders and two settlers looking for work: " + info);
-            int index = info.unemployed().stream().map(entry -> entry.id()).toList().indexOf(first.getUUID());
-            hallPress(player, TownHallMenu.HIRE_BUILDER_BUTTON + index);
-            assertNoScreenClosed(helper, player);
-            info = hallMenu(helper, player).getInfo();
-            helper.assertTrue(Occupation.BUILDER.equals(first.getOccupationId()) && helper.absolutePos(HALL).equals(first.getPost()),
-                    "Hiring should make it a builder posted at the hall");
-            helper.assertTrue(info.builders().size() == 1 && info.builders().get(0).note().equals("idle") && info.unemployed().size() == 1
-                    && info.builderCount() == 1, "Expected one idle builder and one settler left: " + info);
-            hallPress(player, TownHallMenu.FIRE_BUILDER_BUTTON);
-            helper.assertTrue(first.getOccupationId() == null, "Firing should leave it unemployed");
-            helper.assertTrue(hallMenu(helper, player).getInfo().builders().isEmpty(), "No builders left");
-        } finally {
-            leave(helper, player);
-        }
-        removeHall(helper, HALL);
-        helper.succeed();
-    }
-
-    @GameTest(template = TEMPLATE, batch = "builders_outsider")
-    public static void outsidersDontGetTheBuildersPage(GameTestHelper helper) {
-        Faction blue = faction(helper, "Blue");
-        Faction red = faction(helper, "Red");
-        Settlement settlement = found(helper, HALL, blue);
-        hire(helper, settlement, settler(helper, settlement, blue, HALL.east(2), false));
-        RecordingPlayer outsider = playerAt(helper, red, helper.absolutePos(HALL.west()));
-        try {
-            useBlock(helper, outsider, helper.absolutePos(HALL));
-            TownHallMenu.HallInfo info = hallMenu(helper, outsider).getInfo();
-            helper.assertTrue(info.builderCount() == 0 && info.builders().isEmpty(), "An outsider sees no builders: " + info);
-            helper.assertFalse(((TownHallMenu) outsider.containerMenu).clickMenuButton(outsider, TownHallMenu.SHOW_BUILDERS_BUTTON),
-                    "An outsider can't open the builders page");
-        } finally {
-            leave(helper, outsider);
-        }
-        removeHall(helper, HALL);
-        helper.succeed();
-    }
+    private static final BlockPos HUT = new BlockPos(13, FLOOR_Y + 1, 13);
 
     @GameTest(template = TEMPLATE, batch = "builders_site")
     public static void assigningAtTheSiteUpToItsLimit(GameTestHelper helper) {
@@ -145,7 +96,7 @@ public class BuilderGameTests {
     }
 
     // Assigned, a builder walks to its site and stays by the site block; when the site is cancelled
-    // it's back in the pool and walks back to the hall.
+    // it's back in the pool and walks back to its builders' hut.
     @GameTest(template = TEMPLATE, batch = "builders_walk", timeoutTicks = 800)
     public static void aBuilderGoesToItsSiteAndBack(GameTestHelper helper) {
         Faction blue = faction(helper, "Blue");
@@ -161,7 +112,7 @@ public class BuilderGameTests {
                     helper.assertTrue(near(builder, shed.site(), 4.5), "It should stay by the site block");
                     BuildingOps.cancel(helper.getLevel(), current(helper, settlement), current(helper, settlement).buildingAt(shed.origin()));
                 })
-                .thenWaitUntil(() -> helper.assertTrue(near(builder, helper.absolutePos(HALL), 4.5), "Waiting for it to walk back to the hall"))
+                .thenWaitUntil(() -> helper.assertTrue(near(builder, helper.absolutePos(TestSupport.BUILDERS_HUT), 4.5), "Waiting for it to walk back to its hut"))
                 .thenExecute(() -> removeHall(helper, HALL))
                 .thenSucceed();
     }
@@ -178,7 +129,7 @@ public class BuilderGameTests {
         helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()).builders().isEmpty(), "A finished building has no builders");
         helper.assertTrue(BuilderOps.siteOf(current(helper, settlement), builder.getUUID()) == null, "The builder is back in the pool");
         helper.startSequence()
-                .thenWaitUntil(() -> helper.assertTrue(near(builder, helper.absolutePos(HALL), 4.5), "Waiting for it to walk back to the hall"))
+                .thenWaitUntil(() -> helper.assertTrue(near(builder, helper.absolutePos(TestSupport.BUILDERS_HUT), 4.5), "Waiting for it to walk back to its hut"))
                 .thenExecute(() -> removeHall(helper, HALL))
                 .thenSucceed();
     }
@@ -215,7 +166,8 @@ public class BuilderGameTests {
         Building shed = commission(helper, blue, SITE);
         Building other = commission(helper, blue, OTHER_SITE);
         String here = "@e[type=kingdomrts:unit,distance=..1]";
-        expect(helper, spot, "kingdomrts unit hire " + here + " builder", "Hired 1 unit(s) as builders");
+        buildersHut(helper, HUT);
+        expect(helper, spot, "kingdomrts unit hire " + here + " " + coords(helper, HUT), "Hired 1 unit(s) at");
         helper.assertTrue(Occupation.BUILDER.equals(settler.getOccupationId()), "Expected a builder");
         expect(helper, spot, "kingdomrts building assign " + coords(helper, SITE) + " " + here, "Assigned 1 builder(s) to the Storage shed");
         expect(helper, spot, "kingdomrts building assign " + coords(helper, OTHER_SITE) + " " + here, "already working on the storage shed");
@@ -240,7 +192,7 @@ public class BuilderGameTests {
     }
 
     private static void hire(GameTestHelper helper, Settlement settlement, Unit unit) {
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), unit);
+        String problem = TestSupport.hireBuilder(helper, unit);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }
@@ -279,28 +231,12 @@ public class BuilderGameTests {
         helper.getLevel().getBlockState(pos).useWithoutItem(helper.getLevel(), player, new BlockHitResult(Vec3.atCenterOf(pos), Direction.UP, pos, false));
     }
 
-    private static TownHallMenu hallMenu(GameTestHelper helper, RecordingPlayer player) {
-        if (!(player.containerMenu instanceof TownHallMenu)) {
-            throw new GameTestAssertException("The town hall panel isn't open; got " + player.containerMenu);
-        }
-        TestSupport.OpenedScreen opened = lastOpenedScreen(helper, player);
-        return new TownHallMenu(opened.windowId(), player.getInventory(), opened.data());
-    }
-
     private static BuildingSiteMenu siteMenu(GameTestHelper helper, RecordingPlayer player) {
         if (!(player.containerMenu instanceof BuildingSiteMenu)) {
             throw new GameTestAssertException("The site panel isn't open; got " + player.containerMenu);
         }
         TestSupport.OpenedScreen opened = lastOpenedScreen(helper, player);
         return new BuildingSiteMenu(opened.windowId(), player.getInventory(), opened.data());
-    }
-
-    private static void hallPress(RecordingPlayer player, int button) {
-        if (!(player.containerMenu instanceof TownHallMenu menu) || !menu.stillValid(player)) {
-            throw new GameTestAssertException("The town hall panel isn't open and valid");
-        }
-        player.sent.clear();
-        menu.clickMenuButton(player, button);
     }
 
     private static void sitePress(RecordingPlayer player, int button) {

@@ -72,8 +72,8 @@ public class BuilderClearOutGameTests {
                 .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()).site() == null, "Waiting for the site to close"))
                 .thenExecute(() -> {
                     helper.assertFalse(helper.getLevel().getBlockState(shed.site()).is(KingdomRts.CONSTRUCTION_SITE.get()), "The site block should be gone");
-                    helper.assertTrue(storage.countItem(Items.DIRT) == 64 * SPARE_DIRT_STACKS, "All the spare dirt should be in storage");
-                    helper.assertTrue(storage.countItem(Items.WOODEN_PICKAXE) == 1, "So should the pickaxe");
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.DIRT) == 64 * SPARE_DIRT_STACKS, "All the spare dirt should be in storage");
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.WOODEN_PICKAXE) == 1, "So should the pickaxe");
                     helper.assertTrue(builder.getInventory().isEmpty(), "The builder shouldn't be left carrying anything");
                     helper.assertTrue(BuilderOps.siteOf(current(helper, settlement), builder.getUUID()) == null, "The builder should be back in the pool");
                     assertNothingDropped(helper);
@@ -93,6 +93,7 @@ public class BuilderClearOutGameTests {
         }
         stockUp(helper, shed);
         Unit builder = builder(helper, settlement, blue, HALL.east(2));
+        TestSupport.fill(TestSupport.buildersHutStock(helper)); // no room in the builders' hut either
         assign(helper, settlement, shed, builder);
         helper.startSequence()
                 .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()).isBuilt(), "Waiting for the shed to be built"))
@@ -107,7 +108,7 @@ public class BuilderClearOutGameTests {
                 })
                 .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()).site() == null, "Waiting for the site to close"))
                 .thenExecute(() -> {
-                    helper.assertTrue(storage.countItem(Items.DIRT) == 64 * SPARE_DIRT_STACKS && storage.countItem(Items.WOODEN_PICKAXE) == 1,
+                    helper.assertTrue(TestSupport.stored(helper, storage, Items.DIRT) == 64 * SPARE_DIRT_STACKS && TestSupport.stored(helper, storage, Items.WOODEN_PICKAXE) == 1,
                             "Everything left on site should be in storage");
                     assertNothingDropped(helper);
                     removeHall(helper, HALL);
@@ -171,7 +172,7 @@ public class BuilderClearOutGameTests {
     private static Unit builder(GameTestHelper helper, Settlement settlement, Faction faction, BlockPos pos) {
         Unit unit = unit(helper, pos, faction, null, true);
         SettlementOps.setUnitSettlement(helper.getLevel(), unit, settlement);
-        String problem = BuilderOps.hire(helper.getLevel(), current(helper, settlement), unit);
+        String problem = TestSupport.hireBuilder(helper, unit);
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire a builder: " + problem);
         }
