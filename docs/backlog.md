@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-044 Interface performance guardrails
-- **Status:** in progress | **Branch:** feature/interface-perf | **PR:** - | **Depends on:** S-034
+- **Status:** in review | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
 - **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
 - **Scope:**
   - **Principles for interface code** in docs/perf.md.
