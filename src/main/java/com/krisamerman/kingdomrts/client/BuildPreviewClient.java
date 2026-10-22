@@ -1,6 +1,8 @@
 package com.krisamerman.kingdomrts.client;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.annotation.Nullable;
 
@@ -17,6 +19,8 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LightTexture;
@@ -26,6 +30,17 @@ import net.minecraft.client.renderer.Sheets;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.ColorResolver;
+import net.minecraft.world.level.LightLayer;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.lighting.LevelLightEngine;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -38,15 +53,19 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.client.event.ScreenEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.settings.KeyConflictContext;
+import net.neoforged.neoforge.client.settings.KeyModifier;
 
 // Client only. Previewing a building picked from the Build catalog: a see-through ghost of it where
-// the player is looking, which they can nudge, raise, lower and turn, until they cancel it.
+// the player is looking, which they can nudge, raise, lower and turn, until they cancel it (Esc,
+// or the cancel key).
 // Commissioning from the preview comes in S-034.
 //
 // The ghost is drawn with vanilla's own block rendering (each block's model, as the world draws
-// it), made see-through and evenly lit, plus an outline of the building's box.
+// it, hiding faces where its blocks touch), made see-through and evenly lit, plus an outline of
+// the building's box.
 @EventBusSubscriber(modid = KingdomRts.MODID, value = Dist.CLIENT)
 public final class BuildPreviewClient {
     // How far away the ghost can be put: further than a player can reach, since a building is placed
@@ -56,7 +75,19 @@ public final class BuildPreviewClient {
     // A see-through render type on the block texture atlas, which vanilla uses for translucent
     // blocks drawn outside the world's chunks.
     private static final RenderType GHOST_TYPE = Sheets.translucentCullBlockSheet();
+    // Blocks drawn like entities (chests, beds, shulker boxes, signs, banners) ask for these solid or
+    // cut-out render types, which ignore the ghost's alpha; each is swapped for a see-through one
+    // on the same texture.
+    private static final Map<RenderType, RenderType> SEE_THROUGH = Map.of(
+            Sheets.chestSheet(), RenderType.entityTranslucentCull(Sheets.CHEST_SHEET),
+            Sheets.bedSheet(), RenderType.entityTranslucentCull(Sheets.BED_SHEET),
+            Sheets.shulkerBoxSheet(), RenderType.entityTranslucentCull(Sheets.SHULKER_SHEET),
+            Sheets.signSheet(), RenderType.entityTranslucentCull(Sheets.SIGN_SHEET),
+            Sheets.bannerSheet(), RenderType.entityTranslucentCull(Sheets.BANNER_SHEET));
     private static final int HINT_COLOR = 0xFFFFFFFF;
+    private static final int HINT_MARGIN = 6;
+    private static final int HINT_LINE = 11;
+    private static final String HINT_GAP = "    ";
 
     private static final String CATEGORY = "key.categories.kingdomrts";
     public static final KeyMapping ROTATE_KEY = key("rotate_building", GLFW.GLFW_KEY_R);
@@ -76,6 +107,10 @@ public final class BuildPreviewClient {
     // since the preview started.
     @Nullable
     private static BlockPos anchor;
+
+    // The stand-in level for the current preview's blocks, rebuilt when the building turns.
+    @Nullable
+    private static GhostLevel ghostLevel;
 
     private BuildPreviewClient() {
     }
@@ -100,6 +135,7 @@ public final class BuildPreviewClient {
     public static void cancel() {
         preview = null;
         anchor = null;
+        ghostLevel = null;
     }
 
     @Nullable
@@ -145,6 +181,20 @@ public final class BuildPreviewClient {
         }
     }
 
+    // Esc cancels the preview instead of pausing, as it cancels placing things in strategy games;
+    // with no preview, Esc pauses as usual. The pause screen also opens when the game window loses
+    // focus, which shouldn't cancel anything, so only an Esc press counts (the key is still down
+    // as the pause screen opens).
+    @SubscribeEvent
+    static void onScreenOpening(ScreenEvent.Opening event) {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (preview != null && event.getCurrentScreen() == null && event.getNewScreen() instanceof PauseScreen
+                && InputConstants.isKeyDown(minecraft.getWindow().getWindow(), GLFW.GLFW_KEY_ESCAPE)) {
+            event.setCanceled(true);
+            cancel();
+        }
+    }
+
     // Leaving the world or server ends the preview.
     @SubscribeEvent
     static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
@@ -163,24 +213,49 @@ public final class BuildPreviewClient {
         Vec3 camera = event.getCamera().getPosition();
         BlockPos origin = preview.origin(anchor);
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(type), GHOST_ALPHA);
+        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA);
         BlockRenderDispatcher blocks = minecraft.getBlockRenderer();
 
+        // Drawn against a stand-in level made of the ghost's own blocks, so faces where two of its
+        // blocks touch are left out, as the world leaves them out between real blocks.
+        GhostLevel ghostLevel = ghostLevel(minecraft, origin);
+        RandomSource random = RandomSource.create();
         pose.pushPose();
         pose.translate(origin.getX() - camera.x, origin.getY() - camera.y, origin.getZ() - camera.z);
+        // Entity-style blocks (chests and the like) first, finished before the rest: see-through
+        // faces still hide what's drawn behind them later, so a chest drawn after the walls would
+        // vanish behind them instead of showing through.
         for (Blueprint.Part part : preview.turnedParts()) {
-            pose.pushPose();
-            pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
-            blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, GHOST_TYPE);
-            pose.popPose();
+            if (part.state().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED) {
+                pose.pushPose();
+                pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
+                blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, GHOST_TYPE);
+                pose.popPose();
+            }
+        }
+        buffers.endBatch();
+        for (Blueprint.Part part : preview.turnedParts()) {
+            if (part.state().getRenderShape() == RenderShape.MODEL) {
+                pose.pushPose();
+                pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
+                blocks.renderBatched(part.state(), part.pos(), ghostLevel, pose, ghost.getBuffer(GHOST_TYPE), true, random, ModelData.EMPTY, null);
+                pose.popPose();
+            }
         }
         pose.popPose();
         buffers.endBatch(GHOST_TYPE);
 
         AABB box = AABB.of(preview.footprint(anchor)).move(-camera.x, -camera.y, -camera.z);
         LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, 1.0f, 1.0f, 0.8f);
-        // Also draws anything the ghost's few block-entity-style blocks (chests and the like) used.
-        buffers.endBatch();
+        buffers.endBatch(RenderType.lines());
+    }
+
+    private static GhostLevel ghostLevel(Minecraft minecraft, BlockPos origin) {
+        if (ghostLevel == null || ghostLevel.parts != preview.turnedParts() || ghostLevel.world != minecraft.level) {
+            ghostLevel = new GhostLevel(preview.turnedParts(), minecraft.level);
+        }
+        ghostLevel.origin = origin;
+        return ghostLevel;
     }
 
     // What the player can do, at the top of the screen while previewing.
@@ -191,16 +266,117 @@ public final class BuildPreviewClient {
             return;
         }
         GuiGraphics graphics = event.getGuiGraphics();
-        String keys = keyName(ROTATE_KEY) + ": turn   " + keyName(FORWARD_KEY) + keyName(LEFT_KEY) + keyName(BACK_KEY) + keyName(RIGHT_KEY)
-                + ": move   " + keyName(RAISE_KEY) + "/" + keyName(LOWER_KEY) + ": up/down   " + keyName(CANCEL_KEY) + ": cancel";
+        List<String> hints = List.of(keyName(ROTATE_KEY) + ": turn", moveKeysName() + ": move",
+                keyName(RAISE_KEY) + "/" + keyName(LOWER_KEY) + ": up/down", "Esc/" + keyName(CANCEL_KEY) + ": cancel");
         String title = anchor == null ? preview.name() + ": look at the ground where it goes" : preview.name();
         int middle = graphics.guiWidth() / 2;
-        graphics.drawCenteredString(minecraft.font, title, middle, 6, HINT_COLOR);
-        graphics.drawCenteredString(minecraft.font, keys, middle, 18, HINT_COLOR);
+        int room = graphics.guiWidth() - 2 * HINT_MARGIN;
+        int y = HINT_MARGIN;
+        graphics.drawCenteredString(minecraft.font, title, middle, y, HINT_COLOR);
+        y += HINT_LINE + 2;
+        // As many hints to a line as fit across the screen, so they wrap on narrow windows and
+        // with long key names.
+        StringBuilder line = new StringBuilder();
+        for (String hint : hints) {
+            String longer = line.isEmpty() ? hint : line + HINT_GAP + hint;
+            if (!line.isEmpty() && minecraft.font.width(longer) > room) {
+                graphics.drawCenteredString(minecraft.font, line.toString(), middle, y, HINT_COLOR);
+                y += HINT_LINE;
+                line = new StringBuilder(hint);
+            } else {
+                line = new StringBuilder(longer);
+            }
+        }
+        graphics.drawCenteredString(minecraft.font, line.toString(), middle, y, HINT_COLOR);
+    }
+
+    // "Arrows" while the four move keys are the arrow keys, as they are unless rebound; otherwise
+    // the four keys' names.
+    private static String moveKeysName() {
+        List<KeyMapping> moves = List.of(FORWARD_KEY, LEFT_KEY, BACK_KEY, RIGHT_KEY);
+        List<Integer> arrows = List.of(GLFW.GLFW_KEY_UP, GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_DOWN, GLFW.GLFW_KEY_RIGHT);
+        boolean allArrows = true;
+        for (int i = 0; i < moves.size(); i++) {
+            KeyMapping key = moves.get(i);
+            allArrows &= key.getKey().getType() == InputConstants.Type.KEYSYM && key.getKey().getValue() == arrows.get(i)
+                    && key.getKeyModifier() == KeyModifier.NONE;
+        }
+        if (allArrows) {
+            return "Arrows";
+        }
+        return String.join(" ", moves.stream().map(BuildPreviewClient::keyName).toList());
     }
 
     private static String keyName(KeyMapping key) {
         return key.getTranslatedKeyMessage().getString();
+    }
+
+    // A level that holds only the ghost's blocks (in the ghost's own coordinates, its turned corner
+    // at 0,0,0), for block rendering to look at: which faces touch another of its blocks, and how
+    // bright each spot is. Everything is fully lit, so the ghost reads clearly in the dark; shading
+    // by face and biome colours (grass, leaves) come from the real world where the ghost stands.
+    private static final class GhostLevel implements BlockAndTintGetter {
+        private final List<Blueprint.Part> parts;
+        private final ClientLevel world;
+        private final Map<BlockPos, BlockState> blocks = new HashMap<>();
+        private BlockPos origin = BlockPos.ZERO;
+
+        GhostLevel(List<Blueprint.Part> parts, ClientLevel world) {
+            this.parts = parts;
+            this.world = world;
+            parts.forEach(part -> blocks.put(part.pos(), part.state()));
+        }
+
+        @Override
+        public BlockState getBlockState(BlockPos pos) {
+            return blocks.getOrDefault(pos, Blocks.AIR.defaultBlockState());
+        }
+
+        @Override
+        public FluidState getFluidState(BlockPos pos) {
+            return getBlockState(pos).getFluidState();
+        }
+
+        @Nullable
+        @Override
+        public BlockEntity getBlockEntity(BlockPos pos) {
+            return null;
+        }
+
+        @Override
+        public int getBrightness(LightLayer layer, BlockPos pos) {
+            return 15;
+        }
+
+        @Override
+        public int getRawBrightness(BlockPos pos, int darkening) {
+            return 15;
+        }
+
+        @Override
+        public float getShade(Direction direction, boolean shade) {
+            return world.getShade(direction, shade);
+        }
+
+        @Override
+        public LevelLightEngine getLightEngine() {
+            return world.getLightEngine();
+        }
+
+        @Override
+        public int getBlockTint(BlockPos pos, ColorResolver colorResolver) {
+            return world.getBlockTint(pos.offset(origin), colorResolver);
+        }
+
+        @Override
+        public int getHeight() {
+            return world.getHeight();
+        }
+
+        @Override
+        public int getMinBuildHeight() {
+            return world.getMinBuildHeight();
+        }
     }
 
     // Passes vertices through to the real buffer, with their alpha scaled down so the ghost is

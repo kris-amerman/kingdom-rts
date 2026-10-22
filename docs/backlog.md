@@ -48,14 +48,18 @@ Story template:
       - R turns it a quarter turn;
       - the arrow keys move it forward, back, left and right, relative to where the player faces;
       - Page Up and Page Down raise and lower it;
-      - Backspace cancels it.
+      - Esc or Backspace cancels it.
     - Picking another building replaces the preview, and leaving the world ends it.
   - **Decisions:**
     - **The placement maths** is `building/BuildingPreview`, which is pure, so S-034's commission request can use exactly what the ghost shows. It reuses `BuildingRules.pivot`, `place` and `footprint`: a building turns on its pivot, so rotating spins it on the spot.
     - **The ghost follows the player's view**, and nudges are an offset from it that stays while they look around and turn it. Freezing the ghost after the first nudge is an option if following feels fiddly in play.
     - **Blueprints are sent without air** (nothing to draw there), as a palette of block-state network ids plus one packed position and palette index per block. Even the biggest allowed building (32768 blocks) is well under a packet's size limit.
-    - **The ghost is drawn every frame** with vanilla's single-block rendering, made see-through and evenly lit, after the world's particles (the stage NeoForge suggests for see-through things). That's cheap for the shed. Caching it as a mesh is for later, if big buildings need it.
-    - Blocks drawn like entities (chests and the like) come out solid rather than see-through.
+    - **The ghost is drawn every frame** with vanilla's block rendering, made see-through and evenly lit, after the world's particles (the stage NeoForge suggests for see-through things). That's cheap for the shed. Caching it as a mesh is for later, if big buildings need it.
+    - **Faces where two ghost blocks touch are hidden**, as the world hides them between real blocks: the renderer looks at a stand-in level made of the ghost's own blocks. Without it, every block's inner faces showed through (owner's playtest). Faces you'd see through a real building's open sides still show, as they should.
+    - **The hint wraps** onto more lines when it doesn't fit across the screen, and shows "Arrows" for the move keys unless they've been rebound (the first version ran off the screen in the owner's playtest).
+    - **Blocks drawn like entities** (chests, beds, shulker boxes, signs, banners) have their solid render types swapped for see-through ones on the same texture, so they fade like the rest. They're drawn before the other blocks, or the see-through walls in front would hide them. At first the chest came out solid, then vanished behind the walls (owner's playtest).
+    - **What's inside shows through**, such as the shed's torch, since the whole ghost is see-through. That's intended.
+    - **Esc cancels the preview**, as it cancels placing in strategy games (owner's suggestion), and the cancel key (Backspace) still works. It only counts as a key press: the pause screen opening because the window lost focus doesn't cancel. With no preview, Esc pauses as usual.
     - The server checks the player is in a faction before sending the catalog or a blueprint.
   - **Tests:**
     - JUnit (`BuildingPreviewTest`):
