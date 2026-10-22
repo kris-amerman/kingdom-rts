@@ -56,7 +56,7 @@ Story template:
       - Only the blocks not yet in place are drawn, and only where the spot is free (air, or something a block replaces, like grass): `BuildingRules.stillToShow`. Blocks already built are real, and drawing over something else in the way would flicker through it.
       - They're drawn the way vanilla draws falling blocks, against the world with the building's planned blocks standing in it, so hidden faces stay hidden.
       - Only the player's own faction's buildings are shown, not those being demolished. The server answers a player at most every 10 ticks.
-    - **No z-fighting:** each ghost block is grown by 0.002 of a block on each side, too little to see. Where the ghost overlaps a building, its faces sit just in front instead of flickering against the building's (owner's playtest), and faces against a neighbour sit just inside it.
+    - **No z-fighting:** the ghost is drawn pulled towards the camera by 0.1% of its distance, so where it overlaps a building its faces sit just in front instead of flickering against the building's. Perspective undoes the pull exactly, so it looks the same size and stays in place, and the gap grows with distance as depth precision shrinks. This is the trick vanilla uses for outlines. Growing each block by a fixed 0.002 was tried first and still flickered at a distance (owner's playtest).
     - **No reach limit:** the interface is how a faction commissions buildings, not a player's hand, so the claim rules are the only limit on where.
   - **Tests:**
     - GameTests (`PreviewCommissionGameTests`):

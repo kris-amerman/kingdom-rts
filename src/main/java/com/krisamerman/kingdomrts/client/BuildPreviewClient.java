@@ -89,9 +89,12 @@ public final class BuildPreviewClient {
     // by looking at the ground where it goes.
     private static final double LOOK_RANGE = 48.0;
     private static final float GHOST_ALPHA = 0.55f;
-    // How much each ghost block is grown, so it doesn't flicker where it overlaps a block (see
-    // growSlightly): 0.002 of a block on each side, too little to see.
-    private static final float GHOST_SCALE = 1.004f;
+    // The ghost is drawn pulled towards the camera by this share of its distance, so where it
+    // overlaps a block its faces sit just in front of that block's instead of flickering against
+    // them (z-fighting). Scaling about the camera keeps it the same size on screen, since perspective
+    // undoes it exactly, and the gap grows with distance as the depth buffer's precision shrinks:
+    // the same trick vanilla uses to draw outlines over blocks.
+    private static final float TOWARD_CAMERA = 0.999f;
     // A see-through render type on the block texture atlas, which vanilla uses for translucent
     // blocks drawn outside the world's chunks.
     private static final RenderType GHOST_TYPE = Sheets.translucentCullBlockSheet();
@@ -410,6 +413,7 @@ public final class BuildPreviewClient {
         GhostLevel ghostLevel = ghostLevel(minecraft, origin);
         RandomSource random = RandomSource.create();
         pose.pushPose();
+        pose.scale(TOWARD_CAMERA, TOWARD_CAMERA, TOWARD_CAMERA); // the pose stack is centred on the camera
         pose.translate(origin.getX() - camera.x, origin.getY() - camera.y, origin.getZ() - camera.z);
         // Entity-style blocks (chests and the like) first, finished before the rest: see-through
         // faces still hide what's drawn behind them later, so a chest drawn after the walls would
@@ -418,7 +422,6 @@ public final class BuildPreviewClient {
             if (part.state().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED) {
                 pose.pushPose();
                 pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
-                growSlightly(pose);
                 blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, GHOST_TYPE);
                 pose.popPose();
             }
@@ -428,7 +431,6 @@ public final class BuildPreviewClient {
             if (part.state().getRenderShape() == RenderShape.MODEL) {
                 pose.pushPose();
                 pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
-                growSlightly(pose);
                 blocks.renderBatched(part.state(), part.pos(), ghostLevel, pose, ghost.getBuffer(GHOST_TYPE), true, random, ModelData.EMPTY, null);
                 pose.popPose();
             }
@@ -467,15 +469,6 @@ public final class BuildPreviewClient {
             }
         }
         buffers.endBatch();
-    }
-
-    // Grows a ghost block a hair around its own middle. Where the ghost overlaps a real or shown
-    // block, its faces would lie exactly on that block's and flicker against them (z-fighting);
-    // this way they sit just in front, and faces against a neighbour sit just inside it.
-    private static void growSlightly(PoseStack pose) {
-        pose.translate(0.5, 0.5, 0.5);
-        pose.scale(GHOST_SCALE, GHOST_SCALE, GHOST_SCALE);
-        pose.translate(-0.5, -0.5, -0.5);
     }
 
     private static GhostLevel ghostLevel(Minecraft minecraft, BlockPos origin) {
