@@ -40,7 +40,28 @@ Story template:
   - Players without a faction see a short "join or found a faction first" screen.
 - **Out of scope:** the actions themselves (S-033 to S-036), the name, a command view or free camera.
 - **Test:** GameTests for the request handling (accepted, refused for outsiders and factionless players) and the command. Manual: the key and the screen.
-- **Notes:** the hotkey is the owner's lean (no item); the command is for testing and anyone who hasn't set a key.
+- **Notes:**
+  - The hotkey is the owner's lean (no item); the command is for testing and anyone who hasn't set a key.
+  - **What was built:**
+    - the "Open nation management" key (N), in a "Kingdom RTS" section of Controls, and `/kingdomrts nation`;
+    - the first screen: your faction (and whether you lead it), its settlements with their population (hover one for its town hall and claim), and Build, Demolish and Borders greyed out with "Coming soon";
+    - the "join or found a faction first" screen, which says a town hall is claimed to found one.
+  - **Decisions:**
+    - **The request channel** is our own network messages (NeoForge payloads, the mod's first). The key sends "open the interface" and the server answers with what to show. `/kingdomrts nation` runs the same server code (`NationRequests.open`).
+    - **The screen is a plain screen, not a menu like the panels:** it isn't tied to a block, so there's nothing to stay near and no slots. It's a snapshot taken when it opens, and the game keeps running behind it.
+    - **Who can act:** any member of a faction, for now (ranks within a faction are open). `NationRequests.settlementProblem` is the check that requests acting on a settlement or its buildings make before running their operation: the player must be in a faction, and the settlement must be their faction's. S-034 and S-035 are its first users.
+    - **`/kingdomrts nation` is for every player.** The op requirement moved from `/kingdomrts` itself onto each testing command (faction, settlement, unit, building, spawnunit), which stay op-only.
+  - **Tests:**
+    - JUnit: the overview survives the network codec.
+    - GameTests (`NationGameTests`):
+      - a leader sees their faction and only its settlements, with their population;
+      - a member of another faction sees none of them;
+      - a factionless player gets the join-or-found screen;
+      - a non-op player can run `/kingdomrts nation` but not the testing commands, which operators keep;
+      - `settlementProblem` accepts a member and refuses another faction's member, a factionless player, and a missing settlement.
+    - New `TestSupport.runCommandAs`, which runs a command as a player with their own permissions, and `lastNationScreen`.
+    - Sabotage checks, each caught: listing every faction's settlements, skipping the owner check, putting the op requirement back on `/kingdomrts`, and opening the testing commands to everyone.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-033 Nation interface: building preview
 - **Status:** planned | **Branch:** feature/building-preview | **PR:** - | **Depends on:** S-032

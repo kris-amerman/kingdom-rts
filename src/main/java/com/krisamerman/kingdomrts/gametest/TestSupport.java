@@ -10,6 +10,8 @@ import javax.annotation.Nullable;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.nation.NationOverview;
+import com.krisamerman.kingdomrts.nation.NationPayloads;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
@@ -188,7 +190,27 @@ final class TestSupport {
     // and ~ ~ ~ work from there), and returns everything it printed, failures included.
     static List<String> runCommand(GameTestHelper helper, BlockPos relativePos, String command) {
         List<String> output = new ArrayList<>();
-        CommandSource recorder = new CommandSource() {
+        ServerLevel level = helper.getLevel();
+        CommandSourceStack source = level.getServer().createCommandSourceStack()
+                .withSource(recorder(output))
+                .withLevel(level)
+                .withPosition(Vec3.atBottomCenterOf(helper.absolutePos(relativePos)))
+                .withPermission(4);
+        level.getServer().getCommands().performPrefixedCommand(source, command);
+        return output;
+    }
+
+    // Runs a command as the player, with the player's own permissions (test players aren't
+    // operators), and returns everything it printed, failures included.
+    static List<String> runCommandAs(ServerPlayer player, String command) {
+        List<String> output = new ArrayList<>();
+        player.getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack().withSource(recorder(output)), command);
+        return output;
+    }
+
+    // A command source that adds every message it's sent to output.
+    private static CommandSource recorder(List<String> output) {
+        return new CommandSource() {
             @Override
             public void sendSystemMessage(Component message) {
                 output.add(message.getString());
@@ -209,14 +231,6 @@ final class TestSupport {
                 return false;
             }
         };
-        ServerLevel level = helper.getLevel();
-        CommandSourceStack source = level.getServer().createCommandSourceStack()
-                .withSource(recorder)
-                .withLevel(level)
-                .withPosition(Vec3.atBottomCenterOf(helper.absolutePos(relativePos)))
-                .withPermission(4);
-        level.getServer().getCommands().performPrefixedCommand(source, command);
-        return output;
     }
 
     // A fake server player in the test world, without operator rights (it counts as creative mode).
@@ -266,6 +280,17 @@ final class TestSupport {
             }
         }
         throw new GameTestAssertException("No menu was opened for " + player.getName().getString());
+    }
+
+    // The last nation management screen the server sent a recording player, or null if none.
+    @Nullable
+    static NationOverview lastNationScreen(RecordingPlayer player) {
+        for (int i = player.sent.size() - 1; i >= 0; i--) {
+            if (player.sent.get(i) instanceof ClientboundCustomPayloadPacket custom && custom.payload() instanceof NationPayloads.ShowNation show) {
+                return show.overview();
+            }
+        }
+        return null;
     }
 
     static final class RecordingPlayer extends ServerPlayer {
