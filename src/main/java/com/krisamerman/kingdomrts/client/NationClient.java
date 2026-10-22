@@ -1,8 +1,11 @@
 package com.krisamerman.kingdomrts.client;
 
+import java.util.List;
+
 import org.lwjgl.glfw.GLFW;
 
 import com.krisamerman.kingdomrts.KingdomRts;
+import com.krisamerman.kingdomrts.nation.CatalogEntry;
 import com.krisamerman.kingdomrts.nation.NationOverview;
 import com.krisamerman.kingdomrts.nation.NationPayloads;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -49,5 +52,10 @@ public final class NationClient {
     // The server sent the interface's first screen (from the key or /kingdomrts nation).
     public static void show(NationOverview overview) {
         Minecraft.getInstance().setScreen(new NationScreen(overview));
+    }
+
+    // The server sent the Build catalog (the player pressed Build).
+    public static void showCatalog(List<CatalogEntry> entries) {
+        Minecraft.getInstance().setScreen(new CatalogScreen(entries));
     }
 }

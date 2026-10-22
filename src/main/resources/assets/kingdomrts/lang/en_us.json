@@ -13,5 +13,13 @@
   "block.kingdomrts.construction_site": "Construction Site",
   "key.categories.kingdomrts": "Kingdom RTS",
   "key.kingdomrts.open_nation": "Open nation management",
+  "key.kingdomrts.rotate_building": "Turn building preview",
+  "key.kingdomrts.move_building_forward": "Move building preview forward",
+  "key.kingdomrts.move_building_back": "Move building preview back",
+  "key.kingdomrts.move_building_left": "Move building preview left",
+  "key.kingdomrts.move_building_right": "Move building preview right",
+  "key.kingdomrts.raise_building": "Raise building preview",
+  "key.kingdomrts.lower_building": "Lower building preview",
+  "key.kingdomrts.cancel_building": "Cancel building preview",
   "screen.kingdomrts.nation": "Nation"
 }
