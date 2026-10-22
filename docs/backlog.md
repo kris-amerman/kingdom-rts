@@ -31,7 +31,7 @@ Story template:
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
 ### S-034 Nation interface: commission from the preview
-- **Status:** in progress | **Branch:** feature/preview-commission | **PR:** - | **Depends on:** S-033
+- **Status:** in review | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033
 - **Goal:** confirming a preview commissions the building, under the same rules as the command.
 - **Scope:**
   - Confirming sends a commission request; the server runs `BuildingOps.commission`, so every claim and overlap rule applies.
