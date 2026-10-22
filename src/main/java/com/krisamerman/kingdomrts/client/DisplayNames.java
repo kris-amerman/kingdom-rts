@@ -15,8 +15,19 @@ public final class DisplayNames {
         if (location == null) {
             return id;
         }
-        String path = location.getPath().replace('_', ' ');
-        String fallback = path.isEmpty() ? id : Character.toUpperCase(path.charAt(0)) + path.substring(1);
+        String fallback = location.getPath().isEmpty() ? id : sentenceCase(location.getPath());
         return Component.translatableWithFallback("occupation." + location.getNamespace() + "." + location.getPath(), fallback).getString();
+    }
+
+    // "minecraft:the_nether" -> "The nether". Anything that isn't an id is shown as it is.
+    public static String dimension(String id) {
+        ResourceLocation location = ResourceLocation.tryParse(id);
+        return location == null || location.getPath().isEmpty() ? id : sentenceCase(location.getPath());
+    }
+
+    // "the_nether" -> "The nether".
+    private static String sentenceCase(String path) {
+        String words = path.replace('_', ' ');
+        return Character.toUpperCase(words.charAt(0)) + words.substring(1);
     }
 }

@@ -30,34 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-043 Builders' hut
-- **Status:** in review | **Branch:** feature/builders-hut | **PR:** #37 | **Depends on:** S-031
-- **Goal:** builders work from a builders' hut (the name is open: a builders' guild, a builder's yard), a workplace like the lumberjack hut, instead of from the town hall.
-- **Scope:**
-  - **The hut:** a workplace block, placed directly like the other huts until huts become buildings (S-026). Builders are hired at it, up to a number set in data, and it's their post: they go back there between sites.
-  - **Its stock:** holds the builders' tools and anything they bring back. It's the first place builders take from and put things in, before settlement storage, through the same point in the code as fetching and clearing out (design.md, Builders as a business).
-  - **The pool:** a hut's builders not on a site. Assigning builders to sites works as now (site panel, commands), choosing among the settlement's builders.
-  - **The town hall** stops hiring builders. Its Builders view goes, or points to the huts; decided in the story, along with what happens to builders already hired at the hall (moved to a hut, or left jobless until one hires them).
-- **Out of scope:** gold, buying materials or tools, competing businesses, the hut as a real building (S-026).
-- **Test:** GameTests: builders are hired at the hut and go back to it between sites; leftovers and tools go to the hut's stock first, then settlement storage; the town hall no longer hires builders; old saves with hall-hired builders load. Manual: the hut panel.
-- **Notes:**
-  - Owner, 2026-10-20: we're moving away from keeping builders at the town hall, towards builders as a business with a place of its own (design.md, Builders and construction sites).
-  - S-042 (tools) would fetch from the hut's stock first once this lands.
-  - **What was built:**
-    - the `kingdomrts:builders_hut` block, a workplace like the lumberjack hut, from data (`workplace/builders_hut.json`: builders, 4 per hut). It looks like a crafting table on spruce;
-    - builders hired there go back to it between sites;
-    - `BuilderJob`'s one "where builders take and put things" point tries the hut's stock first, then settlement storage;
-    - the hut panel hides the work area for builders' huts (builders go wherever their sites are).
-  - **Decisions:**
-    - **Hiring:** builders are hired at a hut like any workplace: from its panel, automatically (job seeking fills its openings), or with `unit hire <units> <hut pos>`.
-    - **Owner, 2026-10-20: builders are removed from the town hall completely.** Its panel is back to the overview and the Population page, as before S-024. Hiring at the hall (`BuilderOps.hire`, `BuilderRules.hireProblem`) and `unit hire <units> builder` are gone.
-    - **Builders hired at the hall before huts** (an occupation, no workplace) lose the job when they next load (`SettlementOps.catchUp`), and come off their sites, so they can be hired at a hut.
-    - **Tests** hire their builders at a builders' hut in a corner of the platform (`TestSupport.hireBuilder`, automatic hiring off). Assertions about what builders put away count that hut's stock as well as settlement storage. The stress scenario gives each town a builders' hut.
-    - **Losing the job:** a builder fired from its hut, or whose hut is removed, is taken off its site, as when fired at the hall.
-  - **Stress:** with each town's builder hired at a builders' hut: all sheds built. 4.43 ms at 400 units before the hall was removed. A later run on a busy machine read 5.10.
-
 ### S-032 Nation management interface: opening it
-- **Status:** planned | **Branch:** feature/nation-interface | **PR:** - | **Depends on:** S-024
+- **Status:** in review | **Branch:** feature/nation-interface | **PR:** #38 | **Depends on:** S-024
 - **Goal:** a player can open the nation management interface, and its actions run on the server as faction operations, however they're triggered.
 - **Scope:**
   - **Opening it:** a rebindable hotkey, N by default, in a "Kingdom RTS" category under Controls (vanilla doesn't use N). Also `/kingdomrts nation`, which opens the same screen. No item.
@@ -66,7 +40,28 @@ Story template:
   - Players without a faction see a short "join or found a faction first" screen.
 - **Out of scope:** the actions themselves (S-033 to S-036), the name, a command view or free camera.
 - **Test:** GameTests for the request handling (accepted, refused for outsiders and factionless players) and the command. Manual: the key and the screen.
-- **Notes:** the hotkey is the owner's lean (no item); the command is for testing and anyone who hasn't set a key.
+- **Notes:**
+  - The hotkey is the owner's lean (no item); the command is for testing and anyone who hasn't set a key.
+  - **What was built:**
+    - the "Open nation management" key (N), in a "Kingdom RTS" section of Controls, and `/kingdomrts nation`;
+    - the first screen: your faction (and whether you lead it), its settlements with their population (hover one for its town hall and claim), and Build, Demolish and Borders greyed out with "Coming soon";
+    - the "join or found a faction first" screen, which says a town hall is claimed to found one.
+  - **Decisions:**
+    - **The request channel** is our own network messages (NeoForge payloads, the mod's first). The key sends "open the interface" and the server answers with what to show. `/kingdomrts nation` runs the same server code (`NationRequests.open`).
+    - **The screen is a plain screen, not a menu like the panels:** it isn't tied to a block, so there's nothing to stay near and no slots. It's a snapshot taken when it opens, and the game keeps running behind it.
+    - **Who can act:** any member of a faction, for now (ranks within a faction are open). `NationRequests.settlementProblem` is the check that requests acting on a settlement or its buildings make before running their operation: the player must be in a faction, and the settlement must be their faction's. S-034 and S-035 are its first users.
+    - **`/kingdomrts nation` is for every player.** The op requirement moved from `/kingdomrts` itself onto each testing command (faction, settlement, unit, building, spawnunit), which stay op-only.
+  - **Tests:**
+    - JUnit: the overview survives the network codec.
+    - GameTests (`NationGameTests`):
+      - a leader sees their faction and only its settlements, with their population;
+      - a member of another faction sees none of them;
+      - a factionless player gets the join-or-found screen;
+      - a non-op player can run `/kingdomrts nation` but not the testing commands, which operators keep;
+      - `settlementProblem` accepts a member and refuses another faction's member, a factionless player, and a missing settlement.
+    - New `TestSupport.runCommandAs`, which runs a command as a player with their own permissions, and `lastNationScreen`.
+    - Sabotage checks, each caught: listing every faction's settlements, skipping the owner check, putting the op requirement back on `/kingdomrts`, and opening the testing commands to everyone.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-033 Nation interface: building preview
 - **Status:** planned | **Branch:** feature/building-preview | **PR:** - | **Depends on:** S-032
@@ -208,6 +203,32 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-043 Builders' hut
+- **Status:** done | **Branch:** feature/builders-hut | **PR:** #37 | **Depends on:** S-031
+- **Goal:** builders work from a builders' hut (the name is open: a builders' guild, a builder's yard), a workplace like the lumberjack hut, instead of from the town hall.
+- **Scope:**
+  - **The hut:** a workplace block, placed directly like the other huts until huts become buildings (S-026). Builders are hired at it, up to a number set in data, and it's their post: they go back there between sites.
+  - **Its stock:** holds the builders' tools and anything they bring back. It's the first place builders take from and put things in, before settlement storage, through the same point in the code as fetching and clearing out (design.md, Builders as a business).
+  - **The pool:** a hut's builders not on a site. Assigning builders to sites works as now (site panel, commands), choosing among the settlement's builders.
+  - **The town hall** stops hiring builders. Its Builders view goes, or points to the huts; decided in the story, along with what happens to builders already hired at the hall (moved to a hut, or left jobless until one hires them).
+- **Out of scope:** gold, buying materials or tools, competing businesses, the hut as a real building (S-026).
+- **Test:** GameTests: builders are hired at the hut and go back to it between sites; leftovers and tools go to the hut's stock first, then settlement storage; the town hall no longer hires builders; old saves with hall-hired builders load. Manual: the hut panel.
+- **Notes:**
+  - Owner, 2026-10-20: we're moving away from keeping builders at the town hall, towards builders as a business with a place of its own (design.md, Builders and construction sites).
+  - S-042 (tools) would fetch from the hut's stock first once this lands.
+  - **What was built:**
+    - the `kingdomrts:builders_hut` block, a workplace like the lumberjack hut, from data (`workplace/builders_hut.json`: builders, 4 per hut). It looks like a crafting table on spruce;
+    - builders hired there go back to it between sites;
+    - `BuilderJob`'s one "where builders take and put things" point tries the hut's stock first, then settlement storage;
+    - the hut panel hides the work area for builders' huts (builders go wherever their sites are).
+  - **Decisions:**
+    - **Hiring:** builders are hired at a hut like any workplace: from its panel, automatically (job seeking fills its openings), or with `unit hire <units> <hut pos>`.
+    - **Owner, 2026-10-20: builders are removed from the town hall completely.** Its panel is back to the overview and the Population page, as before S-024. Hiring at the hall (`BuilderOps.hire`, `BuilderRules.hireProblem`) and `unit hire <units> builder` are gone.
+    - **Builders hired at the hall before huts** (an occupation, no workplace) lose the job when they next load (`SettlementOps.catchUp`), and come off their sites, so they can be hired at a hut.
+    - **Tests** hire their builders at a builders' hut in a corner of the platform (`TestSupport.hireBuilder`, automatic hiring off). Assertions about what builders put away count that hut's stock as well as settlement storage. The stress scenario gives each town a builders' hut.
+    - **Losing the job:** a builder fired from its hut, or whose hut is removed, is taken off its site, as when fired at the hall.
+  - **Stress:** with each town's builder hired at a builders' hut: all sheds built. 4.43 ms at 400 units before the hall was removed. A later run on a busy machine read 5.10.
 
 ### S-038 Builders demolish buildings
 - **Status:** done | **Branch:** feature/builders-demolish | **PR:** #36 | **Depends on:** S-031, S-040

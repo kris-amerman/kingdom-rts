@@ -6,6 +6,7 @@ import javax.annotation.Nullable;
 
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionCommands;
+import com.krisamerman.kingdomrts.nation.NationRequests;
 import com.krisamerman.kingdomrts.settlement.BuildingCommands;
 import com.krisamerman.kingdomrts.settlement.SettlementCommands;
 import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
@@ -33,29 +34,46 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
-// Testing commands. Commands are built with Brigadier, Minecraft's command library: a tree of
-// literal words and typed arguments, with executes(...) marking where a command can end.
+// The mod's commands: /kingdomrts nation for every player, and testing commands for ops. Commands
+// are built with Brigadier, Minecraft's command library: a tree of literal words and typed
+// arguments, with executes(...) marking where a command can end.
 @EventBusSubscriber(modid = KingdomRts.MODID)
 public class KingdomRtsCommands {
     @SubscribeEvent
     static void onRegisterCommands(RegisterCommandsEvent event) {
         event.getDispatcher().register(Commands.literal(KingdomRts.MODID)
-                .requires(source -> source.hasPermission(2)) // ops / cheats enabled
+                // /kingdomrts nation: opens the nation management interface, as the N key does. For
+                // every player, unlike the testing commands below.
+                .then(Commands.literal("nation")
+                        .executes(ctx -> openNation(ctx.getSource())))
                 // /kingdomrts faction create|join|leave|rename|list|war|peace ...
-                .then(FactionCommands.build())
+                .then(FactionCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts settlement list|here|rename|found ...
-                .then(SettlementCommands.build())
+                .then(SettlementCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts unit join|leave|hire|fire|info ...
-                .then(UnitCommands.build())
+                .then(UnitCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts building commission|list|remaining|cancel|assign|unassign|demolish|finish ...
-                .then(BuildingCommands.build())
+                .then(BuildingCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
                 .then(spawnOptions(Commands.literal("spawnunit"), ctx -> null)
+                        .requires(KingdomRtsCommands::isOp)
                         .then(Commands.literal("occupation")
                                 .then(spawnOptions(Commands.literal("none"), ctx -> null))
                                 .then(spawnOptions(Commands.argument("occupation", ResourceLocationArgument.id())
                                         .suggests(KingdomRtsCommands::suggestOccupations),
                                         ctx -> ResourceLocationArgument.getId(ctx, "occupation"))))));
+    }
+
+    // The testing commands are for ops (or with cheats enabled in singleplayer). A requirement
+    // that fails hides the command from that player, including from Tab-completion.
+    private static boolean isOp(CommandSourceStack source) {
+        return source.hasPermission(2);
+    }
+
+    // Opens the interface for the player running the command: the same request the key sends.
+    private static int openNation(CommandSourceStack source) throws CommandSyntaxException {
+        NationRequests.open(source.getPlayerOrException());
+        return 1;
     }
 
     // Adds everything that can follow "spawnunit" or "spawnunit occupation <id>": nothing, or
