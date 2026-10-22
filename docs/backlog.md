@@ -30,52 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-033 Nation interface: building preview
-- **Status:** in review | **Branch:** feature/building-preview | **PR:** #39 | **Depends on:** S-032
-- **Goal:** a player can pick a building from the catalog and see it as a ghost in the world, moving and turning it.
-- **Scope:**
-  - **Build** lists the building catalog, sent from the server (building data isn't on the client).
-  - Picking one shows it as a translucent ghost where the player is looking. Keys nudge it sideways and up or down, and rotate it.
-  - The template's blocks are sent on demand, within the existing size cap.
-  - Our own ghost renderer, using vanilla's block rendering.
-- **Out of scope:** confirming (S-034), mirroring, styles and levels.
-- **Test:** unit tests for the placement maths (reusing `BuildingRules.place` and `footprint`); a GameTest for the catalog and template payloads. Manual: the ghost and its controls.
-- **Notes:**
-  - **What was built:**
-    - **Build** on the first screen asks the server for the catalog: every building whose template can be built, by name, with its size. Picking one asks for its blueprint and closes the screen.
-    - **The preview:** a see-through ghost of the building where the player looks (up to 48 blocks away), with the middle of its bottom layer on the spot in front of the block they look at, and a white outline of its box. A hint at the top of the screen names the building and its keys.
-    - **Keys:** rebindable, in the Kingdom RTS section of Controls:
-      - R turns it a quarter turn;
-      - the arrow keys move it forward, back, left and right, relative to where the player faces;
-      - Page Up and Page Down raise and lower it;
-      - Esc or Backspace cancels it.
-    - Picking another building replaces the preview, and leaving the world ends it.
-  - **Decisions:**
-    - **The placement maths** is `building/BuildingPreview`, which is pure, so S-034's commission request can use exactly what the ghost shows. It reuses `BuildingRules.pivot`, `place` and `footprint`: a building turns on its pivot, so rotating spins it on the spot.
-    - **The ghost follows the player's view**, and nudges are an offset from it that stays while they look around and turn it. Freezing the ghost after the first nudge is an option if following feels fiddly in play.
-    - **Blueprints are sent without air** (nothing to draw there), as a palette of block-state network ids plus one packed position and palette index per block. Even the biggest allowed building (32768 blocks) is well under a packet's size limit.
-    - **The ghost is drawn every frame** with vanilla's block rendering, made see-through and evenly lit, after the world's particles (the stage NeoForge suggests for see-through things). That's cheap for the shed. Caching it as a mesh is for later, if big buildings need it.
-    - **Faces where two ghost blocks touch are hidden**, as the world hides them between real blocks: the renderer looks at a stand-in level made of the ghost's own blocks. Without it, every block's inner faces showed through (owner's playtest). Faces you'd see through a real building's open sides still show, as they should.
-    - **The hint wraps** onto more lines when it doesn't fit across the screen, and shows "Arrows" for the move keys unless they've been rebound (the first version ran off the screen in the owner's playtest).
-    - **Blocks drawn like entities** (chests, beds, shulker boxes, signs, banners) have their solid render types swapped for see-through ones on the same texture, so they fade like the rest. They're drawn before the other blocks, or the see-through walls in front would hide them. At first the chest came out solid, then vanished behind the walls (owner's playtest).
-    - **What's inside shows through**, such as the shed's torch, since the whole ghost is see-through. That's intended.
-    - **Esc cancels the preview**, as it cancels placing in strategy games (owner's suggestion), and the cancel key (Backspace) still works. It only counts as a key press: the pause screen opening because the window lost focus doesn't cancel. With no preview, Esc pauses as usual.
-    - The server checks the player is in a faction before sending the catalog or a blueprint.
-  - **Tests:**
-    - JUnit (`BuildingPreviewTest`):
-      - the building's pivot is on the anchor for every rotation, with its bottom level with it;
-      - the ghost's blocks are exactly the blocks `BuildingRules.place` would build;
-      - nudges move relative to facing, and the offset stays while turning.
-    - GameTests (`BuildCatalogGameTests`):
-      - a member gets every buildable building, by name, including the shed with its size;
-      - a player without a faction gets neither the catalog nor a blueprint, and is told why;
-      - the shed's blueprint survives the network codec without its air, and a turned preview of it matches what would be built;
-      - an unknown building is refused.
-    - Sabotage checks, each caught: the codec swapping x and z, the preview ignoring the pivot, and the catalog skipping the faction check.
-  - **Stress:** not run, since nothing per-unit was added.
-
 ### S-034 Nation interface: commission from the preview
-- **Status:** planned | **Branch:** feature/preview-commission | **PR:** - | **Depends on:** S-033
+- **Status:** in review | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033
 - **Goal:** confirming a preview commissions the building, under the same rules as the command.
 - **Scope:**
   - Confirming sends a commission request; the server runs `BuildingOps.commission`, so every claim and overlap rule applies.
@@ -83,7 +39,42 @@ Story template:
   - The ghost is tinted where the spot can't work, from a rate-limited check on the server, which stays the authority.
 - **Out of scope:** gold costs.
 - **Test:** GameTests for commissioning through the request (success, outside the claim, overlapping, another faction's claim). Manual: the tint and messages.
-- **Notes:** -
+- **Notes:**
+  - **Confirming is a right-click**, as placing a block is (owner's call).
+  - **What was built:**
+    - **Right-click** during a preview commissions the building where the ghost is. The ghost goes, unless Shift was held, which keeps it for building another.
+    - The player is told on the action bar: "Storage shed commissioned in Ashford", or "Can't build there: ..." with the reason.
+    - **As the ghost moves,** the server is asked whether it could go there. Where it couldn't, the ghost and its outline turn red, and the reason shows under the building's name at the top of the screen.
+    - **Unfinished buildings show finished** (owner's request) while previewing: the faction's commissioned, unbuilt buildings within 96 blocks (up to 32, nearest first) are drawn solid and lit like the world, so the player sees how the place will look. Asked for when the preview starts, after each commission, and every 5 seconds.
+  - **Decisions:**
+    - **One operation:** the request runs `BuildingOps.commission` for the player's faction, the same operation as `/kingdomrts building commission`. Every claim, overlap and height rule applies, including "another faction's claim".
+    - **The check:** `BuildingOps.commissionProblem` is the same checks without commissioning (commission and the check share one `plan`), so the tint can never disagree with what confirming does. The server stays the authority: a ghost that looked fine can still be refused.
+    - **Rate limits:** the client asks when the ghost has moved, at most every 3 ticks, and again every second while it stays put, in case the world changed. The server answers a player at most every 2 ticks (`NationRequests.CHECK_INTERVAL_TICKS`) and drops checks closer together.
+    - **No flicker:** while the answer for a new spot is on its way, the ghost keeps the last tint it showed, and recent answers are remembered by spot, so going back to one is instant. At first the tint only showed for exactly the spot it was asked for, so the red blinked off and on as the ghost moved (owner's playtest). Remembered answers are forgotten after a commission and every 5 seconds, since either may change which spots work.
+    - **Right-click handling:** NeoForge's interaction event fires once per hand and repeats while the button is held. Every one is cancelled during a preview, so nothing is placed or used, and only the first main-hand one of a click sends a request. A second click while a request is waiting for its answer is ignored.
+    - **Showing unfinished buildings:**
+      - Only the blocks not yet in place are drawn, and only where the spot is free (air, or something a block replaces, like grass): `BuildingRules.stillToShow`. Blocks already built are real, and drawing over something else in the way would flicker through it.
+      - They're drawn the way vanilla draws falling blocks, against the world with the building's planned blocks standing in it, so hidden faces stay hidden.
+      - Only the player's own faction's buildings are shown, not those being demolished. The server answers a player at most every 10 ticks.
+    - **No z-fighting:** the ghost is drawn pulled towards the camera by 0.1% of its distance, so where it overlaps a building its faces sit just in front instead of flickering against the building's. Perspective undoes the pull exactly, so it looks the same size and stays in place, and the gap grows with distance as depth precision shrinks. This is the trick vanilla uses for outlines. Growing each block by a fixed 0.002 was tried first and still flickered at a distance (owner's playtest).
+    - **No reach limit:** the interface is how a faction commissions buildings, not a player's hand, so the claim rules are the only limit on where.
+  - **Tests:**
+    - GameTests (`PreviewCommissionGameTests`):
+      - a turned preview, confirmed, commissions exactly the footprint and rotation the ghost showed, with its site block, and the player is told;
+      - refusals commission nothing and say why: outside any claim, overlapping, another faction's claim, and no faction;
+      - a check answers without commissioning, a second check straight after is dropped, and after the interval it answers with the reason (covering the town hall).
+      - a player previewing is sent the unfinished shed nearby (turned as commissioned) with its blueprint, through the network codec, but not a finished one, nothing from far away, nothing without a faction, and not twice in a row;
+    - JUnit: `stillToShow` leaves out blocks already built, spots taken by something else, and air, and keeps a spot covered by grass.
+    - Sabotage checks, each caught:
+      - no rate limit;
+      - the check saying everything fits;
+      - the commission ignoring rotation;
+      - refusals reported as success.
+      - finished buildings shown;
+      - no rate limit on sites;
+      - built blocks drawn again.
+    - **A known flaky test, not from this story:** `BuilderDemolishGameTests.withNoRoomInStorageItHoldsOntoItsLoad` (S-038) timed out in 1 of 8 runs on this branch. It also failed on 20 October, before this branch existed.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
@@ -202,6 +193,50 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-033 Nation interface: building preview
+- **Status:** done | **Branch:** feature/building-preview | **PR:** #39 | **Depends on:** S-032
+- **Goal:** a player can pick a building from the catalog and see it as a ghost in the world, moving and turning it.
+- **Scope:**
+  - **Build** lists the building catalog, sent from the server (building data isn't on the client).
+  - Picking one shows it as a translucent ghost where the player is looking. Keys nudge it sideways and up or down, and rotate it.
+  - The template's blocks are sent on demand, within the existing size cap.
+  - Our own ghost renderer, using vanilla's block rendering.
+- **Out of scope:** confirming (S-034), mirroring, styles and levels.
+- **Test:** unit tests for the placement maths (reusing `BuildingRules.place` and `footprint`); a GameTest for the catalog and template payloads. Manual: the ghost and its controls.
+- **Notes:**
+  - **What was built:**
+    - **Build** on the first screen asks the server for the catalog: every building whose template can be built, by name, with its size. Picking one asks for its blueprint and closes the screen.
+    - **The preview:** a see-through ghost of the building where the player looks (up to 48 blocks away), with the middle of its bottom layer on the spot in front of the block they look at, and a white outline of its box. A hint at the top of the screen names the building and its keys.
+    - **Keys:** rebindable, in the Kingdom RTS section of Controls:
+      - R turns it a quarter turn;
+      - the arrow keys move it forward, back, left and right, relative to where the player faces;
+      - Page Up and Page Down raise and lower it;
+      - Esc or Backspace cancels it.
+    - Picking another building replaces the preview, and leaving the world ends it.
+  - **Decisions:**
+    - **The placement maths** is `building/BuildingPreview`, which is pure, so S-034's commission request can use exactly what the ghost shows. It reuses `BuildingRules.pivot`, `place` and `footprint`: a building turns on its pivot, so rotating spins it on the spot.
+    - **The ghost follows the player's view**, and nudges are an offset from it that stays while they look around and turn it. Freezing the ghost after the first nudge is an option if following feels fiddly in play.
+    - **Blueprints are sent without air** (nothing to draw there), as a palette of block-state network ids plus one packed position and palette index per block. Even the biggest allowed building (32768 blocks) is well under a packet's size limit.
+    - **The ghost is drawn every frame** with vanilla's block rendering, made see-through and evenly lit, after the world's particles (the stage NeoForge suggests for see-through things). That's cheap for the shed. Caching it as a mesh is for later, if big buildings need it.
+    - **Faces where two ghost blocks touch are hidden**, as the world hides them between real blocks: the renderer looks at a stand-in level made of the ghost's own blocks. Without it, every block's inner faces showed through (owner's playtest). Faces you'd see through a real building's open sides still show, as they should.
+    - **The hint wraps** onto more lines when it doesn't fit across the screen, and shows "Arrows" for the move keys unless they've been rebound (the first version ran off the screen in the owner's playtest).
+    - **Blocks drawn like entities** (chests, beds, shulker boxes, signs, banners) have their solid render types swapped for see-through ones on the same texture, so they fade like the rest. They're drawn before the other blocks, or the see-through walls in front would hide them. At first the chest came out solid, then vanished behind the walls (owner's playtest).
+    - **What's inside shows through**, such as the shed's torch, since the whole ghost is see-through. That's intended.
+    - **Esc cancels the preview**, as it cancels placing in strategy games (owner's suggestion), and the cancel key (Backspace) still works. It only counts as a key press: the pause screen opening because the window lost focus doesn't cancel. With no preview, Esc pauses as usual.
+    - The server checks the player is in a faction before sending the catalog or a blueprint.
+  - **Tests:**
+    - JUnit (`BuildingPreviewTest`):
+      - the building's pivot is on the anchor for every rotation, with its bottom level with it;
+      - the ghost's blocks are exactly the blocks `BuildingRules.place` would build;
+      - nudges move relative to facing, and the offset stays while turning.
+    - GameTests (`BuildCatalogGameTests`):
+      - a member gets every buildable building, by name, including the shed with its size;
+      - a player without a faction gets neither the catalog nor a blueprint, and is told why;
+      - the shed's blueprint survives the network codec without its air, and a turned preview of it matches what would be built;
+      - an unknown building is refused.
+    - Sabotage checks, each caught: the codec swapping x and z, the preview ignoring the pivot, and the catalog skipping the faction check.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-032 Nation management interface: opening it
 - **Status:** done | **Branch:** feature/nation-interface | **PR:** #38 | **Depends on:** S-024

@@ -2,9 +2,12 @@ package com.krisamerman.kingdomrts.nation;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
 
 import javax.annotation.Nullable;
 
@@ -13,6 +16,8 @@ import com.krisamerman.kingdomrts.building.BuildingTemplates;
 import com.krisamerman.kingdomrts.building.BuildingType;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.settlement.Building;
+import com.krisamerman.kingdomrts.settlement.BuildingOps;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 
@@ -20,6 +25,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ChunkPos;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 // Server side of the nation management interface: what happens when a player's screen sends a
@@ -32,6 +38,18 @@ import net.neoforged.neoforge.network.PacketDistributor;
 // by the same ones).
 public final class NationRequests {
     private static final String NO_FACTION = "Join or found a faction first";
+    // The closest together a player's placement checks are answered. The client asks less often
+    // than this (BuildPreviewClient), so this only stops a client that asks too fast.
+    public static final int CHECK_INTERVAL_TICKS = 2;
+    // When each player's last placement check was answered (game time). Weak keys: a player's entry
+    // goes when they leave. Server thread only.
+    private static final Map<ServerPlayer, Long> LAST_CHECK = new WeakHashMap<>();
+    // Unfinished buildings shown while previewing: how far from the player (in blocks, along the
+    // ground), how many at most, and how often a player is answered. The client asks less often.
+    public static final int SITES_RANGE = 96;
+    public static final int MAX_SITES = 32;
+    public static final int SITES_INTERVAL_TICKS = 10;
+    private static final Map<ServerPlayer, Long> LAST_SITES = new WeakHashMap<>();
 
     private NationRequests() {
     }
@@ -93,6 +111,98 @@ public final class NationRequests {
             return;
         }
         PacketDistributor.sendToPlayer(player, new NationPayloads.ShowBlueprint(building, type.get().name(), blueprint.get()));
+    }
+
+    // Commissions a building from a confirmed preview: the same operation as /kingdomrts building
+    // commission, for the player's faction, so every claim and overlap rule applies. The player is
+    // told how it went on the action bar, and their preview whether to end.
+    public static void commission(ServerPlayer player, NationPayloads.CommissionBuilding request) {
+        Faction faction = actingFaction(player);
+        if (faction == null) {
+            answerCommission(player, false, NO_FACTION);
+            return;
+        }
+        ServerLevel level = player.serverLevel();
+        BuildingOps.CommissionResult result = BuildingOps.commission(level, faction, request.building(), request.origin(), request.rotation());
+        if (result.building() == null) {
+            answerCommission(player, false, "Can't build there: " + result.problem());
+            return;
+        }
+        Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(request.origin()));
+        String name = BuildingType.get(level, request.building()).map(BuildingType::name).orElse(request.building().toString());
+        answerCommission(player, true, name + " commissioned" + (settlement != null ? " in " + settlement.name() : ""));
+    }
+
+    private static void answerCommission(ServerPlayer player, boolean commissioned, String message) {
+        player.displayClientMessage(Component.literal(message), true);
+        PacketDistributor.sendToPlayer(player, new NationPayloads.CommissionAnswer(commissioned));
+    }
+
+    // Tells the player whether a building could go where their preview is, without commissioning
+    // it, so the ghost can show it. Asked as the preview moves, so it's rate limited: a player's
+    // checks closer together than CHECK_INTERVAL_TICKS are dropped (the client asks again).
+    public static void checkPlacement(ServerPlayer player, NationPayloads.CheckPlacement request) {
+        long now = player.serverLevel().getGameTime();
+        Long last = LAST_CHECK.get(player);
+        if (last != null && now - last < CHECK_INTERVAL_TICKS && now >= last) {
+            return;
+        }
+        LAST_CHECK.put(player, now);
+        Faction faction = actingFaction(player);
+        String problem = faction == null ? NO_FACTION
+                : BuildingOps.commissionProblem(player.serverLevel(), faction, request.building(), request.origin(), request.rotation());
+        PacketDistributor.sendToPlayer(player, new NationPayloads.PlacementAnswer(request.building(), request.origin(), request.rotation(),
+                problem != null ? problem : ""));
+    }
+
+    // Sends the player their faction's unfinished buildings around them (not ones being torn down),
+    // nearest first, with each kind's blueprint, so a preview can show them finished. Players
+    // without a faction get none. Rate limited like checks (SITES_INTERVAL_TICKS).
+    public static void sites(ServerPlayer player) {
+        long now = player.serverLevel().getGameTime();
+        Long last = LAST_SITES.get(player);
+        if (last != null && now - last < SITES_INTERVAL_TICKS && now >= last) {
+            return;
+        }
+        LAST_SITES.put(player, now);
+        PacketDistributor.sendToPlayer(player, sitesFor(player));
+    }
+
+    public static NationPayloads.ShowSites sitesFor(ServerPlayer player) {
+        Faction faction = actingFaction(player);
+        if (faction == null) {
+            return new NationPayloads.ShowSites(List.of(), Map.of());
+        }
+        ServerLevel level = player.serverLevel();
+        List<Building> nearby = new ArrayList<>();
+        for (Settlement settlement : SettlementData.get(level).all()) {
+            if (!faction.id().equals(settlement.owner()) || !settlement.dimension().equals(level.dimension())) {
+                continue;
+            }
+            for (Building building : settlement.buildings()) {
+                if (!building.isBuilt() && !building.demolishing() && distanceSqr(player, building) <= SITES_RANGE * SITES_RANGE) {
+                    nearby.add(building);
+                }
+            }
+        }
+        nearby.sort(Comparator.comparingDouble(building -> distanceSqr(player, building)));
+        List<NationPayloads.SiteView> sites = new ArrayList<>();
+        Map<ResourceLocation, Blueprint> blueprints = new HashMap<>();
+        for (Building building : nearby.subList(0, Math.min(MAX_SITES, nearby.size()))) {
+            Optional<Blueprint> blueprint = BuildingType.get(level, building.type()).flatMap(type -> BuildingTemplates.blueprint(level, type));
+            if (blueprint.isPresent()) {
+                sites.add(new NationPayloads.SiteView(building.type(), building.origin(), building.rotation()));
+                blueprints.put(building.type(), blueprint.get());
+            }
+        }
+        return new NationPayloads.ShowSites(sites, blueprints);
+    }
+
+    // How far a building's middle is from the player, squared, along the ground.
+    private static double distanceSqr(ServerPlayer player, Building building) {
+        double dx = building.footprint().getCenter().getX() + 0.5 - player.getX();
+        double dz = building.footprint().getCenter().getZ() + 0.5 - player.getZ();
+        return dx * dx + dz * dz;
     }
 
     // The faction the player acts for: the one they belong to, or null if they have none. For now
