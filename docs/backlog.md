@@ -22,44 +22,28 @@ Story template:
 
 ## Current: Units MVP
 
-### S-022 In-game stress and perf commands
-- **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
-- **Goal:** the stress scenario and live `Perf` numbers are available in a real world, for watching and profiling with Spark.
-- **Scope:** `/kingdomrts stress <units>` builds `StressScenario` near the player (and `stress clear` removes it); `/kingdomrts perf start|stop` records and prints the same table as the stress report. Op only.
-- **Out of scope:** optimisation.
-- **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
-- **Notes:** `StressScenario` would move out of the `gametest` package.
-
-### S-044 Interface performance guardrails
-- **Status:** in review | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
-- **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
+### S-022 Perf commands
+- **Status:** in progress | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-044
+- **Goal:** the owner can record the mod's performance in a real world and hand over a report, or have a summary logged every few seconds, with nothing to set up.
 - **Scope:**
-  - **Principles for interface code** in docs/perf.md.
-  - **Client profiler sections** (`kingdomrts:preview_tick`, `preview_render`, `sites_render`).
-  - **An F3 line while previewing:** blocks drawn and ms per frame.
-  - **A server section** around the interface's request handlers.
-  - **A request benchmark** in the stress test, with budgets.
-  - **Payload size budgets** as JUnit tests.
-- **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
-- **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
-- **Notes:**
-  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
-  - **What was built:**
-    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
-    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
-    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
-    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
-    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
-    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
-  - **Decisions:**
-    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
-    - **The client budget is read by hand** from the F3 line: there's no client in CI.
-    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
-    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
-  - **Tests:**
-    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
-    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
-    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
+  - **`/kingdomrts perf start` and `/kingdomrts perf stop`** (op): record our Perf sections in the live world, then write a report in the stress test's format (markdown and JSON) to a timestamped file under `<game dir>/kingdomrts-perf/`, with a summary in chat.
+  - **`/kingdomrts perf log on [seconds]` and `/kingdomrts perf log off`** (op): one summary line in the game log every N seconds (10 by default) while it's on.
+  - **Client numbers:** while a report is recording, the client of the player who started it collects its preview frame times (average, 95th percentile, maximum, blocks drawn) and overall frame rate, and they're added to the report. This works in singleplayer and on servers.
+  - **Off costs nothing:** with nothing recording, only the existing profiler push and pop run.
+- **Out of scope:** stress scenarios in a real world (S-045), and optimisation.
+- **Test:**
+  - GameTests through `TestSupport.runCommand`: start and stop write a report with our sections; logging logs; stop without start, and starting twice, are refused; client stats are added to a pending report.
+  - JUnit for the pure parts (window maths, percentiles, the log line).
+  - Manual: a real session's report, and client numbers in it.
+- **Notes:** split from the original S-022 (perf commands and stress commands) when it was revived after S-044, owner's go-ahead 2026-10-21. The stress half is S-045.
+
+### S-045 Stress scenario in a real world
+- **Status:** planned | **Branch:** feature/stress-command | **PR:** - | **Depends on:** S-022
+- **Goal:** the stress scenario can be built next to the player in a real world, to watch it or profile it (with `/kingdomrts perf` or Spark).
+- **Scope:** `/kingdomrts stress <units>` builds `StressScenario` near the player, and `stress clear` removes it. Op only. `StressScenario` moves out of the `gametest` package.
+- **Out of scope:** optimisation.
+- **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario. Manual: watching a town at work.
+- **Notes:** the stress half of the original S-022.
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
@@ -178,6 +162,37 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-044 Interface performance guardrails
+- **Status:** done | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
+- **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
+- **Scope:**
+  - **Principles for interface code** in docs/perf.md.
+  - **Client profiler sections** (`kingdomrts:preview_tick`, `preview_render`, `sites_render`).
+  - **An F3 line while previewing:** blocks drawn and ms per frame.
+  - **A server section** around the interface's request handlers.
+  - **A request benchmark** in the stress test, with budgets.
+  - **Payload size budgets** as JUnit tests.
+- **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
+- **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
+- **Notes:**
+  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
+  - **What was built:**
+    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
+    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
+    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
+    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
+    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
+    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
+  - **Decisions:**
+    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
+    - **The client budget is read by hand** from the F3 line: there's no client in CI.
+    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
+    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
+  - **Tests:**
+    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
+    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
+    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
 
 ### S-034 Nation interface: commission from the preview
 - **Status:** done | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033
