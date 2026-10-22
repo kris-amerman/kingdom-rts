@@ -1,6 +1,8 @@
 package com.krisamerman.kingdomrts.util;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 
@@ -12,8 +14,10 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 // Times the mod's hot paths. Every section is also a profiler section ("kingdomrts:..."), so
 // Minecraft's profiler (/debug start, /debug stop) and tools like Spark show our share of the tick.
-// While recording (the stress test, see docs/perf.md) it also adds up how long each section took,
-// and how long whole server ticks took. Not recording, it costs only the profiler push and pop.
+// While recording it also adds up how long each section took, and how long whole server ticks
+// took. Two things record: the stress test (startRecording/stopRecording, which start from zero),
+// and windows (openWindow), each reading what happened since it opened, which /kingdomrts perf
+// uses in a live world. Not recording, it costs only the profiler push and pop.
 //
 // Use it as
 //   long start = Perf.start(level, Perf.Section.JOB);
@@ -81,6 +85,40 @@ public final class Perf {
         profiler.push(section.profilerName());
     }
 
+    // A recording that reads what happened since it opened (or was last restarted), alongside any
+    // others: /kingdomrts perf's report and its log each have one. Server thread only.
+    public static final class Window {
+        private long[] startNanos;
+        private long startTicks;
+        private long startTickNanos;
+        private long worstTickNanos;
+
+        private Window() {
+            restart();
+        }
+
+        // What was recorded since the window opened or was last restarted.
+        public Snapshot read() {
+            long[] nanos = sectionNanos.clone();
+            for (int i = 0; i < nanos.length; i++) {
+                nanos[i] -= startNanos[i];
+            }
+            return new Snapshot(nanos, ticks - startTicks, tickNanos - startTickNanos, worstTickNanos);
+        }
+
+        // Starts reading from now.
+        public void restart() {
+            startNanos = sectionNanos.clone();
+            startTicks = ticks;
+            startTickNanos = tickNanos;
+            worstTickNanos = 0;
+        }
+    }
+
+    private static final List<Window> windows = new ArrayList<>();
+    // The stress test is recording (startRecording to stopRecording).
+    private static boolean stressRecording;
+    // Either the stress test or a window is recording.
     private static boolean recording;
     private static final long[] sectionNanos = new long[Section.values().length];
     private static long ticks;
@@ -113,19 +151,46 @@ public final class Perf {
         profiler.pop();
     }
 
-    // Starts recording from zero.
+    // Starts recording from zero (the stress test). Not used while a window is open.
     public static void startRecording() {
         Arrays.fill(sectionNanos, 0);
         ticks = 0;
         tickNanos = 0;
         worstTickNanos = 0;
         tickStart = 0;
-        recording = true;
+        stressRecording = true;
+        updateRecording();
     }
 
     public static Snapshot stopRecording() {
-        recording = false;
+        stressRecording = false;
+        updateRecording();
         return snapshot();
+    }
+
+    // Opens a window: recording runs while any window is open.
+    public static Window openWindow() {
+        Window window = new Window();
+        windows.add(window);
+        updateRecording();
+        return window;
+    }
+
+    // Closes a window, returning what it recorded.
+    public static Snapshot closeWindow(Window window) {
+        Snapshot snapshot = window.read();
+        windows.remove(window);
+        updateRecording();
+        return snapshot;
+    }
+
+    // Whether the stress test is recording (so a window's numbers would be reset under it).
+    public static boolean isStressRecording() {
+        return stressRecording;
+    }
+
+    private static void updateRecording() {
+        recording = stressRecording || !windows.isEmpty();
     }
 
     public static Snapshot snapshot() {
@@ -144,10 +209,17 @@ public final class Perf {
     @SubscribeEvent
     static void onServerTickEnd(ServerTickEvent.Post event) {
         if (recording && tickStart != 0) {
-            long took = System.nanoTime() - tickStart;
-            ticks++;
-            tickNanos += took;
-            worstTickNanos = Math.max(worstTickNanos, took);
+            tickEnded(System.nanoTime() - tickStart);
+        }
+    }
+
+    // A whole server tick took this long (package-private so tests can feed ticks in).
+    static void tickEnded(long took) {
+        ticks++;
+        tickNanos += took;
+        worstTickNanos = Math.max(worstTickNanos, took);
+        for (Window window : windows) {
+            window.worstTickNanos = Math.max(window.worstTickNanos, took);
         }
     }
 }

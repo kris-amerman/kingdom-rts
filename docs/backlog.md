@@ -22,44 +22,87 @@ Story template:
 
 ## Current: Units MVP
 
-### S-022 In-game stress and perf commands
-- **Status:** planned | **Branch:** feature/perf-commands | **PR:** - | **Depends on:** S-021
-- **Goal:** the stress scenario and live `Perf` numbers are available in a real world, for watching and profiling with Spark.
-- **Scope:** `/kingdomrts stress <units>` builds `StressScenario` near the player (and `stress clear` removes it); `/kingdomrts perf start|stop` records and prints the same table as the stress report. Op only.
-- **Out of scope:** optimisation.
-- **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
-- **Notes:** `StressScenario` would move out of the `gametest` package.
-
-### S-044 Interface performance guardrails
-- **Status:** in review | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
-- **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
+### S-022 Perf commands
+- **Status:** in review | **Branch:** feature/perf-commands | **PR:** #42 | **Depends on:** S-044
+- **Goal:** the owner can record the mod's performance in a real world and hand over a report, or have a summary logged every few seconds, with nothing to set up.
 - **Scope:**
-  - **Principles for interface code** in docs/perf.md.
-  - **Client profiler sections** (`kingdomrts:preview_tick`, `preview_render`, `sites_render`).
-  - **An F3 line while previewing:** blocks drawn and ms per frame.
-  - **A server section** around the interface's request handlers.
-  - **A request benchmark** in the stress test, with budgets.
-  - **Payload size budgets** as JUnit tests.
-- **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
-- **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
+  - **`/kingdomrts perf start` and `/kingdomrts perf stop`** (op): record our Perf sections in the live world, then write a report in the stress test's format (markdown and JSON) to a timestamped file under `<game dir>/kingdomrts-perf/`, with a summary in chat.
+  - **`/kingdomrts perf log on [seconds]` and `/kingdomrts perf log off`** (op): one summary line in the game log every N seconds (10 by default) while it's on.
+  - **Client numbers:** while a report is recording, the client of the player who started it collects its preview frame times (average, 95th percentile, maximum, blocks drawn) and overall frame rate, and they're added to the report. This works in singleplayer and on servers.
+  - **Off costs nothing:** with nothing recording, only the existing profiler push and pop run.
+- **Out of scope:** stress scenarios in a real world (S-045), and optimisation.
+- **Test:**
+  - GameTests through `TestSupport.runCommand`: start and stop write a report with our sections; logging logs; stop without start, and starting twice, are refused; client stats are added to a pending report.
+  - JUnit for the pure parts (window maths, percentiles, the log line).
+  - Manual: a real session's report, and client numbers in it.
 - **Notes:**
-  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
+  - Split from the original S-022 (perf commands and stress commands) when it was revived after S-044, with the owner's go-ahead (2026-10-21). The stress half is S-045.
   - **What was built:**
-    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
-    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
-    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
-    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
-    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
-    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
+    - `/kingdomrts perf start|stop` and `/kingdomrts perf log on [seconds]|off` (`util/PerfCommands`, op only), as scoped;
+    - reports go to `<game dir>/kingdomrts-perf/perf-<date>-<time>.md` and `.json`, with `-2` and so on if two land in one second;
+    - the starting player's client measures frames (`client/ClientPerf`) and sends them back over two payloads (`util/PerfPayloads`), and they're added to the report;
+    - docs/perf.md says how to use it all.
   - **Decisions:**
-    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
-    - **The client budget is read by hand** from the F3 line: there's no client in CI.
-    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
-    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
+    - **Perf windows:** `Perf.openWindow` gives each recording its own view of what happened since it opened (worst tick included), so a report and the log can run together. Recording is on while any window is open, or while the stress test records. `startRecording`/`stopRecording` stay as they were for the stress test.
+    - **Units:** a live world's units come and go as chunks load, so a report uses the average of the units loaded at start and at stop, and says both.
+    - **Client numbers** come only from the player who ran `start`, and only within 5 seconds of `stop`; otherwise the report stays as written. Each frame's time is from its start to the next frame's start. Up to about an hour of frames is kept.
+    - **Shared writer:** the report writing (git commit, machine, JSON) moved out of `StressGameTests` into `util/PerfReportFiles`, so both reports use it. The table gained a "requests" column (`kingdomrts:nation_request`).
+    - **Server stops:** a stopping server closes any recording, so the next singleplayer world doesn't inherit one.
   - **Tests:**
-    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
-    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
-    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
+    - GameTests (`PerfCommandGameTests`, each in its own batch since recording is global):
+      - start and stop write a report with the table, ticks and our sections, and a summary in chat;
+      - stop without start, and a second start, are refused;
+      - the log writes a line every second, and off works, then is refused when already off;
+      - the starting player's client is told to measure, its numbers are added to the markdown and JSON, and another player's are ignored.
+    - JUnit:
+      - windows (each from when it opened, its own worst tick, restart, recording off once all close);
+      - percentiles, client stats and their section;
+      - the log line;
+      - the table's requests column.
+    - Sabotage checks, each caught:
+      - any player's client numbers accepted;
+      - the client never asked;
+      - windows sharing one worst tick;
+      - the log never logging.
+    - **Stress:** passes within budget with the shared writer. Nothing per-unit was added.
+  - **Bare `/kingdomrts perf log`** says whether the log is on and how to use it. Typing it in the owner's first try gave "Unknown or incomplete command".
+  - **The owner's first live report** (2026-10-22, 155 s, 3 units):
+    - Our code took 0.28 ms per tick, and logging worked.
+    - The client section showed the building preview **over its budget**: 1.45 ms per frame on average (2.82 ms 95th percentile) for 167 blocks, against 1 ms. That's S-046.
+  - **Flaky tests seen again:** S-038's demolition tests time out "waiting for the shed to be gone" now and then: `withNoRoomInStorageItHoldsOntoItsLoad` before, and `everyMaterialGoesBackToStorage` during this story. Worth a story of its own.
+
+### S-045 Stress scenario in a real world
+- **Status:** planned | **Branch:** feature/stress-command | **PR:** - | **Depends on:** S-022
+- **Goal:** the stress scenario can be built next to the player in a real world, to watch it or profile it (with `/kingdomrts perf` or Spark).
+- **Scope:** `/kingdomrts stress <units>` builds `StressScenario` near the player, and `stress clear` removes it. Op only. `StressScenario` moves out of the `gametest` package.
+- **Out of scope:** optimisation.
+- **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario. Manual: watching a town at work.
+- **Notes:** the stress half of the original S-022.
+
+### S-046 Bake the preview into a mesh
+- **Status:** planned | **Branch:** feature/preview-mesh | **PR:** - | **Depends on:** S-022
+- **Goal:** drawing a building preview and the unfinished sites around it stays under its 1 ms per frame budget, whatever their size.
+- **Scope:**
+  - **The ghost:** build its blocks into a cached mesh (a vertex buffer) once per building and rotation, and draw that each frame, moved to where the ghost is. Moving it costs nothing, and turning it rebuilds the mesh.
+  - **The unfinished sites:** each site's mesh is built when it arrives, and rebuilt when its blocks still to show change (builders place one) or the light around it changes enough to matter. Not every frame.
+  - **The tint** (red where it can't go) and see-through alpha are applied when drawing the mesh, not baked in, so a change of answer doesn't rebuild it.
+  - Keep what already works: hidden touching faces, see-through chests, drawing pulled toward the camera, solid sites lit like the world.
+- **Out of scope:** changing what's shown.
+- **Test:**
+  - JUnit for when meshes rebuild (pure rules: rotation, site blocks changed).
+  - Measurement: a `/kingdomrts perf` report with a preview up among 30 or so sheds is under 1 ms per frame, and well under the first report's 1.45 ms with 167 blocks.
+  - Manual: everything looks as before.
+- **Notes:** from the owner's first `/kingdomrts perf` report (S-022), where the preview drew 167 blocks at 1.45 ms per frame, about 9 µs a block, mostly the ambient-occlusion lighting maths done afresh every frame. Mesh baking was already the named next lever in docs/perf.md.
+
+### S-047 Flaky demolition tests
+- **Status:** planned | **Branch:** feature/demolish-flakes | **PR:** - | **Depends on:** S-038
+- **Goal:** S-038's demolition GameTests pass every run.
+- **Scope:**
+  - Find why `withNoRoomInStorageItHoldsOntoItsLoad` and `everyMaterialGoesBackToStorage` sometimes time out "waiting for the shed to be gone" (seen in about 1 in 8 runs during S-034 and S-022, and during S-038 itself).
+  - Fix the cause: in the builders' code if it's a real bug (a builder that can stall), or in the tests if it's their timing.
+- **Out of scope:** other changes to demolition.
+- **Test:** the fixed tests pass in 20 runs back to back. A sabotage check reproduces the old failure if the cause is put back.
+- **Notes:** found while working on S-034 and S-022. Two tests failing with the same symptom suggests one cause.
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
@@ -178,6 +221,37 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-044 Interface performance guardrails
+- **Status:** done | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
+- **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
+- **Scope:**
+  - **Principles for interface code** in docs/perf.md.
+  - **Client profiler sections** (`kingdomrts:preview_tick`, `preview_render`, `sites_render`).
+  - **An F3 line while previewing:** blocks drawn and ms per frame.
+  - **A server section** around the interface's request handlers.
+  - **A request benchmark** in the stress test, with budgets.
+  - **Payload size budgets** as JUnit tests.
+- **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
+- **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
+- **Notes:**
+  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
+  - **What was built:**
+    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
+    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
+    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
+    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
+    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
+    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
+  - **Decisions:**
+    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
+    - **The client budget is read by hand** from the F3 line: there's no client in CI.
+    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
+    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
+  - **Tests:**
+    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
+    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
+    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
 
 ### S-034 Nation interface: commission from the preview
 - **Status:** done | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033

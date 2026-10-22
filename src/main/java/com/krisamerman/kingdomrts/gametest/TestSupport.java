@@ -210,6 +210,13 @@ final class TestSupport {
         return output;
     }
 
+    // The same, as an operator (permission level 4), for op-only commands run by a player.
+    static List<String> runOpCommandAs(ServerPlayer player, String command) {
+        List<String> output = new ArrayList<>();
+        player.getServer().getCommands().performPrefixedCommand(player.createCommandSourceStack().withSource(recorder(output)).withPermission(4), command);
+        return output;
+    }
+
     // A command source that adds every message it's sent to output.
     private static CommandSource recorder(List<String> output) {
         return new CommandSource() {

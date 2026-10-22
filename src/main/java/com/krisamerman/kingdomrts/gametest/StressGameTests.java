@@ -4,20 +4,11 @@ import static com.krisamerman.kingdomrts.gametest.TestSupport.FLOOR_Y;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.TEMPLATE;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.faction;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
@@ -27,6 +18,7 @@ import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.util.Perf;
 import com.krisamerman.kingdomrts.util.PerfReport;
+import com.krisamerman.kingdomrts.util.PerfReportFiles;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.gametest.framework.GameTest;
@@ -196,62 +188,11 @@ public class StressGameTests {
 
     // Rewrites the report with every size run so far.
     private static void writeReport() {
-        Path dir = FMLPaths.GAMEDIR.get().resolve("kingdomrts-stress");
-        String status = git("status", "--porcelain");
-        String commit = git("rev-parse", "--short", "HEAD") + (status.isEmpty() || status.equals("unknown") ? "" : " (uncommitted changes)");
-        String machine = Runtime.getRuntime().availableProcessors() + " cores, Java " + System.getProperty("java.version")
-                + ", " + System.getProperty("os.name") + " " + System.getProperty("os.arch");
-        String markdown = "# Stress test\n\n" + LocalDate.now() + ", commit " + commit + ", " + machine + "\n\n"
+        String markdown = "# Stress test\n\n" + PerfReportFiles.header() + "\n\n"
                 + "Recorded over " + RECORD_TICKS + " ticks after " + WARM_UP_TICKS + " to warm up. Times are ms per tick.\n\n"
                 + PerfReport.table(RESULTS, PerfReport.Budget.DEFAULT)
                 + (REQUESTS.isEmpty() ? "" : "\n## Nation interface requests\n\nAverage over " + CALLS + " calls, with "
                         + NationRequests.MAX_SITES + " unfinished sheds around the player.\n\n" + PerfReport.requestTable(REQUESTS));
-        JsonObject json = new JsonObject();
-        json.addProperty("date", LocalDate.now().toString());
-        json.addProperty("commit", commit);
-        json.addProperty("machine", machine);
-        JsonArray rows = new JsonArray();
-        for (PerfReport.Result result : RESULTS) {
-            JsonObject row = new JsonObject();
-            row.addProperty("units", result.units());
-            row.addProperty("server_ms_per_tick", result.serverMsPerTick());
-            row.addProperty("worst_tick_ms", result.worstTickMs());
-            row.addProperty("our_ms_per_tick", result.ourMsPerTick());
-            row.addProperty("us_per_unit", result.usPerUnit());
-            for (Perf.Section section : Perf.Section.values()) {
-                row.addProperty(section.profilerName().substring("kingdomrts:".length()) + "_ms_per_tick", result.msPerTick(section));
-            }
-            rows.add(row);
-        }
-        json.add("results", rows);
-        JsonArray requests = new JsonArray();
-        for (PerfReport.RequestTiming timing : REQUESTS) {
-            JsonObject row = new JsonObject();
-            row.addProperty("request", timing.request());
-            row.addProperty("us_per_call", timing.usPerCall());
-            row.addProperty("budget_us", timing.budgetUs());
-            requests.add(row);
-        }
-        json.add("requests", requests);
-        try {
-            Files.createDirectories(dir);
-            Files.writeString(dir.resolve("report.md"), markdown, StandardCharsets.UTF_8);
-            Files.writeString(dir.resolve("report.json"), new GsonBuilder().setPrettyPrinting().create().toJson(json), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            KingdomRts.LOGGER.warn("Couldn't write the stress report to {}", dir, e);
-        }
-    }
-
-    // Runs a git command in the project (the dev run's game directory is inside it), or "unknown".
-    private static String git(String... args) {
-        try {
-            List<String> command = new ArrayList<>(List.of("git"));
-            command.addAll(List.of(args));
-            Process process = new ProcessBuilder(command).directory(FMLPaths.GAMEDIR.get().toFile()).redirectErrorStream(true).start();
-            String out = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
-            return process.waitFor(5, TimeUnit.SECONDS) && process.exitValue() == 0 ? out : "unknown";
-        } catch (IOException | InterruptedException e) {
-            return "unknown";
-        }
+        PerfReportFiles.write(FMLPaths.GAMEDIR.get().resolve("kingdomrts-stress"), "report", markdown, PerfReportFiles.json(RESULTS, REQUESTS, null));
     }
 }

@@ -461,7 +461,11 @@ public final class BuildPreviewClient {
         LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, refused ? 0.3f : 1.0f, refused ? 0.3f : 1.0f, 0.8f);
         buffers.endBatch(RenderType.lines());
         profiler.pop();
-        FRAMES.add(System.nanoTime() - frameStart);
+        long took = System.nanoTime() - frameStart;
+        FRAMES.add(took);
+        if (ClientPerf.isRecording()) {
+            ClientPerf.previewFrame(took, preview.turnedParts().size() + sites.stream().mapToInt(site -> site.shown.size()).sum());
+        }
     }
 
     // The unfinished buildings, finished: solid, and lit and shaded like the world, drawn the way

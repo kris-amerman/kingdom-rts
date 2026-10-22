@@ -46,6 +46,11 @@ A placement check is asked up to ten times a second while a player moves a ghost
 - `./gradlew runStressTest`. The report goes to `run/kingdomrts-stress/report.md` (and `report.json`), and is logged.
 - **When:** before merging anything that adds per-unit work, and now and then otherwise. It also runs weekly on GitHub Actions, or by hand from the Actions tab ("Stress test"), with the report uploaded as an artifact. Shared runners are noisy, so their numbers show trends; local runs are the reference.
 - When a run changes things noticeably, add a row to Results below.
+- **In a live world (`/kingdomrts perf`, op only):** to measure real play, or to hand over numbers.
+  - `/kingdomrts perf start`, play, then `/kingdomrts perf stop`. This writes `<game dir>/kingdomrts-perf/perf-<date>-<time>.md` and `.json` (in dev runs, `run/kingdomrts-perf/`), in the stress report's format, with a summary in chat.
+  - The client of the player who ran `start` measures its frames meanwhile. A few ticks after `stop`, its numbers are added to the report as a "Client" section: frame rate, frame times (average, 95th percentile, worst), and the building preview's drawing time and blocks drawn. From the server console, there's no client section.
+  - `/kingdomrts perf log on [seconds]` writes one summary line to the game log every 10 seconds (or as given) until `/kingdomrts perf log off`, such as `kingdomrts perf (last 10 s): 37 units, our 0.42 ms/tick (unit 0.39, ...), server 4.10 ms/tick, worst 9.8 ms`. Search `latest.log` for `kingdomrts perf`. The interval counts server ticks, so a paused singleplayer game logs later. `/kingdomrts perf log` on its own says whether it's on.
+  - Both can run together. With neither on, nothing is recorded, and only the profiler push and pop run.
 - **Digging into a cost:** in `runClient`, `/debug start`, play, then `/debug stop`, and look for the `kingdomrts:` sections in the profile it writes. Spark gives a better view, if installed in the dev run.
 
 ## Writing unit code that stays cheap
