@@ -30,51 +30,36 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario, and perf prints a table. Manual: watching a town at work.
 - **Notes:** `StressScenario` would move out of the `gametest` package.
 
-### S-034 Nation interface: commission from the preview
-- **Status:** in review | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033
-- **Goal:** confirming a preview commissions the building, under the same rules as the command.
+### S-044 Interface performance guardrails
+- **Status:** in review | **Branch:** feature/interface-perf | **PR:** #41 | **Depends on:** S-034
+- **Goal:** the nation interface's cost is measured and budgeted, on the client (frame time), the server (request handlers) and the network (payload sizes), as unit code already is.
 - **Scope:**
-  - Confirming sends a commission request; the server runs `BuildingOps.commission`, so every claim and overlap rule applies.
-  - Refusals are shown to the player ("outside your claim", "overlaps…").
-  - The ghost is tinted where the spot can't work, from a rate-limited check on the server, which stays the authority.
-- **Out of scope:** gold costs.
-- **Test:** GameTests for commissioning through the request (success, outside the claim, overlapping, another faction's claim). Manual: the tint and messages.
+  - **Principles for interface code** in docs/perf.md.
+  - **Client profiler sections** (`kingdomrts:preview_tick`, `preview_render`, `sites_render`).
+  - **An F3 line while previewing:** blocks drawn and ms per frame.
+  - **A server section** around the interface's request handlers.
+  - **A request benchmark** in the stress test, with budgets.
+  - **Payload size budgets** as JUnit tests.
+- **Out of scope:** optimising anything (mesh baking is the known lever, for when a number asks for it), and stress commands in a real world (S-022).
+- **Test:** JUnit for payload sizes and the report's request budgets; the stress test runs the request benchmark. Manual: the F3 line and profiler sections.
 - **Notes:**
-  - **Confirming is a right-click**, as placing a block is (owner's call).
+  - Owner, 2026-10-21: keep performance top of mind as the interface grows.
   - **What was built:**
-    - **Right-click** during a preview commissions the building where the ghost is. The ghost goes, unless Shift was held, which keeps it for building another.
-    - The player is told on the action bar: "Storage shed commissioned in Ashford", or "Can't build there: ..." with the reason.
-    - **As the ghost moves,** the server is asked whether it could go there. Where it couldn't, the ghost and its outline turn red, and the reason shows under the building's name at the top of the screen.
-    - **Unfinished buildings show finished** (owner's request) while previewing: the faction's commissioned, unbuilt buildings within 96 blocks (up to 32, nearest first) are drawn solid and lit like the world, so the player sees how the place will look. Asked for when the preview starts, after each commission, and every 5 seconds.
+    - docs/perf.md: an interface budget table, "Writing interface code that stays cheap" (seven rules), watch list entries (drawing previews, placement checks) and levers (mesh baking, a spatial index).
+    - `Perf.Section.NATION_REQUEST` around every request handler (wrapped once, in `NationPayloads`). It counts in "our ms per tick".
+    - `Perf.ClientSection`: `preview_tick`, `preview_render` and `sites_render`, profiler names only.
+    - The F3 line while previewing: blocks drawn, and ms per frame (average and maximum over 60 frames).
+    - The stress test's request benchmark (`StressGameTests.interfaceRequests`), with budgets, in the report's markdown and JSON.
+    - `PayloadSizeTest`: the biggest blueprint (32,768 solid blocks) is within 160 KB, a blueprint that's all air but one block is under 1 KB, and 32 unfinished buildings are within 64 KB.
   - **Decisions:**
-    - **One operation:** the request runs `BuildingOps.commission` for the player's faction, the same operation as `/kingdomrts building commission`. Every claim, overlap and height rule applies, including "another faction's claim".
-    - **The check:** `BuildingOps.commissionProblem` is the same checks without commissioning (commission and the check share one `plan`), so the tint can never disagree with what confirming does. The server stays the authority: a ghost that looked fine can still be refused.
-    - **Rate limits:** the client asks when the ghost has moved, at most every 3 ticks, and again every second while it stays put, in case the world changed. The server answers a player at most every 2 ticks (`NationRequests.CHECK_INTERVAL_TICKS`) and drops checks closer together.
-    - **No flicker:** while the answer for a new spot is on its way, the ghost keeps the last tint it showed, and recent answers are remembered by spot, so going back to one is instant. At first the tint only showed for exactly the spot it was asked for, so the red blinked off and on as the ghost moved (owner's playtest). Remembered answers are forgotten after a commission and every 5 seconds, since either may change which spots work.
-    - **Right-click handling:** NeoForge's interaction event fires once per hand and repeats while the button is held. Every one is cancelled during a preview, so nothing is placed or used, and only the first main-hand one of a click sends a request. A second click while a request is waiting for its answer is ignored.
-    - **Showing unfinished buildings:**
-      - Only the blocks not yet in place are drawn, and only where the spot is free (air, or something a block replaces, like grass): `BuildingRules.stillToShow`. Blocks already built are real, and drawing over something else in the way would flicker through it.
-      - They're drawn the way vanilla draws falling blocks, against the world with the building's planned blocks standing in it, so hidden faces stay hidden.
-      - Only the player's own faction's buildings are shown, not those being demolished. The server answers a player at most every 10 ticks.
-    - **No z-fighting:** the ghost is drawn pulled towards the camera by 0.1% of its distance, so where it overlaps a building its faces sit just in front instead of flickering against the building's. Perspective undoes the pull exactly, so it looks the same size and stays in place, and the gap grows with distance as depth precision shrinks. This is the trick vanilla uses for outlines. Growing each block by a fixed 0.002 was tried first and still flickered at a distance (owner's playtest).
-    - **No reach limit:** the interface is how a faction commissions buildings, not a player's hand, so the claim rules are the only limit on where.
+    - **Budgets:** a placement check 200 µs, sites 1 ms, the catalog 1 ms, and drawing a preview 1 ms per frame. These are starting numbers, well above what's measured (25, 34 and 6 µs), to be tightened if they never come close.
+    - **The client budget is read by hand** from the F3 line: there's no client in CI.
+    - Client sections are never timed, only named for the profiler, because frames aren't server ticks and the stress report has no client.
+    - CLAUDE.md now says to run the stress test for a new kind of interface request as well as for per-unit work.
   - **Tests:**
-    - GameTests (`PreviewCommissionGameTests`):
-      - a turned preview, confirmed, commissions exactly the footprint and rotation the ghost showed, with its site block, and the player is told;
-      - refusals commission nothing and say why: outside any claim, overlapping, another faction's claim, and no faction;
-      - a check answers without commissioning, a second check straight after is dropped, and after the interval it answers with the reason (covering the town hall).
-      - a player previewing is sent the unfinished shed nearby (turned as commissioned) with its blueprint, through the network codec, but not a finished one, nothing from far away, nothing without a faction, and not twice in a row;
-    - JUnit: `stillToShow` leaves out blocks already built, spots taken by something else, and air, and keeps a spot covered by grass.
-    - Sabotage checks, each caught:
-      - no rate limit;
-      - the check saying everything fits;
-      - the commission ignoring rotation;
-      - refusals reported as success.
-      - finished buildings shown;
-      - no rate limit on sites;
-      - built blocks drawn again.
-    - **A known flaky test, not from this story:** `BuilderDemolishGameTests.withNoRoomInStorageItHoldsOntoItsLoad` (S-038) timed out in 1 of 8 runs on this branch. It also failed on 20 October, before this branch existed.
-  - **Stress:** not run, since nothing per-unit was added.
+    - JUnit: payload sizes, and request timings against budgets in `PerfReportTest`.
+    - The stress test: the benchmark passes within budget, and the unit budgets still hold (results row in docs/perf.md).
+    - Sabotage checks, each caught: blueprints sent with their air (`airIsNotSent`), and a 1 µs check budget (the stress test fails, naming the request).
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
@@ -193,6 +178,52 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-034 Nation interface: commission from the preview
+- **Status:** done | **Branch:** feature/preview-commission | **PR:** #40 | **Depends on:** S-033
+- **Goal:** confirming a preview commissions the building, under the same rules as the command.
+- **Scope:**
+  - Confirming sends a commission request; the server runs `BuildingOps.commission`, so every claim and overlap rule applies.
+  - Refusals are shown to the player ("outside your claim", "overlaps…").
+  - The ghost is tinted where the spot can't work, from a rate-limited check on the server, which stays the authority.
+- **Out of scope:** gold costs.
+- **Test:** GameTests for commissioning through the request (success, outside the claim, overlapping, another faction's claim). Manual: the tint and messages.
+- **Notes:**
+  - **Confirming is a right-click**, as placing a block is (owner's call).
+  - **What was built:**
+    - **Right-click** during a preview commissions the building where the ghost is. The ghost goes, unless Shift was held, which keeps it for building another.
+    - The player is told on the action bar: "Storage shed commissioned in Ashford", or "Can't build there: ..." with the reason.
+    - **As the ghost moves,** the server is asked whether it could go there. Where it couldn't, the ghost and its outline turn red, and the reason shows under the building's name at the top of the screen.
+    - **Unfinished buildings show finished** (owner's request) while previewing: the faction's commissioned, unbuilt buildings within 96 blocks (up to 32, nearest first) are drawn solid and lit like the world, so the player sees how the place will look. Asked for when the preview starts, after each commission, and every 5 seconds.
+  - **Decisions:**
+    - **One operation:** the request runs `BuildingOps.commission` for the player's faction, the same operation as `/kingdomrts building commission`. Every claim, overlap and height rule applies, including "another faction's claim".
+    - **The check:** `BuildingOps.commissionProblem` is the same checks without commissioning (commission and the check share one `plan`), so the tint can never disagree with what confirming does. The server stays the authority: a ghost that looked fine can still be refused.
+    - **Rate limits:** the client asks when the ghost has moved, at most every 3 ticks, and again every second while it stays put, in case the world changed. The server answers a player at most every 2 ticks (`NationRequests.CHECK_INTERVAL_TICKS`) and drops checks closer together.
+    - **No flicker:** while the answer for a new spot is on its way, the ghost keeps the last tint it showed, and recent answers are remembered by spot, so going back to one is instant. At first the tint only showed for exactly the spot it was asked for, so the red blinked off and on as the ghost moved (owner's playtest). Remembered answers are forgotten after a commission and every 5 seconds, since either may change which spots work.
+    - **Right-click handling:** NeoForge's interaction event fires once per hand and repeats while the button is held. Every one is cancelled during a preview, so nothing is placed or used, and only the first main-hand one of a click sends a request. A second click while a request is waiting for its answer is ignored.
+    - **Showing unfinished buildings:**
+      - Only the blocks not yet in place are drawn, and only where the spot is free (air, or something a block replaces, like grass): `BuildingRules.stillToShow`. Blocks already built are real, and drawing over something else in the way would flicker through it.
+      - They're drawn the way vanilla draws falling blocks, against the world with the building's planned blocks standing in it, so hidden faces stay hidden.
+      - Only the player's own faction's buildings are shown, not those being demolished. The server answers a player at most every 10 ticks.
+    - **No z-fighting:** the ghost is drawn pulled towards the camera by 0.1% of its distance, so where it overlaps a building its faces sit just in front instead of flickering against the building's. Perspective undoes the pull exactly, so it looks the same size and stays in place, and the gap grows with distance as depth precision shrinks. This is the trick vanilla uses for outlines. Growing each block by a fixed 0.002 was tried first and still flickered at a distance (owner's playtest).
+    - **No reach limit:** the interface is how a faction commissions buildings, not a player's hand, so the claim rules are the only limit on where.
+  - **Tests:**
+    - GameTests (`PreviewCommissionGameTests`):
+      - a turned preview, confirmed, commissions exactly the footprint and rotation the ghost showed, with its site block, and the player is told;
+      - refusals commission nothing and say why: outside any claim, overlapping, another faction's claim, and no faction;
+      - a check answers without commissioning, a second check straight after is dropped, and after the interval it answers with the reason (covering the town hall).
+      - a player previewing is sent the unfinished shed nearby (turned as commissioned) with its blueprint, through the network codec, but not a finished one, nothing from far away, nothing without a faction, and not twice in a row;
+    - JUnit: `stillToShow` leaves out blocks already built, spots taken by something else, and air, and keeps a spot covered by grass.
+    - Sabotage checks, each caught:
+      - no rate limit;
+      - the check saying everything fits;
+      - the commission ignoring rotation;
+      - refusals reported as success.
+      - finished buildings shown;
+      - no rate limit on sites;
+      - built blocks drawn again.
+    - **A known flaky test, not from this story:** `BuilderDemolishGameTests.withNoRoomInStorageItHoldsOntoItsLoad` (S-038) timed out in 1 of 8 runs on this branch. It also failed on 20 October, before this branch existed.
+  - **Stress:** not run, since nothing per-unit was added.
 
 ### S-033 Nation interface: building preview
 - **Status:** done | **Branch:** feature/building-preview | **PR:** #39 | **Depends on:** S-032
