@@ -70,4 +70,40 @@ class PerfReportTest {
         nanos[Perf.Section.NATION_REQUEST.ordinal()] = MS * 100;
         assertEquals(4.0, new PerfReport.Result(100, new Perf.Snapshot(nanos, 100, 0, 0)).ourMsPerTick(), 1e-9);
     }
+
+    @Test
+    void percentilesByNearestRank() {
+        long[] values = {5, 1, 4, 2, 3, 0, 0};
+        assertEquals(5, PerfReport.percentile(values, 5, 1.0));
+        assertEquals(3, PerfReport.percentile(values, 5, 0.5));
+        assertEquals(5, PerfReport.percentile(values, 5, 0.95), "Nearest rank: the 95th percentile of five is the top one");
+        assertEquals(0, PerfReport.percentile(values, 0, 0.95), "Nothing to rank");
+    }
+
+    @Test
+    void clientStatsFromSamples() {
+        long[] frames = {10 * MS, 20 * MS, 30 * MS, 40 * MS};
+        long[] preview = {MS, 3 * MS};
+        long[] blocks = {100, 300};
+        PerfReport.ClientStats stats = PerfReport.ClientStats.of(frames, 4, preview, blocks, 2);
+        assertEquals(25.0, stats.averageFrameMs(), 1e-9);
+        assertEquals(40.0, stats.worstFrameMs(), 1e-9);
+        assertEquals(40.0, stats.averageFps(), 1e-9);
+        assertEquals(2.0, stats.averagePreviewMs(), 1e-9);
+        assertEquals(200.0, stats.averagePreviewBlocks(), 1e-9);
+        assertTrue(PerfReport.clientSection("Steve", stats).contains("Building preview, over 2 frames: 2.00 ms per frame"));
+        assertTrue(PerfReport.clientSection("Steve", PerfReport.ClientStats.NONE).contains("No building preview was up"));
+    }
+
+    @Test
+    void theLogLineSumsUpAStretch() {
+        String line = PerfReport.logLine(run(37, 0.4, 0.02), 10);
+        assertTrue(line.startsWith("kingdomrts perf (last 10 s): 37 units, our 0.42 ms/tick (unit 0.40,"), line);
+        assertTrue(line.contains("server 20.00 ms/tick, worst 30.0 ms"), line);
+    }
+
+    @Test
+    void theTableHasARequestsColumn() {
+        assertTrue(PerfReport.table(List.of(run(100, 1, 0)), PerfReport.Budget.DEFAULT).contains("| capture | requests | Budget |"));
+    }
 }

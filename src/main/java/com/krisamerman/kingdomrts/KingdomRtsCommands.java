@@ -13,6 +13,7 @@ import com.krisamerman.kingdomrts.settlement.TownHallBlockEntity;
 import com.krisamerman.kingdomrts.unit.Occupation;
 import com.krisamerman.kingdomrts.unit.Unit;
 import com.krisamerman.kingdomrts.unit.UnitCommands;
+import com.krisamerman.kingdomrts.util.PerfCommands;
 import com.mojang.brigadier.builder.ArgumentBuilder;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -54,6 +55,8 @@ public class KingdomRtsCommands {
                 .then(UnitCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts building commission|list|remaining|cancel|assign|unassign|demolish|finish ...
                 .then(BuildingCommands.build().requires(KingdomRtsCommands::isOp))
+                // /kingdomrts perf start|stop|log on [seconds]|log off
+                .then(PerfCommands.build().requires(KingdomRtsCommands::isOp))
                 // /kingdomrts spawnunit [occupation <id>|none] [townhall <pos>] [faction <name>]
                 .then(spawnOptions(Commands.literal("spawnunit"), ctx -> null)
                         .requires(KingdomRtsCommands::isOp)
