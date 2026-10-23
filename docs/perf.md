@@ -73,7 +73,7 @@ The nation interface runs on both sides: requests on the server, screens and pre
 3. **Ask when something changed, not on a timer.** Clients ask when something moved or happened, with a slow recheck as the safety net. The server rate-limits every repeatable request per player (`CHECK_INTERVAL_TICKS`, `SITES_INTERVAL_TICKS`) and drops the excess quietly.
 4. **Send each thing once.** Blueprints go once per kind and without air. The client keeps what it was sent (answers by spot, blueprints by kind). Once lists get long, send changes rather than whole lists.
 5. **Work out per tick or per change, draw per frame.** Anything that looks at the world or allocates goes in the tick or in the change handler (`stillToShow` per tick, the turned blocks per rotation). A frame only draws prepared lists, so its cost is in proportion to the blocks drawn, and that number is capped.
-6. **Escalate in order, when a number says so:** cap, then cache per tick, then bake a mesh. Baking the ghost or the sites into a cached vertex buffer, rebuilt when they turn or change, is the known next step. Don't build it before a measurement asks for it.
+6. **Escalate in order, when a number says so:** cap, then cache per tick, then bake a mesh (`client/BakedMesh`, used by previews since S-046, when a live report showed per-frame drawing over budget). Don't build it before a measurement asks for it.
 7. **Measure before optimising,** with the tools above, and give every new kind of request a budget and a place in the benchmark.
 
 ## What costs what (from the baseline)
@@ -86,7 +86,7 @@ Where cost is most likely to grow:
 - **Pathfinding:** `WalkToStep` repaths once a second while walking, and every walk starts with a path check of up to a few stand spots. Builders and couriers will walk more.
 - **Entity searches:** item pickup (every 10 ticks), `CollectStep` (every 10 ticks for 5 s after a tree), capture (a box around each hall).
 - **Settlement-wide loops:** job seeking goes through a settlement's workplaces; panels go through its units.
-- **Drawing previews:** the ghost and the unfinished sites around it are drawn block by block every frame. Cheap for sheds; big buildings or many sites are where the client budget would go first (see the F3 line).
+- **Drawing previews:** the ghost and each unfinished site are baked into meshes (S-046), so a frame only draws them. Rebuilds happen when the ghost turns or a site's blocks change, and show as a one-frame cost (watch the F3 line's max). Chests and other entity-style blocks are still drawn each frame.
 - **Placement checks:** the most frequent request, asked as a ghost moves. Its cost grows with a settlement's buildings, workplaces and storage, which it checks for overlap one by one.
 
 ## Levers for later
@@ -95,7 +95,6 @@ Not now; only once a measurement points at one of them.
 - Longer repath intervals on long walks.
 - Cheaper ticks for units far from any player (vanilla already stops entities in chunks that aren't entity-ticking).
 - Per-settlement caches (e.g. of open workplaces).
-- Baking a preview's blocks into a cached mesh (a vertex buffer), rebuilt when the building turns or the sites change, instead of drawing block by block every frame.
 - A spatial index of a settlement's buildings, if placement checks grow with big settlements.
 - Unloaded settlements: units in unloaded chunks don't tick at all. Whether settlements keep producing while unloaded is a design question (see docs/design.md, Open questions).
 

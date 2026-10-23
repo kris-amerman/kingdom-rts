@@ -43,7 +43,24 @@ Story template:
   - JUnit for when meshes rebuild (pure rules: rotation, site blocks changed).
   - Measurement: a `/kingdomrts perf` report with a preview up among 30 or so sheds is under 1 ms per frame, and well under the first report's 1.45 ms with 167 blocks.
   - Manual: everything looks as before.
-- **Notes:** from the owner's first `/kingdomrts perf` report (S-022), where the preview drew 167 blocks at 1.45 ms per frame, about 9 µs a block, mostly the ambient-occlusion lighting maths done afresh every frame. Mesh baking was already the named next lever in docs/perf.md.
+- **Notes:**
+  - from the owner's first `/kingdomrts perf` report (S-022), where the preview drew 167 blocks at 1.45 ms per frame, about 9 µs a block, mostly the ambient-occlusion lighting maths done afresh every frame. Mesh baking was already the named next lever in docs/perf.md.
+  - **What was built:**
+    - `client/BakedMesh`: blocks drawn once into vertex buffers on the graphics card, one per render type, then drawn from there each frame (with a tint and a depth-write choice). Closing it frees them.
+    - **The ghost** is baked once per building and turn, against its stand-in level, with its alpha baked in. The red tint goes through the shader's colour when it's drawn.
+    - **Each unfinished site** is baked with the world's light, in each block's moving-block render types, relative to its lowest corner, and rebuilt when the blocks it still shows change. A refresh every 5 seconds keeps sites that are already shown, mesh and all.
+    - Chests and other entity-style blocks are still drawn each frame (few, and on their own textures).
+  - **Decisions:**
+    - **The ghost is drawn without writing depth.** A baked mesh can't be sorted back to front each frame, as the per-frame drawing was, so faces drawn first would hide the ones behind them. The ghost's far walls still show through its near ones.
+    - **Day and night still change**, because the light is baked as light levels and the lightmap turns them into brightness at draw time. A site's mesh is rebuilt for block changes, not for time.
+    - **Meshes are freed** when the preview ends, when sites stop being shown, on leaving the world, and on a resource reload (F3+T, resource packs), since textures may move around the atlas. Everything is rebaked on the next frame.
+    - `util/Rebuild` remembers what a mesh was built for (the turned blocks, the blocks still shown), so it's rebuilt only when that changes.
+  - **Tests:**
+    - JUnit (`RebuildTest`): a preview is rebuilt when it turns or changes building, not when it moves, and a site when its shown blocks change.
+    - Sabotage check: a rebuild rule that never rebuilds (`RebuildTest` fails).
+    - The GameTests and build pass. Nothing server-side changed.
+    - **The owner's report** (2026-10-22, 80 s): the building preview took **0.22 ms per frame on average** (0.37 ms 95th percentile) for 185 blocks, against 1.45 ms (2.82 ms) for 167 before. That's about 6½ times faster, and well under the 1 ms budget. The worst frame (23 ms) is most likely a rebuild. Everything looked as before.
+  - **Fixed along the way (from S-033):** the log said `Sheets loaded too early, modded registry-based materials may not work correctly`, on every launch since S-033. `BuildPreviewClient` held render types from vanilla's `Sheets` in static fields, and NeoForge loads the class at start-up to find its event handlers, before other mods register their wood types (their signs and chests could get the wrong textures). They're now in a nested class that Java loads only when a preview is first drawn.
 
 ### S-047 Flaky demolition tests
 - **Status:** planned | **Branch:** feature/demolish-flakes | **PR:** - | **Depends on:** S-038
