@@ -30,38 +30,8 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario. Manual: watching a town at work.
 - **Notes:** the stress half of the original S-022.
 
-### S-047 Flaky demolition tests
-- **Status:** in review | **Branch:** feature/demolish-flakes | **PR:** #44 | **Depends on:** S-038
-- **Goal:** S-038's demolition GameTests pass every run.
-- **Scope:**
-  - Find why `withNoRoomInStorageItHoldsOntoItsLoad` and `everyMaterialGoesBackToStorage` sometimes time out "waiting for the shed to be gone" (seen in about 1 in 8 runs during S-034 and S-022, and during S-038 itself).
-  - Fix the cause: in the builders' code if it's a real bug (a builder that can stall), or in the tests if it's their timing.
-- **Out of scope:** other changes to demolition.
-- **Test:** the fixed tests pass in 20 runs back to back. A sabotage check reproduces the old failure if the cause is put back.
-- **Notes:**
-  - Found while working on S-034 and S-022. Two tests failing with the same symptom suggested one cause, and it was.
-  - **The cause, a real bug in unit movement:**
-    - When a walk gets stuck, its last resort is a hop: `Footing.escapeSpot` moves the unit to a standable spot within 8 blocks that isn't closer to its target. Nothing checked what was in between.
-    - In the tests, a builder stuck at the platform's north edge, heading for storage to the south-east, found that every spot on its own platform that wasn't closer was off the edge. It hopped onto the next test's platform, across a gap, held its load "with no room in storage", and walked at storage forever.
-    - In a real world, the same could strand a unit across a ravine or on a neighbouring roof.
-  - **How it was found:**
-    - The demolition tests' timeout message now says which of the shed's blocks are left, and where each builder is, what it's doing (new `Unit.jobActivity`, the current job step) and what it carries.
-    - 40 temporary copies of the two tests in one run reproduced the stall about once in 50. The positions showed the builder outside the platform, walking at storage that had room.
-  - **The fix** (`Footing.escapeSpot`): a hop must never end somewhere the unit couldn't walk back from.
-    - **No gaps:** every column it passes over has ground at most a block below its lower end (`crossesGap`), since a unit can climb back up one block.
-    - **No ledges:** it doesn't end more than a block below both where the unit stands and its target. Climbing down from a tree to a target on the ground stays fine, because the target is low.
-    - Climbing out of pits and enclosures still works.
-  - **Tests:**
-    - New `FootingGameTests`: a unit on an island never hops across a gap or down off the ledge, and a unit boxed in by walls still hops out.
-    - Sabotage checks, each caught:
-      - allowing hops across gaps (the island test fails, and a demolition copy stalled again in the same run);
-      - allowing hops down off ledges (the island test fails).
-    - **Confidence:** with the fix, 4 runs with 40 demolition copies each (160 demolitions) and 3 normal runs all passed. Before it, the copies stalled within a few runs. That's well past the 20 runs the story asked for.
-    - **Stress:** within budget. The lumberjacks and builders still worked, which the stress test checks, so units still get unstuck.
-  - Side finding: in this NeoForge version `GameTestHelper.relativePos` gives rotated coordinates, so the diagnostics subtract the test's corner instead.
-
 ### S-035 Nation interface: demolish
-- **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
+- **Status:** in progress | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
 - **Goal:** a player can demolish their own buildings from the interface.
 - **Scope:**
   - **Demolish** shows your settlement's buildings as outlines.
@@ -177,6 +147,36 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-047 Flaky demolition tests
+- **Status:** done | **Branch:** feature/demolish-flakes | **PR:** #44 | **Depends on:** S-038
+- **Goal:** S-038's demolition GameTests pass every run.
+- **Scope:**
+  - Find why `withNoRoomInStorageItHoldsOntoItsLoad` and `everyMaterialGoesBackToStorage` sometimes time out "waiting for the shed to be gone" (seen in about 1 in 8 runs during S-034 and S-022, and during S-038 itself).
+  - Fix the cause: in the builders' code if it's a real bug (a builder that can stall), or in the tests if it's their timing.
+- **Out of scope:** other changes to demolition.
+- **Test:** the fixed tests pass in 20 runs back to back. A sabotage check reproduces the old failure if the cause is put back.
+- **Notes:**
+  - Found while working on S-034 and S-022. Two tests failing with the same symptom suggested one cause, and it was.
+  - **The cause, a real bug in unit movement:**
+    - When a walk gets stuck, its last resort is a hop: `Footing.escapeSpot` moves the unit to a standable spot within 8 blocks that isn't closer to its target. Nothing checked what was in between.
+    - In the tests, a builder stuck at the platform's north edge, heading for storage to the south-east, found that every spot on its own platform that wasn't closer was off the edge. It hopped onto the next test's platform, across a gap, held its load "with no room in storage", and walked at storage forever.
+    - In a real world, the same could strand a unit across a ravine or on a neighbouring roof.
+  - **How it was found:**
+    - The demolition tests' timeout message now says which of the shed's blocks are left, and where each builder is, what it's doing (new `Unit.jobActivity`, the current job step) and what it carries.
+    - 40 temporary copies of the two tests in one run reproduced the stall about once in 50. The positions showed the builder outside the platform, walking at storage that had room.
+  - **The fix** (`Footing.escapeSpot`): a hop must never end somewhere the unit couldn't walk back from.
+    - **No gaps:** every column it passes over has ground at most a block below its lower end (`crossesGap`), since a unit can climb back up one block.
+    - **No ledges:** it doesn't end more than a block below both where the unit stands and its target. Climbing down from a tree to a target on the ground stays fine, because the target is low.
+    - Climbing out of pits and enclosures still works.
+  - **Tests:**
+    - New `FootingGameTests`: a unit on an island never hops across a gap or down off the ledge, and a unit boxed in by walls still hops out.
+    - Sabotage checks, each caught:
+      - allowing hops across gaps (the island test fails, and a demolition copy stalled again in the same run);
+      - allowing hops down off ledges (the island test fails).
+    - **Confidence:** with the fix, 4 runs with 40 demolition copies each (160 demolitions) and 3 normal runs all passed. Before it, the copies stalled within a few runs. That's well past the 20 runs the story asked for.
+    - **Stress:** within budget. The lumberjacks and builders still worked, which the stress test checks, so units still get unstuck.
+  - Side finding: in this NeoForge version `GameTestHelper.relativePos` gives rotated coordinates, so the diagnostics subtract the test's corner instead.
 
 ### S-046 Bake the preview into a mesh
 - **Status:** done | **Branch:** feature/preview-mesh | **PR:** #43 | **Depends on:** S-022
