@@ -37,6 +37,12 @@ public class JobGoal extends Goal {
         Perf.end(unit.level(), Perf.Section.JOB, start);
     }
 
+    // What the job is doing right now, e.g. "taking down oak_planks at 1, 2, 3" (for diagnostics).
+    public String activity() {
+        JobStep step = runner.current();
+        return step != null ? step.describe() : "between steps";
+    }
+
     @Override
     public void stop() {
         runner.stop(unit);

@@ -10,6 +10,7 @@ import static com.krisamerman.kingdomrts.gametest.TestSupport.removeHall;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.runCommand;
 import static com.krisamerman.kingdomrts.gametest.TestSupport.unit;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import com.krisamerman.kingdomrts.unit.Stock;
 import com.krisamerman.kingdomrts.unit.Unit;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestAssertException;
 import net.minecraft.gametest.framework.GameTestHelper;
@@ -75,7 +77,8 @@ public class BuilderDemolishGameTests {
         Unit builder = builder(helper, settlement, blue, HALL.east(2));
         assign(helper, settlement, shed, builder);
         helper.startSequence()
-                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone"))
+                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone: "
+                        + whatsLeft(helper, shed, builder)))
                 .thenWaitUntil(() -> helper.assertTrue(builder.getInventory().isEmpty(), "Waiting for the builder to put its last load away"))
                 .thenExecute(() -> {
                     cost.forEach((item, count) -> helper.assertTrue(TestSupport.stored(helper, storage, item) == count,
@@ -100,7 +103,8 @@ public class BuilderDemolishGameTests {
         List<Unit> builders = List.of(builder(helper, settlement, blue, HALL.east(2)), builder(helper, settlement, blue, HALL.south(2)));
         builders.forEach(builder -> assign(helper, settlement, shed, builder));
         helper.startSequence()
-                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone"))
+                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone: "
+                        + whatsLeft(helper, shed, builders.toArray(Unit[]::new))))
                 .thenWaitUntil(() -> helper.assertTrue(builders.stream().allMatch(builder -> builder.getInventory().isEmpty()),
                         "Waiting for the builders to put their loads away"))
                 .thenExecute(() -> {
@@ -136,7 +140,8 @@ public class BuilderDemolishGameTests {
                         storage.setItem(i, ItemStack.EMPTY); // room at last
                     }
                 })
-                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone"))
+                .thenWaitUntil(() -> helper.assertTrue(current(helper, settlement).buildingAt(shed.origin()) == null, "Waiting for the shed to be gone: "
+                        + whatsLeft(helper, shed, builder)))
                 .thenWaitUntil(() -> helper.assertTrue(builder.getInventory().isEmpty(), "Waiting for the builder to put its last load away"))
                 .thenExecute(() -> {
                     helper.assertTrue(TestSupport.stored(helper, storage, Items.DIRT) == 64 * DIRT_STACKS, "What was in the chest should be in storage");
@@ -261,6 +266,33 @@ public class BuilderDemolishGameTests {
             throw new GameTestAssertException("Couldn't place settlement storage");
         }
         return storage;
+    }
+
+    // For a timed-out demolition: which of the shed's blocks are still up, and where each builder
+    // is, what it's doing and what it carries.
+    private static String whatsLeft(GameTestHelper helper, Building shed, Unit... builders) {
+        List<String> left = BuildingOps.placed(helper.getLevel(), shed).stream()
+                .filter(part -> BuildingRules.isToTakeDown(part.state(), helper.getLevel().getBlockState(part.pos())))
+                .map(part -> BuiltInRegistries.BLOCK.getKey(part.state().getBlock()).getPath() + " at " + part.pos().subtract(helper.absolutePos(BlockPos.ZERO)).toShortString())
+                .toList();
+        StringBuilder out = new StringBuilder(left.size() + " blocks left (shed at " + shed.origin().toShortString() + ") " + left);
+        if (helper.getBlockEntity(STORAGE) instanceof Container storage) {
+            out.append("; storage empty slots ").append(java.util.stream.IntStream.range(0, storage.getContainerSize()).filter(i -> storage.getItem(i).isEmpty()).count());
+        }
+        for (Unit builder : builders) {
+            List<String> carried = new ArrayList<>();
+            for (int i = 0; i < builder.getInventory().getContainerSize(); i++) {
+                ItemStack stack = builder.getInventory().getItem(i);
+                if (!stack.isEmpty()) {
+                    carried.add(stack.getCount() + " " + BuiltInRegistries.ITEM.getKey(stack.getItem()).getPath());
+                }
+            }
+            out.append("; builder at ").append(builder.blockPosition().toShortString()).append(" (storage at ")
+                    .append(helper.absolutePos(STORAGE).toShortString()).append(", hut at ").append(helper.absolutePos(TestSupport.BUILDERS_HUT).toShortString())
+                    .append(", on ground ").append(builder.onGround()).append(", navigating ").append(!builder.getNavigation().isDone())
+                    .append("), ").append(builder.jobActivity()).append(", carrying ").append(carried);
+        }
+        return out.toString();
     }
 
     private static void assertNothingDropped(GameTestHelper helper) {
