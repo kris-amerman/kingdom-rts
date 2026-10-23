@@ -10,6 +10,7 @@ import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.FactionData;
 import com.krisamerman.kingdomrts.settlement.SettlementOps;
 import com.krisamerman.kingdomrts.settlement.WorkplaceOps;
+import com.krisamerman.kingdomrts.unit.job.JobGoal;
 import com.krisamerman.kingdomrts.util.Perf;
 
 import net.minecraft.core.BlockPos;
@@ -186,6 +187,17 @@ public class Unit extends PathfinderMob implements InventoryCarrier {
         }
         (target ? targetSelector : goalSelector).addGoal(priority, goal);
         occupationGoals.add(goal);
+    }
+
+    // What the unit's job is doing right now (its current step), or "no job" (for diagnostics:
+    // test failure messages, and later the unit panel).
+    public String jobActivity() {
+        for (Goal goal : occupationGoals) {
+            if (goal instanceof JobGoal job) {
+                return job.activity();
+            }
+        }
+        return "no job";
     }
 
     // For occupations: sets an attribute's base value (e.g. max health from the JSON entry).

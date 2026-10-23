@@ -30,47 +30,35 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario. Manual: watching a town at work.
 - **Notes:** the stress half of the original S-022.
 
-### S-046 Bake the preview into a mesh
-- **Status:** in review | **Branch:** feature/preview-mesh | **PR:** #43 | **Depends on:** S-022
-- **Goal:** drawing a building preview and the unfinished sites around it stays under its 1 ms per frame budget, whatever their size.
-- **Scope:**
-  - **The ghost:** build its blocks into a cached mesh (a vertex buffer) once per building and rotation, and draw that each frame, moved to where the ghost is. Moving it costs nothing, and turning it rebuilds the mesh.
-  - **The unfinished sites:** each site's mesh is built when it arrives, and rebuilt when its blocks still to show change (builders place one) or the light around it changes enough to matter. Not every frame.
-  - **The tint** (red where it can't go) and see-through alpha are applied when drawing the mesh, not baked in, so a change of answer doesn't rebuild it.
-  - Keep what already works: hidden touching faces, see-through chests, drawing pulled toward the camera, solid sites lit like the world.
-- **Out of scope:** changing what's shown.
-- **Test:**
-  - JUnit for when meshes rebuild (pure rules: rotation, site blocks changed).
-  - Measurement: a `/kingdomrts perf` report with a preview up among 30 or so sheds is under 1 ms per frame, and well under the first report's 1.45 ms with 167 blocks.
-  - Manual: everything looks as before.
-- **Notes:**
-  - from the owner's first `/kingdomrts perf` report (S-022), where the preview drew 167 blocks at 1.45 ms per frame, about 9 µs a block, mostly the ambient-occlusion lighting maths done afresh every frame. Mesh baking was already the named next lever in docs/perf.md.
-  - **What was built:**
-    - `client/BakedMesh`: blocks drawn once into vertex buffers on the graphics card, one per render type, then drawn from there each frame (with a tint and a depth-write choice). Closing it frees them.
-    - **The ghost** is baked once per building and turn, against its stand-in level, with its alpha baked in. The red tint goes through the shader's colour when it's drawn.
-    - **Each unfinished site** is baked with the world's light, in each block's moving-block render types, relative to its lowest corner, and rebuilt when the blocks it still shows change. A refresh every 5 seconds keeps sites that are already shown, mesh and all.
-    - Chests and other entity-style blocks are still drawn each frame (few, and on their own textures).
-  - **Decisions:**
-    - **The ghost is drawn without writing depth.** A baked mesh can't be sorted back to front each frame, as the per-frame drawing was, so faces drawn first would hide the ones behind them. The ghost's far walls still show through its near ones.
-    - **Day and night still change**, because the light is baked as light levels and the lightmap turns them into brightness at draw time. A site's mesh is rebuilt for block changes, not for time.
-    - **Meshes are freed** when the preview ends, when sites stop being shown, on leaving the world, and on a resource reload (F3+T, resource packs), since textures may move around the atlas. Everything is rebaked on the next frame.
-    - `util/Rebuild` remembers what a mesh was built for (the turned blocks, the blocks still shown), so it's rebuilt only when that changes.
-  - **Tests:**
-    - JUnit (`RebuildTest`): a preview is rebuilt when it turns or changes building, not when it moves, and a site when its shown blocks change.
-    - Sabotage check: a rebuild rule that never rebuilds (`RebuildTest` fails).
-    - The GameTests and build pass. Nothing server-side changed.
-    - **The owner's report** (2026-10-22, 80 s): the building preview took **0.22 ms per frame on average** (0.37 ms 95th percentile) for 185 blocks, against 1.45 ms (2.82 ms) for 167 before. That's about 6½ times faster, and well under the 1 ms budget. The worst frame (23 ms) is most likely a rebuild. Everything looked as before.
-  - **Fixed along the way (from S-033):** the log said `Sheets loaded too early, modded registry-based materials may not work correctly`, on every launch since S-033. `BuildPreviewClient` held render types from vanilla's `Sheets` in static fields, and NeoForge loads the class at start-up to find its event handlers, before other mods register their wood types (their signs and chests could get the wrong textures). They're now in a nested class that Java loads only when a preview is first drawn.
-
 ### S-047 Flaky demolition tests
-- **Status:** planned | **Branch:** feature/demolish-flakes | **PR:** - | **Depends on:** S-038
+- **Status:** in review | **Branch:** feature/demolish-flakes | **PR:** #44 | **Depends on:** S-038
 - **Goal:** S-038's demolition GameTests pass every run.
 - **Scope:**
   - Find why `withNoRoomInStorageItHoldsOntoItsLoad` and `everyMaterialGoesBackToStorage` sometimes time out "waiting for the shed to be gone" (seen in about 1 in 8 runs during S-034 and S-022, and during S-038 itself).
   - Fix the cause: in the builders' code if it's a real bug (a builder that can stall), or in the tests if it's their timing.
 - **Out of scope:** other changes to demolition.
 - **Test:** the fixed tests pass in 20 runs back to back. A sabotage check reproduces the old failure if the cause is put back.
-- **Notes:** found while working on S-034 and S-022. Two tests failing with the same symptom suggests one cause.
+- **Notes:**
+  - Found while working on S-034 and S-022. Two tests failing with the same symptom suggested one cause, and it was.
+  - **The cause, a real bug in unit movement:**
+    - When a walk gets stuck, its last resort is a hop: `Footing.escapeSpot` moves the unit to a standable spot within 8 blocks that isn't closer to its target. Nothing checked what was in between.
+    - In the tests, a builder stuck at the platform's north edge, heading for storage to the south-east, found that every spot on its own platform that wasn't closer was off the edge. It hopped onto the next test's platform, across a gap, held its load "with no room in storage", and walked at storage forever.
+    - In a real world, the same could strand a unit across a ravine or on a neighbouring roof.
+  - **How it was found:**
+    - The demolition tests' timeout message now says which of the shed's blocks are left, and where each builder is, what it's doing (new `Unit.jobActivity`, the current job step) and what it carries.
+    - 40 temporary copies of the two tests in one run reproduced the stall about once in 50. The positions showed the builder outside the platform, walking at storage that had room.
+  - **The fix** (`Footing.escapeSpot`): a hop must never end somewhere the unit couldn't walk back from.
+    - **No gaps:** every column it passes over has ground at most a block below its lower end (`crossesGap`), since a unit can climb back up one block.
+    - **No ledges:** it doesn't end more than a block below both where the unit stands and its target. Climbing down from a tree to a target on the ground stays fine, because the target is low.
+    - Climbing out of pits and enclosures still works.
+  - **Tests:**
+    - New `FootingGameTests`: a unit on an island never hops across a gap or down off the ledge, and a unit boxed in by walls still hops out.
+    - Sabotage checks, each caught:
+      - allowing hops across gaps (the island test fails, and a demolition copy stalled again in the same run);
+      - allowing hops down off ledges (the island test fails).
+    - **Confidence:** with the fix, 4 runs with 40 demolition copies each (160 demolitions) and 3 normal runs all passed. Before it, the copies stalled within a few runs. That's well past the 20 runs the story asked for.
+    - **Stress:** within budget. The lumberjacks and builders still worked, which the stress test checks, so units still get unstuck.
+  - Side finding: in this NeoForge version `GameTestHelper.relativePos` gives rotated coordinates, so the diagnostics subtract the test's corner instead.
 
 ### S-035 Nation interface: demolish
 - **Status:** planned | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
@@ -189,6 +177,38 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-046 Bake the preview into a mesh
+- **Status:** done | **Branch:** feature/preview-mesh | **PR:** #43 | **Depends on:** S-022
+- **Goal:** drawing a building preview and the unfinished sites around it stays under its 1 ms per frame budget, whatever their size.
+- **Scope:**
+  - **The ghost:** build its blocks into a cached mesh (a vertex buffer) once per building and rotation, and draw that each frame, moved to where the ghost is. Moving it costs nothing, and turning it rebuilds the mesh.
+  - **The unfinished sites:** each site's mesh is built when it arrives, and rebuilt when its blocks still to show change (builders place one) or the light around it changes enough to matter. Not every frame.
+  - **The tint** (red where it can't go) and see-through alpha are applied when drawing the mesh, not baked in, so a change of answer doesn't rebuild it.
+  - Keep what already works: hidden touching faces, see-through chests, drawing pulled toward the camera, solid sites lit like the world.
+- **Out of scope:** changing what's shown.
+- **Test:**
+  - JUnit for when meshes rebuild (pure rules: rotation, site blocks changed).
+  - Measurement: a `/kingdomrts perf` report with a preview up among 30 or so sheds is under 1 ms per frame, and well under the first report's 1.45 ms with 167 blocks.
+  - Manual: everything looks as before.
+- **Notes:**
+  - from the owner's first `/kingdomrts perf` report (S-022), where the preview drew 167 blocks at 1.45 ms per frame, about 9 µs a block, mostly the ambient-occlusion lighting maths done afresh every frame. Mesh baking was already the named next lever in docs/perf.md.
+  - **What was built:**
+    - `client/BakedMesh`: blocks drawn once into vertex buffers on the graphics card, one per render type, then drawn from there each frame (with a tint and a depth-write choice). Closing it frees them.
+    - **The ghost** is baked once per building and turn, against its stand-in level, with its alpha baked in. The red tint goes through the shader's colour when it's drawn.
+    - **Each unfinished site** is baked with the world's light, in each block's moving-block render types, relative to its lowest corner, and rebuilt when the blocks it still shows change. A refresh every 5 seconds keeps sites that are already shown, mesh and all.
+    - Chests and other entity-style blocks are still drawn each frame (few, and on their own textures).
+  - **Decisions:**
+    - **The ghost is drawn without writing depth.** A baked mesh can't be sorted back to front each frame, as the per-frame drawing was, so faces drawn first would hide the ones behind them. The ghost's far walls still show through its near ones.
+    - **Day and night still change**, because the light is baked as light levels and the lightmap turns them into brightness at draw time. A site's mesh is rebuilt for block changes, not for time.
+    - **Meshes are freed** when the preview ends, when sites stop being shown, on leaving the world, and on a resource reload (F3+T, resource packs), since textures may move around the atlas. Everything is rebaked on the next frame.
+    - `util/Rebuild` remembers what a mesh was built for (the turned blocks, the blocks still shown), so it's rebuilt only when that changes.
+  - **Tests:**
+    - JUnit (`RebuildTest`): a preview is rebuilt when it turns or changes building, not when it moves, and a site when its shown blocks change.
+    - Sabotage check: a rebuild rule that never rebuilds (`RebuildTest` fails).
+    - The GameTests and build pass. Nothing server-side changed.
+    - **The owner's report** (2026-10-22, 80 s): the building preview took **0.22 ms per frame on average** (0.37 ms 95th percentile) for 185 blocks, against 1.45 ms (2.82 ms) for 167 before. That's about 6½ times faster, and well under the 1 ms budget. The worst frame (23 ms) is most likely a rebuild. Everything looked as before.
+  - **Fixed along the way (from S-033):** the log said `Sheets loaded too early, modded registry-based materials may not work correctly`, on every launch since S-033. `BuildPreviewClient` held render types from vanilla's `Sheets` in static fields, and NeoForge loads the class at start-up to find its event handlers, before other mods register their wood types (their signs and chests could get the wrong textures). They're now in a nested class that Java loads only when a preview is first drawn.
 
 ### S-022 Perf commands
 - **Status:** done | **Branch:** feature/perf-commands | **PR:** #42 | **Depends on:** S-044
