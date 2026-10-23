@@ -31,7 +31,7 @@ Story template:
 - **Notes:** the stress half of the original S-022.
 
 ### S-047 Flaky demolition tests
-- **Status:** in progress | **Branch:** feature/demolish-flakes | **PR:** - | **Depends on:** S-038
+- **Status:** in review | **Branch:** feature/demolish-flakes | **PR:** #44 | **Depends on:** S-038
 - **Goal:** S-038's demolition GameTests pass every run.
 - **Scope:**
   - Find why `withNoRoomInStorageItHoldsOntoItsLoad` and `everyMaterialGoesBackToStorage` sometimes time out "waiting for the shed to be gone" (seen in about 1 in 8 runs during S-034 and S-022, and during S-038 itself).
