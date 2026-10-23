@@ -31,7 +31,7 @@ Story template:
 - **Notes:** the stress half of the original S-022.
 
 ### S-046 Bake the preview into a mesh
-- **Status:** in progress | **Branch:** feature/preview-mesh | **PR:** - | **Depends on:** S-022
+- **Status:** in review | **Branch:** feature/preview-mesh | **PR:** #43 | **Depends on:** S-022
 - **Goal:** drawing a building preview and the unfinished sites around it stays under its 1 ms per frame budget, whatever their size.
 - **Scope:**
   - **The ghost:** build its blocks into a cached mesh (a vertex buffer) once per building and rotation, and draw that each frame, moved to where the ghost is. Moving it costs nothing, and turning it rebuilds the mesh.
