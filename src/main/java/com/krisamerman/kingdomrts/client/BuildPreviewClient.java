@@ -8,6 +8,7 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
+import org.joml.Matrix4f;
 import org.lwjgl.glfw.GLFW;
 
 import com.krisamerman.kingdomrts.KingdomRts;
@@ -16,6 +17,8 @@ import com.krisamerman.kingdomrts.building.BuildingPreview;
 import com.krisamerman.kingdomrts.building.BuildingRules;
 import com.krisamerman.kingdomrts.nation.NationPayloads;
 import com.krisamerman.kingdomrts.util.Perf;
+import com.krisamerman.kingdomrts.util.Rebuild;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -35,6 +38,7 @@ import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.InteractionHand;
@@ -63,6 +67,7 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.CustomizeGuiOverlayEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.event.ScreenEvent;
@@ -98,18 +103,26 @@ public final class BuildPreviewClient {
     // undoes it exactly, and the gap grows with distance as the depth buffer's precision shrinks:
     // the same trick vanilla uses to draw outlines over blocks.
     private static final float TOWARD_CAMERA = 0.999f;
-    // A see-through render type on the block texture atlas, which vanilla uses for translucent
-    // blocks drawn outside the world's chunks.
-    private static final RenderType GHOST_TYPE = Sheets.translucentCullBlockSheet();
-    // Blocks drawn like entities (chests, beds, shulker boxes, signs, banners) ask for these solid or
-    // cut-out render types, which ignore the ghost's alpha; each is swapped for a see-through one
-    // on the same texture.
-    private static final Map<RenderType, RenderType> SEE_THROUGH = Map.of(
-            Sheets.chestSheet(), RenderType.entityTranslucentCull(Sheets.CHEST_SHEET),
-            Sheets.bedSheet(), RenderType.entityTranslucentCull(Sheets.BED_SHEET),
-            Sheets.shulkerBoxSheet(), RenderType.entityTranslucentCull(Sheets.SHULKER_SHEET),
-            Sheets.signSheet(), RenderType.entityTranslucentCull(Sheets.SIGN_SHEET),
-            Sheets.bannerSheet(), RenderType.entityTranslucentCull(Sheets.BANNER_SHEET));
+    // The render types the preview draws with. They come from vanilla's Sheets, which mustn't load
+    // while mods are still starting up (other mods' wood types aren't registered yet, so their signs
+    // and chests would get the wrong textures). NeoForge loads this class at start-up to find its
+    // event handlers, so they live in a nested class instead: Java loads that only when a preview is
+    // first drawn.
+    private static final class RenderTypes {
+        // A see-through render type on the block texture atlas, which vanilla uses for translucent
+        // blocks drawn outside the world's chunks.
+        static final RenderType GHOST = Sheets.translucentCullBlockSheet();
+        // Blocks drawn like entities (chests, beds, shulker boxes, signs, banners) ask for these solid
+        // or cut-out render types, which ignore the ghost's alpha; each is swapped for a see-through
+        // one on the same texture.
+        static final Map<RenderType, RenderType> SEE_THROUGH = Map.of(
+                Sheets.chestSheet(), RenderType.entityTranslucentCull(Sheets.CHEST_SHEET),
+                Sheets.bedSheet(), RenderType.entityTranslucentCull(Sheets.BED_SHEET),
+                Sheets.shulkerBoxSheet(), RenderType.entityTranslucentCull(Sheets.SHULKER_SHEET),
+                Sheets.signSheet(), RenderType.entityTranslucentCull(Sheets.SIGN_SHEET),
+                Sheets.bannerSheet(), RenderType.entityTranslucentCull(Sheets.BANNER_SHEET));
+    }
+
     private static final int HINT_COLOR = 0xFFFFFFFF;
     private static final int PROBLEM_COLOR = 0xFFFF6060;
     // The ghost's colour where the building couldn't go: its blocks keep their texture, in red.
@@ -178,6 +191,11 @@ public final class BuildPreviewClient {
     private static List<Site> sites = List.of();
     private static int ticksSinceSites;
 
+    // The ghost's baked mesh (see ghostMesh), and what it was built for.
+    @Nullable
+    private static BakedMesh ghostMesh;
+    private static final Rebuild<List<Blueprint.Part>> ghostRebuild = new Rebuild<>();
+
     // The stand-in level for the current preview's blocks, rebuilt when the building turns.
     @Nullable
     private static GhostLevel ghostLevel;
@@ -214,6 +232,8 @@ public final class BuildPreviewClient {
         forgetChecks();
         shownAnswer = null;
         commissioning = false;
+        closeGhostMesh();
+        closeSiteMeshes();
         sites = List.of();
     }
 
@@ -229,13 +249,23 @@ public final class BuildPreviewClient {
         if (preview == null || world == null) {
             return;
         }
+        // Sites already shown are kept, baked mesh and all, so a refresh doesn't rebuild them all.
+        Map<List<Blueprint.Part>, Site> previous = new HashMap<>();
+        sites.forEach(site -> previous.put(site.placed, site));
         List<Site> shown = new ArrayList<>();
         for (NationPayloads.SiteView view : payload.sites()) {
             Blueprint blueprint = payload.blueprints().get(view.building());
             if (blueprint != null) {
-                shown.add(new Site(BuildingRules.place(blueprint, view.origin(), view.rotation()), world));
+                List<Blueprint.Part> placed = BuildingRules.place(blueprint, view.origin(), view.rotation());
+                Site kept = previous.remove(placed);
+                if (kept != null && kept.world != world) {
+                    kept.close(); // the same spot in another dimension
+                    kept = null;
+                }
+                shown.add(kept != null ? kept : new Site(placed, world));
             }
         }
+        previous.values().forEach(Site::close); // no longer shown
         sites = shown;
     }
 
@@ -397,6 +427,16 @@ public final class BuildPreviewClient {
         }
     }
 
+    // Reloading resources (F3+T, a resource pack) can move textures around the block atlas, which
+    // the baked meshes point into: they're dropped, and baked again on the next frame.
+    @SubscribeEvent
+    static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener((ResourceManagerReloadListener) resourceManager -> {
+            closeGhostMesh();
+            closeSiteMeshes();
+        });
+    }
+
     // Leaving the world or server ends the preview.
     @SubscribeEvent
     static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
@@ -418,7 +458,8 @@ public final class BuildPreviewClient {
         NationPayloads.PlacementAnswer placement = currentAnswer();
         boolean refused = placement != null && !placement.fits();
         float[] tint = refused ? PROBLEM_TINT : NO_TINT;
-        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA, tint);
+        // For the entity-style blocks drawn each frame: see-through, and tinted here.
+        MultiBufferSource ghost = type -> new GhostConsumer(buffers.getBuffer(RenderTypes.SEE_THROUGH.getOrDefault(type, type)), GHOST_ALPHA, tint);
         BlockRenderDispatcher blocks = minecraft.getBlockRenderer();
         long frameStart = System.nanoTime();
         ProfilerFiller profiler = minecraft.getProfiler();
@@ -427,35 +468,26 @@ public final class BuildPreviewClient {
         profiler.pop();
         Perf.push(profiler, Perf.ClientSection.PREVIEW_RENDER);
 
-        // Drawn against a stand-in level made of the ghost's own blocks, so faces where two of its
-        // blocks touch are left out, as the world leaves them out between real blocks.
-        GhostLevel ghostLevel = ghostLevel(minecraft, origin);
-        RandomSource random = RandomSource.create();
         pose.pushPose();
         pose.scale(TOWARD_CAMERA, TOWARD_CAMERA, TOWARD_CAMERA); // the pose stack is centred on the camera
         pose.translate(origin.getX() - camera.x, origin.getY() - camera.y, origin.getZ() - camera.z);
-        // Entity-style blocks (chests and the like) first, finished before the rest: see-through
-        // faces still hide what's drawn behind them later, so a chest drawn after the walls would
-        // vanish behind them instead of showing through.
+        // Entity-style blocks (chests and the like) first, drawn each frame (they're few, and on
+        // textures of their own): see-through faces still hide what's drawn behind them later, so
+        // a chest drawn after the walls would vanish behind them instead of showing through.
         for (Blueprint.Part part : preview.turnedParts()) {
             if (part.state().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED) {
                 pose.pushPose();
                 pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
-                blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, GHOST_TYPE);
+                blocks.renderSingleBlock(part.state(), pose, ghost, LightTexture.FULL_BRIGHT, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, RenderTypes.GHOST);
                 pose.popPose();
             }
         }
         buffers.endBatch();
-        for (Blueprint.Part part : preview.turnedParts()) {
-            if (part.state().getRenderShape() == RenderShape.MODEL) {
-                pose.pushPose();
-                pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
-                blocks.renderBatched(part.state(), part.pos(), ghostLevel, pose, ghost.getBuffer(GHOST_TYPE), true, random, ModelData.EMPTY, null);
-                pose.popPose();
-            }
-        }
+        // The rest from the ghost's baked mesh, built once per building and turn. The red tint is
+        // applied as it's drawn, so a new answer doesn't rebuild it.
+        BakedMesh mesh = ghostMesh(minecraft, origin, blocks);
+        mesh.draw(new Matrix4f(RenderSystem.getModelViewMatrix()).mul(pose.last().pose()), tint[0], tint[1], tint[2], 1.0f, false);
         pose.popPose();
-        buffers.endBatch(GHOST_TYPE);
 
         AABB box = AABB.of(preview.footprint(anchor)).move(-camera.x, -camera.y, -camera.z);
         LevelRenderer.renderLineBox(pose, buffers.getBuffer(RenderType.lines()), box, 1.0f, refused ? 0.3f : 1.0f, refused ? 0.3f : 1.0f, 0.8f);
@@ -468,32 +500,74 @@ public final class BuildPreviewClient {
         }
     }
 
-    // The unfinished buildings, finished: solid, and lit and shaded like the world, drawn the way
-    // vanilla draws falling blocks (each block's own render types, in their moving-block form).
+    // The unfinished buildings, finished: solid, and lit and shaded like the world. Each site's
+    // blocks are baked into a mesh the way vanilla draws falling blocks (each block's own render
+    // types, in their moving-block form), rebuilt only when the blocks it still shows change. The
+    // light is baked in as light levels; day and night still change through the lightmap.
     private static void renderSites(PoseStack pose, Vec3 camera, MultiBufferSource.BufferSource buffers, BlockRenderDispatcher blocks) {
         if (sites.isEmpty()) {
             return;
         }
-        RandomSource random = RandomSource.create();
         for (Site site : sites) {
+            pose.pushPose();
+            pose.translate(site.corner.getX() - camera.x, site.corner.getY() - camera.y, site.corner.getZ() - camera.z);
+            site.mesh(blocks).draw(new Matrix4f(RenderSystem.getModelViewMatrix()).mul(pose.last().pose()), 1.0f, 1.0f, 1.0f, 1.0f, true);
+            // Entity-style blocks each frame: few, and on textures of their own.
             for (Blueprint.Part part : site.shown) {
-                BlockPos pos = part.pos();
-                pose.pushPose();
-                pose.translate(pos.getX() - camera.x, pos.getY() - camera.y, pos.getZ() - camera.z);
-                if (part.state().getRenderShape() == RenderShape.MODEL) {
-                    BakedModel model = blocks.getBlockModel(part.state());
-                    for (RenderType type : model.getRenderTypes(part.state(), random, ModelData.EMPTY)) {
-                        blocks.renderBatched(part.state(), pos, site, pose, buffers.getBuffer(RenderTypeHelper.getMovingBlockRenderType(type)), true,
-                                random, ModelData.EMPTY, type);
-                    }
-                } else {
+                if (part.state().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED) {
+                    BlockPos pos = part.pos();
+                    pose.pushPose();
+                    pose.translate(pos.getX() - site.corner.getX(), pos.getY() - site.corner.getY(), pos.getZ() - site.corner.getZ());
                     blocks.renderSingleBlock(part.state(), pose, buffers, LevelRenderer.getLightColor(site.world, pos), OverlayTexture.NO_OVERLAY,
                             ModelData.EMPTY, null);
+                    pose.popPose();
                 }
-                pose.popPose();
             }
+            pose.popPose();
         }
         buffers.endBatch();
+    }
+
+    // The ghost's baked mesh, built again only when the building or its turn changes. Drawn against
+    // a stand-in level made of the ghost's own blocks, so faces where two of its blocks touch are
+    // left out, as the world leaves them out between real blocks. Its alpha is baked in.
+    private static BakedMesh ghostMesh(Minecraft minecraft, BlockPos origin, BlockRenderDispatcher blocks) {
+        GhostLevel level = ghostLevel(minecraft, origin);
+        if (ghostMesh == null || ghostRebuild.needed(preview.turnedParts())) {
+            closeGhostMesh();
+            RandomSource random = RandomSource.create();
+            PoseStack pose = new PoseStack();
+            ghostMesh = BakedMesh.bake(buffer -> {
+                VertexConsumer consumer = new GhostConsumer(buffer.apply(RenderTypes.GHOST), GHOST_ALPHA, NO_TINT);
+                for (Blueprint.Part part : preview.turnedParts()) {
+                    if (part.state().getRenderShape() == RenderShape.MODEL) {
+                        pose.pushPose();
+                        pose.translate(part.pos().getX(), part.pos().getY(), part.pos().getZ());
+                        blocks.renderBatched(part.state(), part.pos(), level, pose, consumer, true, random, ModelData.EMPTY, null);
+                        pose.popPose();
+                    }
+                }
+            });
+            ghostRebuild.done(preview.turnedParts());
+        }
+        return ghostMesh;
+    }
+
+    private static void closeGhostMesh() {
+        if (ghostMesh != null) {
+            ghostMesh.close();
+            ghostMesh = null;
+        }
+        ghostRebuild.reset();
+    }
+
+    // The lower of each coordinate of two positions.
+    private static BlockPos lowest(BlockPos a, BlockPos b) {
+        return new BlockPos(Math.min(a.getX(), b.getX()), Math.min(a.getY(), b.getY()), Math.min(a.getZ(), b.getZ()));
+    }
+
+    private static void closeSiteMeshes() {
+        sites.forEach(Site::close);
     }
 
     private static GhostLevel ghostLevel(Minecraft minecraft, BlockPos origin) {
@@ -654,12 +728,54 @@ public final class BuildPreviewClient {
         private final Map<BlockPos, BlockState> planned = new HashMap<>();
         // The blocks to draw, worked out once a tick (BuildingRules.stillToShow).
         private List<Blueprint.Part> shown = List.of();
+        // The building's lowest corner: its mesh is baked relative to it, so its numbers stay small.
+        private final BlockPos corner;
+        @Nullable
+        private BakedMesh mesh;
+        private final Rebuild<List<Blueprint.Part>> rebuild = new Rebuild<>();
 
         Site(List<Blueprint.Part> placed, ClientLevel world) {
             this.placed = placed;
             this.world = world;
             placed.stream().filter(part -> !part.state().isAir()).forEach(part -> planned.put(part.pos(), part.state()));
+            corner = placed.stream().map(Blueprint.Part::pos).reduce(BuildPreviewClient::lowest).orElse(BlockPos.ZERO);
             update();
+        }
+
+        // The site's baked mesh, built again when the blocks it shows have changed.
+        BakedMesh mesh(BlockRenderDispatcher blocks) {
+            if (mesh == null || rebuild.needed(shown)) {
+                close();
+                List<Blueprint.Part> drawn = shown;
+                RandomSource random = RandomSource.create();
+                PoseStack pose = new PoseStack();
+                mesh = BakedMesh.bake(buffer -> {
+                    for (Blueprint.Part part : drawn) {
+                        if (part.state().getRenderShape() != RenderShape.MODEL) {
+                            continue;
+                        }
+                        BlockPos pos = part.pos();
+                        pose.pushPose();
+                        pose.translate(pos.getX() - corner.getX(), pos.getY() - corner.getY(), pos.getZ() - corner.getZ());
+                        BakedModel model = blocks.getBlockModel(part.state());
+                        for (RenderType type : model.getRenderTypes(part.state(), random, ModelData.EMPTY)) {
+                            blocks.renderBatched(part.state(), pos, this, pose, buffer.apply(RenderTypeHelper.getMovingBlockRenderType(type)), true, random,
+                                    ModelData.EMPTY, type);
+                        }
+                        pose.popPose();
+                    }
+                });
+                rebuild.done(drawn);
+            }
+            return mesh;
+        }
+
+        void close() {
+            if (mesh != null) {
+                mesh.close();
+                mesh = null;
+            }
+            rebuild.reset();
         }
 
         void update() {
