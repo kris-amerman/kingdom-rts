@@ -256,16 +256,25 @@ public final class BuildingOps {
     }
 
     // Stops a demolition: the building stays as it is (what's been taken down stays down), and is
-    // built, or a site again, as it was. Its builders stay on it. Neighbours of what was taken down are
-    // told now (see BuilderJob: blocks are taken down without telling them, so nothing pops off).
-    public static boolean stopDemolition(ServerLevel level, Settlement settlement, Building building) {
+    // built, or a site again, as it was. A site keeps its builders; a built building's go back to the
+    // pool, as a built building takes none. Neighbours of what was taken down are told now (see
+    // BuilderJob: blocks are taken down without telling them, so nothing pops off).
+    // Only the faction that owns the building can. Returns why it can't be, or null.
+    @Nullable
+    public static String stopDemolition(ServerLevel level, Faction faction, Settlement settlement, Building building) {
         Building current = settlement.buildingAt(building.origin());
-        if (current == null || !current.demolishing()) {
-            return false;
+        if (current == null) {
+            return "That building is no longer commissioned";
+        }
+        if (!faction.id().equals(settlement.owner())) {
+            return "The " + typeName(level, current) + " belongs to another faction";
+        }
+        if (!current.demolishing()) {
+            return "The " + typeName(level, current) + " isn't being demolished";
         }
         SettlementData.get(level).setDemolishing(settlement, current, false);
         updateTakenDown(level, current);
-        return true;
+        return null;
     }
 
     // If nothing of a building being demolished is left (none of its blocks, and nothing in its

@@ -216,6 +216,7 @@ public final class BuildPreviewClient {
     // The server sent the blueprint of a building the player picked: start previewing it, replacing
     // any building already being previewed.
     public static void start(NationPayloads.ShowBlueprint payload) {
+        DemolishClient.cancel(); // one interface action at a time
         preview = new BuildingPreview(payload.building(), payload.name(), payload.blueprint());
         anchor = null;
         FRAMES.clear();
@@ -349,8 +350,12 @@ public final class BuildPreviewClient {
             waitingForRelease = false;
         }
         if (preview == null || player == null) {
-            // Presses while there's nothing to preview are dropped, so they don't pile up.
+            // Presses while there's nothing to preview are dropped, so they don't pile up (except the
+            // cancel key while Demolish is picking: it's Demolish's to use).
             KEYS.forEach(key -> {
+                if (key == CANCEL_KEY && DemolishClient.isActive()) {
+                    return;
+                }
                 while (key.consumeClick()) {
                     // nothing to do
                 }
