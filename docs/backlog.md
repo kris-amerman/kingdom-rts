@@ -31,7 +31,7 @@ Story template:
 - **Notes:** the stress half of the original S-022.
 
 ### S-035 Nation interface: demolish
-- **Status:** in progress | **Branch:** feature/interface-demolish | **PR:** - | **Depends on:** S-032, S-038
+- **Status:** in review | **Branch:** feature/interface-demolish | **PR:** #45 | **Depends on:** S-032, S-038
 - **Goal:** a player can demolish their own buildings from the interface.
 - **Scope:**
   - **Demolish** shows your settlement's buildings as outlines.
