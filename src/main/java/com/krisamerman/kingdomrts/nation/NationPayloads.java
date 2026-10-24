@@ -8,6 +8,7 @@ import java.util.function.Consumer;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.building.Blueprint;
 import com.krisamerman.kingdomrts.client.BuildPreviewClient;
+import com.krisamerman.kingdomrts.client.DemolishClient;
 import com.krisamerman.kingdomrts.client.NationClient;
 import com.krisamerman.kingdomrts.util.Perf;
 
@@ -216,6 +217,79 @@ public final class NationPayloads {
         }
     }
 
+    // Client to server: "send me my faction's buildings around me", to pick one to demolish.
+    public record RequestBuildings() implements CustomPacketPayload {
+        public static final Type<RequestBuildings> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "request_buildings"));
+        public static final StreamCodec<FriendlyByteBuf, RequestBuildings> STREAM_CODEC = StreamCodec.unit(new RequestBuildings());
+
+        @Override
+        public Type<RequestBuildings> type() {
+            return TYPE;
+        }
+    }
+
+    // One of the faction's buildings as Demolish shows it: its name, template corner (which names it
+    // in a demolish request), the box it takes up, and whether it's finished or already coming down.
+    public record BuildingView(String name, BlockPos origin, BlockPos min, BlockPos max, boolean built, boolean demolishing) {
+        public static final StreamCodec<FriendlyByteBuf, BuildingView> STREAM_CODEC = StreamCodec.of((buf, view) -> {
+            buf.writeUtf(view.name());
+            buf.writeBlockPos(view.origin());
+            buf.writeBlockPos(view.min());
+            buf.writeBlockPos(view.max());
+            buf.writeBoolean(view.built());
+            buf.writeBoolean(view.demolishing());
+        }, buf -> new BuildingView(buf.readUtf(), buf.readBlockPos(), buf.readBlockPos(), buf.readBlockPos(), buf.readBoolean(), buf.readBoolean()));
+    }
+
+    // Server to client: the faction's buildings around the player.
+    public record ShowBuildings(List<BuildingView> buildings) implements CustomPacketPayload {
+        public static final Type<ShowBuildings> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "show_buildings"));
+        public static final StreamCodec<FriendlyByteBuf, ShowBuildings> STREAM_CODEC = BuildingView.STREAM_CODEC.apply(ByteBufCodecs.list())
+                .map(ShowBuildings::new, ShowBuildings::buildings);
+
+        @Override
+        public Type<ShowBuildings> type() {
+            return TYPE;
+        }
+    }
+
+    // Client to server: "demolish the building with its template corner here".
+    public record DemolishBuilding(BlockPos origin) implements CustomPacketPayload {
+        public static final Type<DemolishBuilding> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "demolish_building"));
+        public static final StreamCodec<FriendlyByteBuf, DemolishBuilding> STREAM_CODEC = BlockPos.STREAM_CODEC
+                .map(DemolishBuilding::new, DemolishBuilding::origin).cast();
+
+        @Override
+        public Type<DemolishBuilding> type() {
+            return TYPE;
+        }
+    }
+
+    // Client to server: "stop demolishing the building with its template corner here".
+    public record StopDemolition(BlockPos origin) implements CustomPacketPayload {
+        public static final Type<StopDemolition> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "stop_demolition"));
+        public static final StreamCodec<FriendlyByteBuf, StopDemolition> STREAM_CODEC = BlockPos.STREAM_CODEC
+                .map(StopDemolition::new, StopDemolition::origin).cast();
+
+        @Override
+        public Type<StopDemolition> type() {
+            return TYPE;
+        }
+    }
+
+    // Server to client: whether a demolish or stop request went through (the player is told in words
+    // on the action bar).
+    public record DemolishAnswer(boolean done) implements CustomPacketPayload {
+        public static final Type<DemolishAnswer> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "demolish_answer"));
+        public static final StreamCodec<FriendlyByteBuf, DemolishAnswer> STREAM_CODEC = ByteBufCodecs.BOOL
+                .map(DemolishAnswer::new, DemolishAnswer::done).cast();
+
+        @Override
+        public Type<DemolishAnswer> type() {
+            return TYPE;
+        }
+    }
+
     @SubscribeEvent
     static void onRegisterPayloads(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar registrar = event.registrar(VERSION);
@@ -230,15 +304,24 @@ public final class NationPayloads {
                 (payload, context) -> timed(context, player -> NationRequests.commission(player, payload)));
         registrar.playToServer(RequestSites.TYPE, RequestSites.STREAM_CODEC,
                 (payload, context) -> timed(context, NationRequests::sites));
+        registrar.playToServer(RequestBuildings.TYPE, RequestBuildings.STREAM_CODEC,
+                (payload, context) -> timed(context, NationRequests::buildings));
+        registrar.playToServer(DemolishBuilding.TYPE, DemolishBuilding.STREAM_CODEC,
+                (payload, context) -> timed(context, player -> NationRequests.demolish(player, payload.origin())));
+        registrar.playToServer(StopDemolition.TYPE, StopDemolition.STREAM_CODEC,
+                (payload, context) -> timed(context, player -> NationRequests.stopDemolition(player, payload.origin())));
         registrar.playToServer(CheckPlacement.TYPE, CheckPlacement.STREAM_CODEC,
                 (payload, context) -> timed(context, player -> NationRequests.checkPlacement(player, payload)));
-        // These lambdas only touch the client-only classes (NationClient, BuildPreviewClient) when a
-        // payload arrives, which only happens on a client, so a dedicated server never loads them.
+        // These lambdas only touch the client-only classes (NationClient, BuildPreviewClient,
+        // DemolishClient) when a payload arrives, which only happens on a client, so a dedicated
+        // server never loads them.
         registrar.playToClient(ShowNation.TYPE, ShowNation.STREAM_CODEC, (payload, context) -> NationClient.show(payload.overview()));
         registrar.playToClient(ShowCatalog.TYPE, ShowCatalog.STREAM_CODEC, (payload, context) -> NationClient.showCatalog(payload.entries()));
         registrar.playToClient(ShowBlueprint.TYPE, ShowBlueprint.STREAM_CODEC, (payload, context) -> BuildPreviewClient.start(payload));
         registrar.playToClient(CommissionAnswer.TYPE, CommissionAnswer.STREAM_CODEC, (payload, context) -> BuildPreviewClient.commissionAnswered(payload));
         registrar.playToClient(ShowSites.TYPE, ShowSites.STREAM_CODEC, (payload, context) -> BuildPreviewClient.showSites(payload));
+        registrar.playToClient(ShowBuildings.TYPE, ShowBuildings.STREAM_CODEC, (payload, context) -> DemolishClient.showBuildings(payload.buildings()));
+        registrar.playToClient(DemolishAnswer.TYPE, DemolishAnswer.STREAM_CODEC, (payload, context) -> DemolishClient.demolishAnswered(payload.done()));
         registrar.playToClient(PlacementAnswer.TYPE, PlacementAnswer.STREAM_CODEC, (payload, context) -> BuildPreviewClient.placementAnswered(payload));
     }
 

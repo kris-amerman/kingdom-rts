@@ -16,11 +16,13 @@ import com.krisamerman.kingdomrts.building.BuildingTemplates;
 import com.krisamerman.kingdomrts.building.BuildingType;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.settlement.BuilderOps;
 import com.krisamerman.kingdomrts.settlement.Building;
 import com.krisamerman.kingdomrts.settlement.BuildingOps;
 import com.krisamerman.kingdomrts.settlement.Settlement;
 import com.krisamerman.kingdomrts.settlement.SettlementData;
 
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -50,6 +52,9 @@ public final class NationRequests {
     public static final int MAX_SITES = 32;
     public static final int SITES_INTERVAL_TICKS = 10;
     private static final Map<ServerPlayer, Long> LAST_SITES = new WeakHashMap<>();
+    // The most of a faction's buildings Demolish outlines at once (within SITES_RANGE).
+    public static final int MAX_BUILDINGS = 64;
+    private static final Map<ServerPlayer, Long> LAST_BUILDINGS = new WeakHashMap<>();
 
     private NationRequests() {
     }
@@ -198,6 +203,93 @@ public final class NationRequests {
         return new NationPayloads.ShowSites(sites, blueprints);
     }
 
+    // Sends the player their faction's buildings around them (finished, being built or coming down),
+    // nearest first, so Demolish can outline them. Players without a faction get none. Rate limited
+    // like the sites (SITES_INTERVAL_TICKS).
+    public static void buildings(ServerPlayer player) {
+        long now = player.serverLevel().getGameTime();
+        Long last = LAST_BUILDINGS.get(player);
+        if (last != null && now - last < SITES_INTERVAL_TICKS && now >= last) {
+            return;
+        }
+        LAST_BUILDINGS.put(player, now);
+        PacketDistributor.sendToPlayer(player, buildingsFor(player));
+    }
+
+    public static NationPayloads.ShowBuildings buildingsFor(ServerPlayer player) {
+        Faction faction = actingFaction(player);
+        if (faction == null) {
+            return new NationPayloads.ShowBuildings(List.of());
+        }
+        ServerLevel level = player.serverLevel();
+        List<Building> nearby = new ArrayList<>();
+        for (Settlement settlement : SettlementData.get(level).all()) {
+            if (faction.id().equals(settlement.owner()) && settlement.dimension().equals(level.dimension())) {
+                settlement.buildings().stream().filter(building -> distanceSqr(player, building) <= SITES_RANGE * SITES_RANGE).forEach(nearby::add);
+            }
+        }
+        nearby.sort(Comparator.comparingDouble(building -> distanceSqr(player, building)));
+        return new NationPayloads.ShowBuildings(nearby.subList(0, Math.min(MAX_BUILDINGS, nearby.size())).stream()
+                .map(building -> new NationPayloads.BuildingView(BuildingType.get(level, building.type()).map(BuildingType::name).orElse(building.type().toString()),
+                        building.origin(), new BlockPos(building.footprint().minX(), building.footprint().minY(), building.footprint().minZ()),
+                        new BlockPos(building.footprint().maxX(), building.footprint().maxY(), building.footprint().maxZ()), building.isBuilt(),
+                        building.demolishing()))
+                .toList());
+    }
+
+    // Orders the building with its template corner at origin demolished, from Demolish: the same
+    // operation as /kingdomrts building demolish, for the player's faction, on one of its own
+    // settlements only. The settlement's idle builders are put on it straight away (owner's call,
+    // S-035), up to as many as it takes. The player is told how it went on the action bar.
+    public static void demolish(ServerPlayer player, BlockPos origin) {
+        ServerLevel level = player.serverLevel();
+        Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(origin));
+        Building building = settlement != null ? settlement.buildingAt(origin) : null;
+        String problem = settlementProblem(player, settlement);
+        if (problem == null && building == null) {
+            problem = "There's no building there to demolish";
+        }
+        if (problem == null) {
+            problem = BuildingOps.orderDemolition(level, actingFaction(player), settlement, building);
+        }
+        if (problem != null) {
+            answerDemolish(player, false, "Can't demolish that: " + problem);
+            return;
+        }
+        Settlement current = SettlementData.get(level).byId(settlement.id());
+        int builders = current != null ? BuilderOps.assignIdle(level, current, current.buildingAt(origin)) : 0;
+        String name = BuilderOps.typeName(level, building);
+        String who = builders == 0 ? "no builders are free: assign some when they are"
+                : builders + (builders == 1 ? " builder is" : " builders are") + " taking it apart";
+        answerDemolish(player, true, "Demolishing the " + name + ": " + who);
+    }
+
+    // Stops demolishing the building with its template corner at origin, from Demolish: the same
+    // operation as /kingdomrts building cancel on a building coming down, for the player's faction,
+    // on one of its own settlements only. A site keeps its builders; a built building's are free again.
+    public static void stopDemolition(ServerPlayer player, BlockPos origin) {
+        ServerLevel level = player.serverLevel();
+        Settlement settlement = SettlementData.get(level).claimAt(level.dimension(), new ChunkPos(origin));
+        Building building = settlement != null ? settlement.buildingAt(origin) : null;
+        String problem = settlementProblem(player, settlement);
+        if (problem == null && building == null) {
+            problem = "There's no building there";
+        }
+        if (problem == null) {
+            problem = BuildingOps.stopDemolition(level, actingFaction(player), settlement, building);
+        }
+        if (problem != null) {
+            answerDemolish(player, false, "Can't stop that: " + problem);
+            return;
+        }
+        answerDemolish(player, true, "Stopped demolishing the " + BuilderOps.typeName(level, building));
+    }
+
+    private static void answerDemolish(ServerPlayer player, boolean done, String message) {
+        player.displayClientMessage(Component.literal(message), true);
+        PacketDistributor.sendToPlayer(player, new NationPayloads.DemolishAnswer(done));
+    }
+
     // How far a building's middle is from the player, squared, along the ground.
     private static double distanceSqr(ServerPlayer player, Building building) {
         double dx = building.footprint().getCenter().getX() + 0.5 - player.getX();
@@ -214,7 +306,7 @@ public final class NationRequests {
 
     // Why the player can't act on this settlement through the interface, or null if they can: it
     // must exist and belong to their faction. Requests that act on a settlement or one of its
-    // buildings (commissioning, demolishing) check this before running their operation.
+    // buildings (commissioning, demolishing, stopping a demolition) check this before running their operation.
     @Nullable
     public static String settlementProblem(ServerPlayer player, @Nullable Settlement settlement) {
         Faction faction = actingFaction(player);

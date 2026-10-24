@@ -103,6 +103,19 @@ public final class BuilderOps {
         return null;
     }
 
+    // Assigns the settlement's idle builders (those on no site) to a building, by name, until it has
+    // as many as it takes. Returns how many were assigned.
+    public static int assignIdle(ServerLevel level, Settlement settlement, Building building) {
+        int assigned = 0;
+        for (Listed builder : idleBuilders(level, settlement)) {
+            if (assign(level, settlement, building, builder.id()) != null) {
+                break; // full (or no longer commissioned)
+            }
+            assigned++;
+        }
+        return assigned;
+    }
+
     // Takes a builder off a site. Returns false if it wasn't assigned there.
     public static boolean unassign(ServerLevel level, Settlement settlement, Building building, UUID builder) {
         Building current = settlement.buildingAt(building.origin());

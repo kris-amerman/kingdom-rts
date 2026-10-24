@@ -195,7 +195,14 @@ public final class BuildingCommands {
         }
         ServerLevel level = source.getLevel();
         if (building.demolishing()) {
-            BuildingOps.stopDemolition(level, settlementOf(level, building), building);
+            // An admin command: it stops the demolition for the building's own faction.
+            Settlement settlement = settlementOf(level, building);
+            Faction owner = FactionData.get(level).byId(settlement.owner());
+            String problem = owner != null ? BuildingOps.stopDemolition(level, owner, settlement, building) : "The settlement has no owner";
+            if (problem != null) {
+                source.sendFailure(Component.literal(problem));
+                return 0;
+            }
             source.sendSuccess(() -> Component.literal("Stopped demolishing the " + typeName(level, building.type()) + " at "
                     + building.origin().toShortString()), true);
             return 1;

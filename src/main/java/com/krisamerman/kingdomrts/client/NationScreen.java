@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 // Client only. The nation management interface's first screen, in the same panel style as the
 // town hall and hut panels: your faction, its settlements, and the interface's actions: Build
-// (the catalog), and Demolish and Borders, which later stories fill in. A player without a faction
+// (the catalog), Demolish, and Borders, which a later story fills in. A player without a faction
 // sees how to get one instead.
 //
 // Unlike the panels, this is a plain Screen rather than a menu: it isn't tied to a block, so the
@@ -53,20 +53,27 @@ public class NationScreen extends Screen {
                     .bounds(leftPos + LEFT, topPos + BUTTON_Y, WIDTH - 2 * LEFT, BUTTON_HEIGHT).build());
             return;
         }
-        // Build asks the server for the catalog. Demolish and Borders come in later stories; until
-        // then their buttons are shown but greyed out.
+        // Build asks the server for the catalog; Demolish starts picking a building to demolish.
+        // Borders comes in a later story; until then its button is shown but greyed out.
         List<String> actions = List.of("Build", "Demolish", "Borders");
         int buttonWidth = (WIDTH - 2 * LEFT - (actions.size() - 1) * BUTTON_GAP) / actions.size();
         for (int i = 0; i < actions.size(); i++) {
-            boolean build = i == 0;
+            int action = i;
             Button.Builder builder = Button.builder(Component.literal(actions.get(i)), b -> {
-                        if (build) {
+                        if (action == 0) {
                             PacketDistributor.sendToServer(new NationPayloads.RequestCatalog());
+                        } else if (action == 1) {
+                            DemolishClient.begin();
+                            onClose();
                         }
                     })
                     .bounds(leftPos + LEFT + i * (buttonWidth + BUTTON_GAP), topPos + BUTTON_Y, buttonWidth, BUTTON_HEIGHT)
-                    .tooltip(Tooltip.create(Component.literal(build ? "Pick a building and see where it would go" : "Coming soon")));
-            addRenderableWidget(builder.build()).active = build;
+                    .tooltip(Tooltip.create(Component.literal(switch (action) {
+                        case 0 -> "Pick a building and see where it would go";
+                        case 1 -> "Pick one of your buildings for builders to take apart";
+                        default -> "Coming soon";
+                    })));
+            addRenderableWidget(builder.build()).active = action < 2;
         }
     }
 
