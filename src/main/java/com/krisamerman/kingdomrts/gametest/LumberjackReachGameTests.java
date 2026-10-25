@@ -43,7 +43,8 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
 public class LumberjackReachGameTests {
     // Felling must start within this (plus a little setup).
     private static final int START_WITHIN_TICKS = 20 * 30;
-    private static final int TIMEOUT_TICKS = START_WITHIN_TICKS + 40;
+    // Plus time for the chunks to start ticking (see run).
+    private static final int TIMEOUT_TICKS = START_WITHIN_TICKS + 20 * 60;
     // The strip of open ground: how far it reaches either side of its row, and how high it's cleared.
     private static final int STRIP_HALF_WIDTH = 5;
     private static final int CLEAR_HEIGHT = 14;
@@ -131,13 +132,22 @@ public class LumberjackReachGameTests {
         if (problem != null) {
             throw new GameTestAssertException("Couldn't hire the lumberjack: " + problem);
         }
-        long started = level.getGameTime();
+        // The clock starts once the lumberjack can act: its chunk (forced just now) only ticks
+        // entities once their section has loaded, which happens off the server thread. The GameTest
+        // server runs ticks back to back, without waiting, so that can take hundreds of ticks on a
+        // slow machine (S-048: 616 ticks once in CI, against about 165).
+        long setUp = level.getGameTime();
+        long[] started = new long[1];
         helper.startSequence()
+                .thenWaitUntil(() -> helper.assertTrue(level.isPositionEntityTicking(start) && level.isPositionEntityTicking(base),
+                        "Waiting for the lumberjack's chunk and the tree's to tick"))
+                .thenExecute(() -> started[0] = level.getGameTime())
                 .thenWaitUntil(() -> helper.assertTrue(logsAround(level, base) < logs,
                         "Waiting for the lumberjack to start felling the tree " + distance + " blocks from its hut"))
                 .thenExecute(() -> {
-                    long took = level.getGameTime() - started;
-                    KingdomRts.LOGGER.info("Reach test: tree {} blocks away, felling started after {} ticks", distance, took);
+                    long took = level.getGameTime() - started[0];
+                    KingdomRts.LOGGER.info("Reach test: tree {} blocks away, felling started after {} ticks ({} waiting for its chunk to tick)",
+                            distance, took, started[0] - setUp);
                     helper.assertTrue(took <= START_WITHIN_TICKS, "Felling only started after " + took + " ticks");
                     lumberjack.discard();
                     lay(level, minX, maxX, row, floorY, hall); // clear the tree away again

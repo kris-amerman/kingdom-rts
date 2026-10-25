@@ -29,8 +29,16 @@ Story template:
   - Find why a lumberjack sometimes waits about 450 ticks before setting off for a tree 10 blocks away. Seen once in CI on PR #47: felling started after 616 ticks, over the test's 600, against about 165 in every other run. Per the log, it only started walking near the end.
   - Fix the cause: in the lumberjack's code if it's a real stall (a wait or retry it shouldn't hit), or in the test if it's the test's timing.
 - **Out of scope:** other lumberjack changes.
-- **Test:** the reach tests pass in 20 runs back to back. A sabotage check reproduces the old delay if the cause is put back.
-- **Notes:** found on PR #47 (S-026), which doesn't touch the lumberjack. A rerun of the failed job passed.
+- **Test:** the cause shown from the CI log, the chunk wait measured locally (up to 233 ticks), and the GameTests passing 6 runs back to back (scope change: the planned 20 runs back to back and a sabotage check can't tell the fix apart here, as the wait comes from CI's slower disk, which local runs don't reproduce).
+- **Notes:**
+  - Found on PR #47 (S-026), which doesn't touch the lumberjack. A rerun of the failed job passed.
+  - **The cause, the test's clock, not the lumberjack:**
+    - The CI log shows the lumberjack never moved from where it was spawned until its walk began, about 600 ticks in. Then it felled straight away, with no step timing out and no "no trees" wait. It wasn't being ticked at all.
+    - The test forces the claim's chunks, then starts its clock at once. A chunk only ticks entities once their section has loaded, which happens off the server thread. And the GameTest server runs ticks back to back, without waiting between them (`GameTestServer#waitUntilNextTick` only runs pending tasks). So waiting on the disk shows up as hundreds of ticks on a slow machine, and the lumberjack is idle until its chunk ticks.
+    - Locally, over 6 runs, the wait reached 233 ticks, and about half of the ~165 ticks the 10-block test used to report was this wait. With the old clock, a slower disk only had to add a few hundred more.
+    - Not a bug in play: a unit in a chunk that isn't ticking doesn't act, as vanilla mobs don't.
+  - **The fix:** the reach tests start their clock once the lumberjack's position and the tree's are entity-ticking (`ServerLevel#isPositionEntityTicking`), and log how long that took. The 30-second limit is unchanged; the timeout allows another minute for the wait.
+  - **Lesson for other tests:** time limits in GameTests should count from when the units can act, not from when their chunks were forced.
 
 ### S-027 Town hall building
 - **Status:** planned | **Branch:** feature/town-hall-building | **PR:** - | **Depends on:** S-026
