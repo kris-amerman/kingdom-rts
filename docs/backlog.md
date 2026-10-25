@@ -31,7 +31,7 @@ Story template:
 - **Notes:** the stress half of the original S-022.
 
 ### S-036 Nation interface: borders view
-- **Status:** in progress | **Branch:** feature/borders-view | **PR:** - | **Depends on:** S-032
+- **Status:** in review | **Branch:** feature/borders-view | **PR:** #46 | **Depends on:** S-032
 - **Goal:** a player can toggle a view of settlement borders around them.
 - **Scope:**
   - A toggle that draws claim borders near the player, coloured per faction.
