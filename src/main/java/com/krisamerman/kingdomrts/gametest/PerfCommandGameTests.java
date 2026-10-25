@@ -108,15 +108,17 @@ public class PerfCommandGameTests {
             try {
                 PerfPayloads.ClientRecording stop = lastPayload(player, PerfPayloads.ClientRecording.class);
                 helper.assertTrue(stop != null && !stop.recording() && PerfCommands.isWaitingForClient(), "Expected the client to be asked for its numbers");
-                PerfReport.ClientStats stats = new PerfReport.ClientStats(1200, 16.7, 20.1, 33.0, 600, 0.31, 0.5, 0.9, 496);
+                PerfReport.ClientStats stats = new PerfReport.ClientStats(1200, 16.7, 20.1, 33.0, 600, 0.31, 0.5, 0.9, 496,
+                        new PerfReport.Borders(1200, 0.04, 0.06, 0.2, 192, 600, 0.01, 0.05));
                 PerfCommands.clientReport(other, stats);
                 helper.assertTrue(PerfCommands.isWaitingForClient() && !read(name + ".md").contains("## Client"), "Expected another player's numbers to be ignored");
                 PerfCommands.clientReport(player, stats);
                 String markdown = read(name + ".md");
-                helper.assertTrue(markdown.contains("## Client (" + player.getGameProfile().getName() + ")") && markdown.contains("0.31 ms per frame"),
+                helper.assertTrue(markdown.contains("## Client (" + player.getGameProfile().getName() + ")") && markdown.contains("0.31 ms per frame") && markdown.contains("Borders view, over 1200 frames: 0.040 ms per frame"),
                         "Expected the client's numbers in the report: " + markdown);
                 JsonObject client = JsonParser.parseString(read(name + ".json")).getAsJsonObject().getAsJsonObject("client");
-                helper.assertTrue(client != null && client.get("average_preview_blocks").getAsDouble() == 496, "Expected them in the JSON: " + client);
+                helper.assertTrue(client != null && client.get("average_preview_blocks").getAsDouble() == 496
+                        && client.get("average_border_pieces").getAsDouble() == 192, "Expected them in the JSON: " + client);
                 helper.assertTrue(other.sent.stream().noneMatch(packet -> packet instanceof ClientboundCustomPayloadPacket custom
                         && custom.payload() instanceof PerfPayloads.ClientRecording), "Expected only the starting player's client to measure");
             } finally {

@@ -38,7 +38,44 @@ Story template:
   - The server sends nearby claims when the view is switched on, and when claims change.
 - **Out of scope:** claim management, faction colours and emblems beyond a simple colour.
 - **Test:** a GameTest for what's sent (nearby claims, owners). Manual: the drawn borders.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - **Show borders** on the nation screen is vanilla's checkbox, on its own row above Build and Demolish (owner's call, after a green label and then a lamp on the button).
+      - The screen draws its label: vanilla's is light with a shadow, unreadable on the light panel. Clicking the label toggles too.
+      - The screen stays open, and the checkbox gives up the focus after a click so it doesn't stay highlighted.
+    - **On the ground:** every claim within 12 chunks is sent, and drawn up to 128 blocks away (or the render distance, if shorter), fading out over the last 32. Each is outlined just inside its edge, following the ground, in its owner's colour, with a low see-through wall above the line that fades out upwards.
+    - **Underground (owner's call):** a faint curtain runs from the line down to the bottom of the world. It's depth-tested, so it shows wherever a cave, ravine or tunnel crosses the border, and rock hides it as it hides blocks. It's one more quad per block of border in the same meshes.
+    - **Key:** a list in the top-left corner names the settlements shown, nearest first, each in its colour and marked "yours", the owner's name, or "unclaimed". It's hidden while F3 is up. With nothing around, it's just the "Borders" title (a "no settlements nearby" note flashed up while the first borders were on their way, which the owner found distracting).
+  - **Decisions:**
+    - **Borders are public:** anyone sees every claim around them, with or without a faction. The server doesn't need a faction to answer.
+    - **Colours** are worked out from the faction's id (`FactionColors`), so they're stable, survive renames, and need nothing saved. Choosing colours is for later.
+    - **When borders are sent** (`BorderViewers`):
+      - when the view is switched on;
+      - again only when claims change (`SettlementData#claimsVersion` goes up when a settlement is founded, dissolved, changes owner or is renamed), or the viewer moves 4 chunks on or changes dimension.
+      - Viewers are checked once a second, and a player is sent borders at most every 10 ticks, even switching the view off and on.
+      - Renaming a faction doesn't resend: the key shows the old name until the next resend.
+    - **Whole claims:** every settlement with a chunk in range is sent whole, so the edge of the range never draws a false border. Caps: 32 settlements, 1024 chunks.
+    - **Where claims touch,** each border is drawn 0.1 blocks inside its own claim, so both colours show side by side.
+    - **Cost:**
+      - Borders are laid on the ground when they arrive, one baked mesh per settlement. Each frame draws only the meshes of settlements within the draw distance.
+      - Each tick rechecks the ground under 256 border columns, going round the settlements near enough to draw. A block placed or broken on a border shows within a tick or two (first version: a full pass every 2 seconds, which the owner found slow).
+      - A settlement's mesh is baked again only when the ground under one of its columns changed. Stretches in chunks that aren't loaded are left out until they load.
+      - `/kingdomrts perf` reports the borders view's drawing time per frame and ground checks per tick (`PerfReport.Borders`).
+      - The owner's first live report (one settlement, 384 pieces drawn on average, before the curtain): 0.052 ms a frame on average (0.10 at the 95th percentile), and 0.084 ms a tick checking the ground (0.67 ms worst, the full pass when borders arrive).
+      - Their second, with the curtain and an adjacent rival (373 pieces): 0.049 ms a frame (0.102 at the 95th percentile, 0.41 worst), and 0.090 ms a tick checking the ground (1.07 ms worst, again the full pass on arrival).
+  - **Tests:**
+    - JUnit:
+      - `BorderLinesTest`: one chunk's four sides, no border inside a claim, the inset and corners (outside and inside), pieces following the ground;
+      - `FactionColorsTest`: stable, grey with no owner, mostly different and always bright;
+      - `PayloadSizeTest`: the most borders sent fit 16 KB.
+    - GameTests (`NationBordersGameTests`):
+      - a member, an outsider and a factionless player are all sent the whole claim in its owner's colour, only the member's marked as their own, and nothing out of range;
+      - a viewer is sent borders on switching on, not again while nothing changes, again when the settlement changes hands, and not once switched off;
+      - switching off and on again at once waits for the next check, and moving 4 chunks on resends.
+    - Sabotage checks, each caught: an owner change not counted as a claims change, moving ignored, no range limit.
+    - A bug the tests found: a viewer's "never sent" time started at `Long.MIN_VALUE`, so "now minus last sent" overflowed and the first send never happened.
+    - A bug found in-game: borders were laid on the height map that leaves out leaves, which the server never sends to clients, so every border sat at the bottom of the world. They now use `MOTION_BLOCKING` (sent to clients) and step down through leaves; `BorderLinesTest` checks the height map is one clients have.
+  - **Stress:** borders added to the request benchmark: 16 µs per call (budget 1 ms). The unit budget still holds (docs/perf.md results).
 
 ### S-026 Lumberjack hut building
 - **Status:** planned | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-031, S-034

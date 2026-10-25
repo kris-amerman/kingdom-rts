@@ -2,11 +2,14 @@ package com.krisamerman.kingdomrts.client;
 
 import java.util.List;
 
+import javax.annotation.Nullable;
+
 import com.krisamerman.kingdomrts.nation.NationOverview;
 import com.krisamerman.kingdomrts.nation.NationPayloads;
 
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -14,7 +17,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 // Client only. The nation management interface's first screen, in the same panel style as the
 // town hall and hut panels: your faction, its settlements, and the interface's actions: Build
-// (the catalog), Demolish, and Borders, which a later story fills in. A player without a faction
+// (the catalog), Demolish, and a checkbox for the borders view. A player without a faction
 // sees how to get one instead.
 //
 // Unlike the panels, this is a plain Screen rather than a menu: it isn't tied to a block, so the
@@ -32,12 +35,20 @@ public class NationScreen extends Screen {
     private static final int BUTTON_HEIGHT = 20;
     private static final int BUTTON_GAP = 4;
     private static final int BUTTON_Y = HEIGHT - 8 - BUTTON_HEIGHT;
+    // The borders checkbox's row, above the buttons (vanilla's checkbox is 17 pixels square).
+    private static final int CHECKBOX_SIZE = 17;
+    private static final int TOGGLE_Y = BUTTON_Y - 4 - CHECKBOX_SIZE;
+    private static final int BORDERS_LABEL_X = LEFT + CHECKBOX_SIZE + 4;
+    private static final String BORDERS_LABEL = "Show borders";
+    private static final String BORDERS_TOOLTIP = "Show the settlement borders around you, in their owners' colours";
     private static final int LIST_TOP = TOP + ROW + 2;
-    private static final int MAX_ROWS = (BUTTON_Y - 4 - LIST_TOP) / ROW;
+    private static final int MAX_ROWS = (TOGGLE_Y - 4 - LIST_TOP) / ROW;
 
     private final NationOverview overview;
     private int leftPos;
     private int topPos;
+    @Nullable
+    private Checkbox bordersBox;
 
     public NationScreen(NationOverview overview) {
         super(Component.translatable("screen.kingdomrts.nation"));
@@ -48,33 +59,62 @@ public class NationScreen extends Screen {
     protected void init() {
         leftPos = (width - WIDTH) / 2;
         topPos = (height - HEIGHT) / 2;
+        bordersBox = null;
         if (!overview.hasFaction()) {
             addRenderableWidget(Button.builder(Component.translatable("gui.done"), button -> onClose())
                     .bounds(leftPos + LEFT, topPos + BUTTON_Y, WIDTH - 2 * LEFT, BUTTON_HEIGHT).build());
             return;
         }
         // Build asks the server for the catalog; Demolish starts picking a building to demolish.
-        // Borders comes in a later story; until then its button is shown but greyed out.
-        List<String> actions = List.of("Build", "Demolish", "Borders");
+        List<String> actions = List.of("Build", "Demolish");
         int buttonWidth = (WIDTH - 2 * LEFT - (actions.size() - 1) * BUTTON_GAP) / actions.size();
         for (int i = 0; i < actions.size(); i++) {
             int action = i;
-            Button.Builder builder = Button.builder(Component.literal(actions.get(i)), b -> {
+            addRenderableWidget(Button.builder(Component.literal(actions.get(i)), b -> {
                         if (action == 0) {
                             PacketDistributor.sendToServer(new NationPayloads.RequestCatalog());
-                        } else if (action == 1) {
+                        } else {
                             DemolishClient.begin();
                             onClose();
                         }
                     })
                     .bounds(leftPos + LEFT + i * (buttonWidth + BUTTON_GAP), topPos + BUTTON_Y, buttonWidth, BUTTON_HEIGHT)
-                    .tooltip(Tooltip.create(Component.literal(switch (action) {
-                        case 0 -> "Pick a building and see where it would go";
-                        case 1 -> "Pick one of your buildings for builders to take apart";
-                        default -> "Coming soon";
-                    })));
-            addRenderableWidget(builder.build()).active = action < 2;
+                    .tooltip(Tooltip.create(Component.literal(action == 0 ? "Pick a building and see where it would go"
+                            : "Pick one of your buildings for builders to take apart")))
+                    .build());
         }
+        // The borders view's toggle: vanilla's checkbox, which leaves the screen open. Its label is
+        // drawn by the screen (see render): vanilla draws checkbox labels light, with a shadow, for
+        // dark backgrounds, and can't be told otherwise.
+        bordersBox = addRenderableWidget(Checkbox.builder(Component.empty(), font)
+                .pos(leftPos + LEFT, topPos + TOGGLE_Y)
+                .selected(BordersClient.isOn())
+                .onValueChange((box, on) -> BordersClient.toggle())
+                .tooltip(Tooltip.create(Component.literal(BORDERS_TOOLTIP)))
+                .build());
+    }
+
+    // Clicking the borders label toggles the box too. A clicked checkbox keeps the keyboard focus,
+    // and a focused one is drawn highlighted, so it would stay lit up after the mouse moved away: it
+    // gives the focus up instead (tabbing to it still works).
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (bordersBox != null && button == 0 && overBordersLabel(mouseX, mouseY)) {
+            bordersBox.onPress();
+            bordersBox.playDownSound(minecraft.getSoundManager());
+            return true;
+        }
+        boolean handled = super.mouseClicked(mouseX, mouseY, button);
+        if (getFocused() == bordersBox) {
+            setFocused(null);
+        }
+        return handled;
+    }
+
+    private boolean overBordersLabel(double mouseX, double mouseY) {
+        double x = mouseX - leftPos - BORDERS_LABEL_X;
+        double y = mouseY - topPos - TOGGLE_Y;
+        return x >= 0 && x < font.width(BORDERS_LABEL) && y >= 0 && y < CHECKBOX_SIZE;
     }
 
     // The game keeps running behind this screen, as it does behind the panels.
@@ -98,6 +138,7 @@ public class NationScreen extends Screen {
         graphics.drawString(font, title, LEFT, 6, TEXT_COLOR, false);
         if (overview.hasFaction()) {
             renderFaction(graphics);
+            graphics.drawString(font, BORDERS_LABEL, BORDERS_LABEL_X, TOGGLE_Y + (CHECKBOX_SIZE - font.lineHeight) / 2 + 1, TEXT_COLOR, false);
         } else {
             renderNoFaction(graphics);
         }

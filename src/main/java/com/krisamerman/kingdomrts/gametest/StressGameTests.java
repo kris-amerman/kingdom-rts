@@ -12,6 +12,7 @@ import java.util.function.Supplier;
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.nation.BorderViewers;
 import com.krisamerman.kingdomrts.nation.NationRequests;
 import com.krisamerman.kingdomrts.settlement.BuildingOps;
 import com.krisamerman.kingdomrts.settlement.Settlement;
@@ -64,6 +65,8 @@ public class StressGameTests {
     private static final double CHECK_BUDGET_US = 200;
     private static final double SITES_BUDGET_US = 1000;
     private static final double CATALOG_BUDGET_US = 1000;
+    // Borders are sent on switching the view on, then once a viewer moves on or claims change.
+    private static final double BORDERS_BUDGET_US = 1000;
 
     @GameTest(template = TEMPLATE, batch = "stress_050", timeoutTicks = TIMEOUT_TICKS)
     public static void units50(GameTestHelper helper) {
@@ -126,7 +129,8 @@ public class StressGameTests {
         List<PerfReport.RequestTiming> timings = List.of(
                 time("placement check", CHECK_BUDGET_US, () -> BuildingOps.commissionProblem(level, faction, SHED, checked, Rotation.NONE)),
                 time("unfinished sites", SITES_BUDGET_US, () -> NationRequests.sitesFor(player)),
-                time("catalog", CATALOG_BUDGET_US, () -> NationRequests.catalogEntries(level)));
+                time("catalog", CATALOG_BUDGET_US, () -> NationRequests.catalogEntries(level)),
+                time("borders", BORDERS_BUDGET_US, () -> BorderViewers.bordersFor(player)));
         REQUESTS.clear();
         REQUESTS.addAll(timings);
         writeReport();

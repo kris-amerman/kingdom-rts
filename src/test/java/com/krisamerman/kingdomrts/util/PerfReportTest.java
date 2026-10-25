@@ -85,14 +85,23 @@ class PerfReportTest {
         long[] frames = {10 * MS, 20 * MS, 30 * MS, 40 * MS};
         long[] preview = {MS, 3 * MS};
         long[] blocks = {100, 300};
-        PerfReport.ClientStats stats = PerfReport.ClientStats.of(frames, 4, preview, blocks, 2);
+        long[] borders = {MS / 10, 3 * MS / 10};
+        long[] pieces = {150, 250};
+        long[] ticks = {MS / 20, MS / 20, MS / 5};
+        PerfReport.ClientStats stats = PerfReport.ClientStats.of(frames, 4, preview, blocks, 2, PerfReport.Borders.of(borders, pieces, 2, ticks, 3));
         assertEquals(25.0, stats.averageFrameMs(), 1e-9);
         assertEquals(40.0, stats.worstFrameMs(), 1e-9);
         assertEquals(40.0, stats.averageFps(), 1e-9);
         assertEquals(2.0, stats.averagePreviewMs(), 1e-9);
         assertEquals(200.0, stats.averagePreviewBlocks(), 1e-9);
         assertTrue(PerfReport.clientSection("Steve", stats).contains("Building preview, over 2 frames: 2.00 ms per frame"));
+        assertEquals(0.2, stats.borders().averageMs(), 1e-9);
+        assertEquals(200.0, stats.borders().averagePieces(), 1e-9);
+        assertEquals(0.1, stats.borders().averageTickMs(), 1e-9);
+        assertEquals(0.2, stats.borders().worstTickMs(), 1e-9);
+        assertTrue(PerfReport.clientSection("Steve", stats).contains("Borders view, over 2 frames: 0.200 ms per frame"));
         assertTrue(PerfReport.clientSection("Steve", PerfReport.ClientStats.NONE).contains("No building preview was up"));
+        assertTrue(PerfReport.clientSection("Steve", PerfReport.ClientStats.NONE).contains("The borders view wasn't on"));
     }
 
     @Test
