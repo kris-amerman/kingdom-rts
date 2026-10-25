@@ -137,6 +137,22 @@ public final class BuildingRules {
         return placed.stream().filter(part -> part.state().isAir()).min(preference).map(Blueprint.Part::pos);
     }
 
+    // A building's core where it goes at a site: the one block of the blueprint that is the core
+    // block. Empty unless the blueprint has it exactly once, as a building with none or several
+    // couldn't be managed from one block.
+    public static Optional<Blueprint.Part> coreOf(List<Blueprint.Part> placed, Block core) {
+        Blueprint.Part found = null;
+        for (Blueprint.Part part : placed) {
+            if (part.state().is(core)) {
+                if (found != null) {
+                    return Optional.empty();
+                }
+                found = part;
+            }
+        }
+        return Optional.ofNullable(found);
+    }
+
     // The blocks of an unfinished building to draw where they'll go, so a player planning nearby
     // sees it finished: the ones not in place yet, at spots that are free now (air, or something a
     // block simply replaces, like grass). Blocks already in place are real, and a spot taken by

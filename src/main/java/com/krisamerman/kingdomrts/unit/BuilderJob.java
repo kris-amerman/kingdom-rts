@@ -857,7 +857,8 @@ public final class BuilderJob implements Job {
     }
 
     // Takes down one of the building's blocks, as a player would break it (as long as vanilla says,
-    // with the best tool it carries, showing the cracks), and keeps what placing it cost. The block
+    // with the best tool it carries, showing the cracks), and keeps what placing it cost (nothing for
+    // the building's core, see BuildingType). The block
     // goes without telling its neighbours, so nothing hanging on it pops off as a drop before its own
     // turn (they're told once the demolition ends: BuildingOps). Fails if pushed out of reach, or if
     // the block isn't the building's any more. Releases its reservation either way.
@@ -909,7 +910,9 @@ public final class BuilderJob implements Job {
             if (!tool.isEmpty()) {
                 tool.hurtAndBreak(1, unit, EquipmentSlot.MAINHAND);
             }
-            for (ItemStack cost : BuildingRules.costOf(state)) {
+            // A building's core isn't a material: it came with the building, so it gives nothing back.
+            List<ItemStack> costs = state.is(BuildingOps.coreBlock(level, site)) ? List.of() : BuildingRules.costOf(state);
+            for (ItemStack cost : costs) {
                 ItemStack left = Stock.insert(unit.getInventory(), cost);
                 if (!left.isEmpty()) {
                     unit.spawnAtLocation(left); // checked before it started, so it shouldn't happen

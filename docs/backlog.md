@@ -27,27 +27,52 @@ Story template:
 - **Goal:** a lumberjack hut is a real building, commissioned from a template, built by builders, and managed from its hut block.
 - **Scope:**
   - **Core blocks from data** (the general part, reused by later functional buildings): a building's data can name its core block, e.g. `"core": "kingdomrts:lumberjack_hut"`.
-    - The core is part of the template.
-    - Commissioning places it at once, at its turned spot. It replaces the construction site block for that building: there's no separate site block, and the core holds the site's stock.
-    - Clicking the core shows the site panel while the building is built, and its own panel (the hut panel) once built.
-    - Templates for buildings with a core must contain it exactly once; plain buildings keep using the site block.
-  - **The workplace starts employing once its building is built.** While under construction it's recorded as a workplace-to-be: no hiring, and it isn't offered to job seekers.
-  - **The building's stock:** what's left in the site stock when it's finished stays, as the hut's starting stock (e.g. spare axes).
+    - The core is part of the template, which must contain it exactly once.
+    - While the building is built, its construction site block stands on the core's spot (scope change, owner's call: the first plan put the core down at once). When it's finished, the site block becomes the core.
+    - Clicking the site block shows the site panel while the building is built, and the core shows its own panel (the hut panel) once built.
+    - Plain buildings keep their site block on a clear spot, as before.
+  - **The workplace starts employing once its building is built.** Until then it's only a building being built: no hiring, and it isn't offered to job seekers.
+  - **The building's stock:** what's left in the site stock when it's finished moves into the core, as the hut's starting stock (e.g. spare axes).
   - **A lumberjack hut template** (small, wooden) and its building definition.
-  - **Demolishing** the building (by builders, S-038) removes its hut block too, so the workplace goes and its workers lose their jobs (existing workplace code). The built hut's panel gets a Demolish action and lets you assign builders to the demolition, the same operations as the commands.
-- **Out of scope:** other huts, the town hall (S-027), homes, repair.
+  - **Demolishing** the building (by builders, S-038) takes its hut block down too, so the workplace goes and its workers lose their jobs (existing workplace code).
+- **Out of scope:**
+  - other huts, the town hall (S-027), homes, repair;
+  - a Demolish action and builder assignment on the hut panel (dropped with the owner's go-ahead): the nation interface's Demolish (S-035) already demolishes any of your buildings and puts idle builders on it.
 - **Test:**
   - **Unit tests:** a template's core (missing, once, several), and the building definition with and without a core.
   - **GameTests:**
-    - commissioning places the hut block at its turned spot, and it shows the site panel;
+    - commissioning puts the site block on the hut block's spot (turned too), and it isn't a workplace yet;
     - nobody is hired while it's under construction;
-    - once finished, the hut panel shows and automatic hiring fills it;
+    - once finished, the hut block takes the site block's place with its leftovers, and hires;
+    - a builder builds it from storage;
     - demolishing it fires its worker;
     - a placed hut block (the stand-in) still works as before.
   - **Manual:** the hut template's look; the panels switching.
 - **Notes:**
   - Owner: homes need their own residence core (a later story, with housing).
   - Placed hut blocks, the stand-in until the nation management interface builds huts, keep working. Whether they stay after that is open.
+  - **What was built:**
+    - **`BuildingType`** has an optional `core`. Commissioning a building with one puts its site block where the template has the core (`BuildingRules#coreOf`), and refuses a template without the core, or with several.
+    - **Finishing** (`BuildingOps#completeIfDone`) closes such a site at once: the site block becomes the core as the template has it, the site's stock moves into the core's, and the core registers (a hut becomes the settlement's workplace, so automatic hiring fills it). Nothing is carried off to storage.
+    - **The template** (`structure/buildings/lumberjack_hut.nbt`, from `scripts/gen_lumberjack_hut_nbt.py`) is 5x5 and 4 high: a cobblestone floor, plank walls on log corners, a door, two open windows, a slab roof inside a plank rim, a torch, and the hut block in the middle of the floor. It's in the Build catalog as "Lumberjack hut".
+  - **Decisions:**
+    - **The site block first, then the core (owner's call):** every building has the same kind of site while it's built (one site block, panel and builder code), and a hut block always means a working hut, never a half-built one.
+    - **No crafted hut block (owner's call):** commissioning doesn't need a hut item. Buildings are picked from the catalog (and later paid for in gold), as Direction says, and requiring a crafted hut block is the most recognisable MineColonies mechanic.
+    - **The core isn't a material:** it comes with the building, so builders taking it down get nothing back for it (no hut item carried to storage).
+    - **No higher than 4:** builders build from the ground, with no scaffolding yet. A first 5-high design left its roof out of their reach from outside, with the ceiling in the way from inside. Templates have to stay within reach until builders can climb.
+  - **Tests:**
+    - JUnit: `BuildingRulesTest` (a core exactly once, none, several) and `BlueprintTest` (a building's `core` decodes, and is optional).
+    - GameTests (`LumberjackHutBuildingGameTests`):
+      - the site stands on the hut block's spot, turned as well, and it isn't a workplace while built;
+      - finished, the hut block takes its place with the site's leftovers (an axe and planks) and a settler is hired, with nothing dropped;
+      - breaking its site cancels it;
+      - a builder builds it from storage, and no hut item turns up;
+      - builders demolish it: its stock goes to storage, its lumberjack loses the job, and no hut item comes back.
+    - Sabotage checks, each caught:
+      - the core not registering when finished;
+      - the site on a clear spot instead of the core's;
+      - a hut item given back for the core.
+  - **Stress:** not run. Nothing per-unit was added: finishing and taking down the core are one-off steps.
 
 ### S-027 Town hall building
 - **Status:** planned | **Branch:** feature/town-hall-building | **PR:** - | **Depends on:** S-026

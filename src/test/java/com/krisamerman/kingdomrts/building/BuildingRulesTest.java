@@ -285,4 +285,14 @@ class BuildingRulesTest {
         assertEquals(List.of(stone, torch), BuildingRules.stillToShow(placed, pos -> world.getOrDefault(pos, Blocks.AIR.defaultBlockState())),
                 "Not the planks already built, the glass where dirt stands, or the spot to keep clear; the torch over grass, yes");
     }
+
+    @Test
+    void aBuildingsCoreIsItsOneCoreBlock() {
+        Blueprint.Part floor = new Blueprint.Part(new BlockPos(0, 0, 0), Blocks.COBBLESTONE.defaultBlockState());
+        Blueprint.Part core = new Blueprint.Part(new BlockPos(1, 1, 1), Blocks.BARREL.defaultBlockState());
+        Blueprint.Part another = new Blueprint.Part(new BlockPos(2, 1, 1), Blocks.BARREL.defaultBlockState());
+        assertEquals(Optional.of(core), BuildingRules.coreOf(List.of(floor, core), Blocks.BARREL), "Exactly once: that's the core");
+        assertEquals(Optional.empty(), BuildingRules.coreOf(List.of(floor), Blocks.BARREL), "None: no core");
+        assertEquals(Optional.empty(), BuildingRules.coreOf(List.of(floor, core, another), Blocks.BARREL), "Several: no core either");
+    }
 }
