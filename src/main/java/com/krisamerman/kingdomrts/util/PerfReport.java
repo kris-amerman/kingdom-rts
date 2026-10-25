@@ -115,21 +115,35 @@ public final class PerfReport {
                 result.msPerTick(Perf.Section.NATION_REQUEST), result.serverMsPerTick(), result.worstTickMs());
     }
 
-    // What a player's client measured while a report was recording: every frame, and the frames
-    // that drew a building preview (the preview's own drawing time, and how many blocks it drew).
+    // What a player's client measured while a report was recording: every frame, the frames that
+    // drew a building preview (the preview's own drawing time, and how many blocks it drew), and the
+    // borders view's work.
     public record ClientStats(int frames, double averageFrameMs, double p95FrameMs, double worstFrameMs, int previewFrames,
-            double averagePreviewMs, double p95PreviewMs, double worstPreviewMs, double averagePreviewBlocks) {
-        public static final ClientStats NONE = new ClientStats(0, 0, 0, 0, 0, 0, 0, 0, 0);
+            double averagePreviewMs, double p95PreviewMs, double worstPreviewMs, double averagePreviewBlocks, Borders borders) {
+        public static final ClientStats NONE = new ClientStats(0, 0, 0, 0, 0, 0, 0, 0, 0, Borders.NONE);
 
-        // From raw samples: frame times, and per preview frame its drawing time and blocks drawn.
-        public static ClientStats of(long[] frameNanos, int frames, long[] previewNanos, long[] previewBlocks, int previewFrames) {
+        // From raw samples: frame times, per preview frame its drawing time and blocks drawn, and the borders view's numbers.
+        public static ClientStats of(long[] frameNanos, int frames, long[] previewNanos, long[] previewBlocks, int previewFrames, Borders borders) {
             return new ClientStats(frames, averageMs(frameNanos, frames), percentile(frameNanos, frames, 0.95) / 1e6, max(frameNanos, frames) / 1e6,
                     previewFrames, averageMs(previewNanos, previewFrames), percentile(previewNanos, previewFrames, 0.95) / 1e6,
-                    max(previewNanos, previewFrames) / 1e6, previewFrames == 0 ? 0 : (double) sum(previewBlocks, previewFrames) / previewFrames);
+                    max(previewNanos, previewFrames) / 1e6, previewFrames == 0 ? 0 : (double) sum(previewBlocks, previewFrames) / previewFrames, borders);
         }
 
         public double averageFps() {
             return averageFrameMs == 0 ? 0 : 1000.0 / averageFrameMs;
+        }
+    }
+
+    // The borders view's work while it was on: per frame, drawing it (and how many pieces of border
+    // were drawn); per client tick, checking the ground under it (and rebaking what changed).
+    public record Borders(int frames, double averageMs, double p95Ms, double worstMs, double averagePieces, int ticks, double averageTickMs,
+            double worstTickMs) {
+        public static final Borders NONE = new Borders(0, 0, 0, 0, 0, 0, 0, 0);
+
+        public static Borders of(long[] drawNanos, long[] pieces, int frames, long[] tickNanos, int ticks) {
+            // (PerfReport.averageMs: this record has an averageMs of its own.)
+            return new Borders(frames, PerfReport.averageMs(drawNanos, frames), percentile(drawNanos, frames, 0.95) / 1e6, max(drawNanos, frames) / 1e6,
+                    frames == 0 ? 0 : (double) sum(pieces, frames) / frames, ticks, PerfReport.averageMs(tickNanos, ticks), max(tickNanos, ticks) / 1e6);
         }
     }
 
@@ -176,6 +190,15 @@ public final class PerfReport {
             out.append(String.format("Building preview, over %d frames: %.2f ms per frame on average, %.2f ms 95th percentile, %.2f ms worst,"
                     + " %.0f blocks drawn on average (budget 1 ms per frame).\n", stats.previewFrames(), stats.averagePreviewMs(), stats.p95PreviewMs(),
                     stats.worstPreviewMs(), stats.averagePreviewBlocks()));
+        }
+        Borders borders = stats.borders();
+        if (borders.frames() == 0 && borders.ticks() == 0) {
+            out.append("The borders view wasn't on.\n");
+        } else {
+            out.append(String.format("Borders view, over %d frames: %.3f ms per frame on average, %.3f ms 95th percentile, %.3f ms worst,"
+                    + " %.0f pieces drawn on average; checking the ground, over %d ticks: %.3f ms per tick on average, %.3f ms worst.\n",
+                    borders.frames(), borders.averageMs(), borders.p95Ms(), borders.worstMs(), borders.averagePieces(), borders.ticks(),
+                    borders.averageTickMs(), borders.worstTickMs()));
         }
         return out.toString();
     }

@@ -16,6 +16,7 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
@@ -76,5 +77,22 @@ class PayloadSizeTest {
         NationPayloads.ShowSites payload = new NationPayloads.ShowSites(sites, Map.of(SHED, box(6, true)));
         int size = encodedSize(NationPayloads.ShowSites.STREAM_CODEC, payload);
         assertTrue(size <= 64 * KB, "The most unfinished buildings sent at once take " + size / KB + " KB, over their 64 KB budget");
+    }
+
+    @Test
+    void theMostBordersSentFitTheirBudget() {
+        // As many settlements as are sent, sharing out the most chunks, with long names.
+        List<NationPayloads.BorderView> borders = new ArrayList<>();
+        int perSettlement = BorderViewers.MAX_CHUNKS / BorderViewers.MAX_SETTLEMENTS;
+        for (int i = 0; i < BorderViewers.MAX_SETTLEMENTS; i++) {
+            long[] chunks = new long[perSettlement];
+            for (int c = 0; c < perSettlement; c++) {
+                chunks[c] = ChunkPos.asLong(100_000 + i * 8 + c % 8, -100_000 + c / 8);
+            }
+            borders.add(new NationPayloads.BorderView("Settlement number " + i, "A faction with a long name", 0xFF8800, i == 0, chunks));
+        }
+        NationPayloads.ShowBorders payload = new NationPayloads.ShowBorders(ResourceLocation.parse("minecraft:overworld"), borders);
+        int size = encodedSize(NationPayloads.ShowBorders.STREAM_CODEC, payload);
+        assertTrue(size <= 16 * KB, "The most borders sent at once take " + size / KB + " KB, over their 16 KB budget");
     }
 }

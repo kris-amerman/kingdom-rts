@@ -68,7 +68,11 @@ public final class Perf {
         // Drawing the previewed building's ghost and outline.
         PREVIEW_RENDER("kingdomrts:preview_render"),
         // Drawing the faction's unfinished buildings finished, while previewing.
-        SITES_RENDER("kingdomrts:sites_render");
+        SITES_RENDER("kingdomrts:sites_render"),
+        // Working out the borders view's lines (on the ground) when the borders sent or the ground change.
+        BORDERS_TICK("kingdomrts:borders_tick"),
+        // Drawing the borders view.
+        BORDERS_RENDER("kingdomrts:borders_render");
 
         private final String profilerName;
 

@@ -7,6 +7,7 @@ import java.util.function.Consumer;
 
 import com.krisamerman.kingdomrts.KingdomRts;
 import com.krisamerman.kingdomrts.building.Blueprint;
+import com.krisamerman.kingdomrts.client.BordersClient;
 import com.krisamerman.kingdomrts.client.BuildPreviewClient;
 import com.krisamerman.kingdomrts.client.DemolishClient;
 import com.krisamerman.kingdomrts.client.NationClient;
@@ -253,6 +254,46 @@ public final class NationPayloads {
         }
     }
 
+    // Client to server: "show me the borders around me" (on), or "stop" (off). While it's on, the
+    // server sends them again when they change or the player has moved on (BorderViewers).
+    public record ToggleBorders(boolean on) implements CustomPacketPayload {
+        public static final Type<ToggleBorders> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "toggle_borders"));
+        public static final StreamCodec<FriendlyByteBuf, ToggleBorders> STREAM_CODEC = ByteBufCodecs.BOOL
+                .map(ToggleBorders::new, ToggleBorders::on).cast();
+
+        @Override
+        public Type<ToggleBorders> type() {
+            return TYPE;
+        }
+    }
+
+    // A settlement's claim as the borders view shows it: its name, its owner's name ("" if none),
+    // the owner's colour (0xRRGGBB, FactionColors), whether it's the viewer's own faction's, and its
+    // claimed chunks (packed, ChunkPos#toLong).
+    public record BorderView(String settlement, String faction, int color, boolean own, long[] chunks) {
+        public static final StreamCodec<FriendlyByteBuf, BorderView> STREAM_CODEC = StreamCodec.of((buf, view) -> {
+            buf.writeUtf(view.settlement());
+            buf.writeUtf(view.faction());
+            buf.writeInt(view.color());
+            buf.writeBoolean(view.own());
+            buf.writeLongArray(view.chunks());
+        }, buf -> new BorderView(buf.readUtf(), buf.readUtf(), buf.readInt(), buf.readBoolean(), buf.readLongArray()));
+    }
+
+    // Server to client: the claims around the player, in the dimension they're in.
+    public record ShowBorders(ResourceLocation dimension, List<BorderView> borders) implements CustomPacketPayload {
+        public static final Type<ShowBorders> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "show_borders"));
+        public static final StreamCodec<FriendlyByteBuf, ShowBorders> STREAM_CODEC = StreamCodec.composite(
+                ResourceLocation.STREAM_CODEC, ShowBorders::dimension,
+                BorderView.STREAM_CODEC.apply(ByteBufCodecs.list()), ShowBorders::borders,
+                ShowBorders::new);
+
+        @Override
+        public Type<ShowBorders> type() {
+            return TYPE;
+        }
+    }
+
     // Client to server: "demolish the building with its template corner here".
     public record DemolishBuilding(BlockPos origin) implements CustomPacketPayload {
         public static final Type<DemolishBuilding> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(KingdomRts.MODID, "demolish_building"));
@@ -310,10 +351,12 @@ public final class NationPayloads {
                 (payload, context) -> timed(context, player -> NationRequests.demolish(player, payload.origin())));
         registrar.playToServer(StopDemolition.TYPE, StopDemolition.STREAM_CODEC,
                 (payload, context) -> timed(context, player -> NationRequests.stopDemolition(player, payload.origin())));
+        registrar.playToServer(ToggleBorders.TYPE, ToggleBorders.STREAM_CODEC,
+                (payload, context) -> timed(context, player -> BorderViewers.toggle(player, payload.on())));
         registrar.playToServer(CheckPlacement.TYPE, CheckPlacement.STREAM_CODEC,
                 (payload, context) -> timed(context, player -> NationRequests.checkPlacement(player, payload)));
         // These lambdas only touch the client-only classes (NationClient, BuildPreviewClient,
-        // DemolishClient) when a payload arrives, which only happens on a client, so a dedicated
+        // DemolishClient, BordersClient) when a payload arrives, which only happens on a client, so a dedicated
         // server never loads them.
         registrar.playToClient(ShowNation.TYPE, ShowNation.STREAM_CODEC, (payload, context) -> NationClient.show(payload.overview()));
         registrar.playToClient(ShowCatalog.TYPE, ShowCatalog.STREAM_CODEC, (payload, context) -> NationClient.showCatalog(payload.entries()));
@@ -322,6 +365,7 @@ public final class NationPayloads {
         registrar.playToClient(ShowSites.TYPE, ShowSites.STREAM_CODEC, (payload, context) -> BuildPreviewClient.showSites(payload));
         registrar.playToClient(ShowBuildings.TYPE, ShowBuildings.STREAM_CODEC, (payload, context) -> DemolishClient.showBuildings(payload.buildings()));
         registrar.playToClient(DemolishAnswer.TYPE, DemolishAnswer.STREAM_CODEC, (payload, context) -> DemolishClient.demolishAnswered(payload.done()));
+        registrar.playToClient(ShowBorders.TYPE, ShowBorders.STREAM_CODEC, (payload, context) -> BordersClient.show(payload));
         registrar.playToClient(PlacementAnswer.TYPE, PlacementAnswer.STREAM_CODEC, (payload, context) -> BuildPreviewClient.placementAnswered(payload));
     }
 

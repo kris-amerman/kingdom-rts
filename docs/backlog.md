@@ -30,53 +30,52 @@ Story template:
 - **Test:** GameTests via `TestSupport.runCommand`: the commands build and clear a small scenario. Manual: watching a town at work.
 - **Notes:** the stress half of the original S-022.
 
-### S-035 Nation interface: demolish
-- **Status:** in review | **Branch:** feature/interface-demolish | **PR:** #45 | **Depends on:** S-032, S-038
-- **Goal:** a player can demolish their own buildings from the interface.
-- **Scope:**
-  - **Demolish** shows your settlement's buildings as outlines.
-  - Pick one by looking at it, confirm, and the server runs the demolition operation from S-038, so builders take it apart.
-  - Other factions' buildings can't be picked or demolished.
-- **Out of scope:** gold costs.
-- **Test:** GameTests for the request (own building demolished, another faction's refused). Manual: outlines and picking.
-- **Notes:**
-  - **What was built:**
-    - **Demolish** on the nation screen asks the server for the faction's buildings within 96 blocks (finished, being built or coming down; up to 64, nearest first) and outlines them all.
-    - **Picking:** the one the player looks at (up to 48 blocks) is highlighted in white. Ones already coming down are orange.
-    - **Stopping a demolition (owner's ask):** the same two right-clicks on an orange building stop its demolition (outline yellow, "Right-click again to stop demolishing the storage shed"), answered with "Stopped demolishing the storage shed". What's been taken down stays down; a site keeps its builders, and a finished building's go back to the pool.
-    - **Right-click twice:** the first right-click picks the building (outline red, "Right-click again to demolish the storage shed"). The second, within 3 seconds and still looking at it, orders the demolition.
-    - **Leaving:** Esc or Backspace leaves, and so does a successful order. Demolish and the building preview end each other.
-    - **The answer** shows on the action bar: "Demolishing the storage shed: 2 builders are taking it apart", "...: no builders are free: assign some when they are", or "Can't demolish that: ..." with the reason.
-  - **Decisions:**
-    - **Builders are assigned at once (owner's call):** ordering a demolition from the interface also assigns the settlement's idle builders, up to the building's `max_builders`. A finished building has no site block, so otherwise only a command could assign them. `BuilderOps.assignIdle` is a faction operation of its own, for AI factions too.
-    - **Same rules as the command:** the request checks the settlement with `NationRequests.settlementProblem` (its first user), then runs `BuildingOps.orderDemolition`, the same operation as `/kingdomrts building demolish`.
-    - **Two clicks** because what's taken down stays down, so a stray click shouldn't start a demolition (or stop one).
-    - **Stopping checks the owner:** `BuildingOps.stopDemolition` now takes the acting faction and refuses another faction's building, like `orderDemolition`, so AI factions can't stop each other's demolitions. `/kingdomrts building cancel` stays an admin command and acts for the building's owner.
-    - **Picking** is pure (`building/BuildingPicker`): the first box the line of sight meets, or the one the player stands in.
-    - **Cost:** outlines are a few lines per building each frame, so there's nothing to bake. The building list is rate limited like the sites, and refreshed every 5 seconds while picking.
-  - **Tests:**
-    - JUnit (`BuildingPickerTest`): the nearest box in the line of sight, nothing out of range or behind, and standing inside one picks it.
-    - GameTests (`NationDemolishGameTests`):
-      - a member is shown both sheds (finished and being built) with their boxes, but not twice in a row, nothing without a faction, and nothing from far away;
-      - demolishing your own shed orders it and puts two of three idle builders on it, and says so;
-      - refusals: another faction's member, no faction, no building there, already being demolished;
-      - stopping your own demolition leaves an ordinary built shed and frees its builder, and says so; refused for another faction (through the operation too), no faction, and a building that isn't being demolished.
-    - Sabotage checks, each caught:
-      - acting for the building's owner instead of the player;
-      - no ownership check when stopping a demolition;
-      - idle builders not assigned;
-      - no rate limit.
-  - **Stress:** not run. Nothing per-unit was added, and requests stay rare.
-
 ### S-036 Nation interface: borders view
-- **Status:** planned | **Branch:** feature/borders-view | **PR:** - | **Depends on:** S-032
+- **Status:** in review | **Branch:** feature/borders-view | **PR:** #46 | **Depends on:** S-032
 - **Goal:** a player can toggle a view of settlement borders around them.
 - **Scope:**
   - A toggle that draws claim borders near the player, coloured per faction.
   - The server sends nearby claims when the view is switched on, and when claims change.
 - **Out of scope:** claim management, faction colours and emblems beyond a simple colour.
 - **Test:** a GameTest for what's sent (nearby claims, owners). Manual: the drawn borders.
-- **Notes:** -
+- **Notes:**
+  - **What was built:**
+    - **Show borders** on the nation screen is vanilla's checkbox, on its own row above Build and Demolish (owner's call, after a green label and then a lamp on the button).
+      - The screen draws its label: vanilla's is light with a shadow, unreadable on the light panel. Clicking the label toggles too.
+      - The screen stays open, and the checkbox gives up the focus after a click so it doesn't stay highlighted.
+    - **On the ground:** every claim within 12 chunks is sent, and drawn up to 128 blocks away (or the render distance, if shorter), fading out over the last 32. Each is outlined just inside its edge, following the ground, in its owner's colour, with a low see-through wall above the line that fades out upwards.
+    - **Underground (owner's call):** a faint curtain runs from the line down to the bottom of the world. It's depth-tested, so it shows wherever a cave, ravine or tunnel crosses the border, and rock hides it as it hides blocks. It's one more quad per block of border in the same meshes.
+    - **Key:** a list in the top-left corner names the settlements shown, nearest first, each in its colour and marked "yours", the owner's name, or "unclaimed". It's hidden while F3 is up. With nothing around, it's just the "Borders" title (a "no settlements nearby" note flashed up while the first borders were on their way, which the owner found distracting).
+  - **Decisions:**
+    - **Borders are public:** anyone sees every claim around them, with or without a faction. The server doesn't need a faction to answer.
+    - **Colours** are worked out from the faction's id (`FactionColors`), so they're stable, survive renames, and need nothing saved. Choosing colours is for later.
+    - **When borders are sent** (`BorderViewers`):
+      - when the view is switched on;
+      - again only when claims change (`SettlementData#claimsVersion` goes up when a settlement is founded, dissolved, changes owner or is renamed), or the viewer moves 4 chunks on or changes dimension.
+      - Viewers are checked once a second, and a player is sent borders at most every 10 ticks, even switching the view off and on.
+      - Renaming a faction doesn't resend: the key shows the old name until the next resend.
+    - **Whole claims:** every settlement with a chunk in range is sent whole, so the edge of the range never draws a false border. Caps: 32 settlements, 1024 chunks.
+    - **Where claims touch,** each border is drawn 0.1 blocks inside its own claim, so both colours show side by side.
+    - **Cost:**
+      - Borders are laid on the ground when they arrive, one baked mesh per settlement. Each frame draws only the meshes of settlements within the draw distance.
+      - Each tick rechecks the ground under 256 border columns, going round the settlements near enough to draw. A block placed or broken on a border shows within a tick or two (first version: a full pass every 2 seconds, which the owner found slow).
+      - A settlement's mesh is baked again only when the ground under one of its columns changed. Stretches in chunks that aren't loaded are left out until they load.
+      - `/kingdomrts perf` reports the borders view's drawing time per frame and ground checks per tick (`PerfReport.Borders`).
+      - The owner's first live report (one settlement, 384 pieces drawn on average, before the curtain): 0.052 ms a frame on average (0.10 at the 95th percentile), and 0.084 ms a tick checking the ground (0.67 ms worst, the full pass when borders arrive).
+      - Their second, with the curtain and an adjacent rival (373 pieces): 0.049 ms a frame (0.102 at the 95th percentile, 0.41 worst), and 0.090 ms a tick checking the ground (1.07 ms worst, again the full pass on arrival).
+  - **Tests:**
+    - JUnit:
+      - `BorderLinesTest`: one chunk's four sides, no border inside a claim, the inset and corners (outside and inside), pieces following the ground;
+      - `FactionColorsTest`: stable, grey with no owner, mostly different and always bright;
+      - `PayloadSizeTest`: the most borders sent fit 16 KB.
+    - GameTests (`NationBordersGameTests`):
+      - a member, an outsider and a factionless player are all sent the whole claim in its owner's colour, only the member's marked as their own, and nothing out of range;
+      - a viewer is sent borders on switching on, not again while nothing changes, again when the settlement changes hands, and not once switched off;
+      - switching off and on again at once waits for the next check, and moving 4 chunks on resends.
+    - Sabotage checks, each caught: an owner change not counted as a claims change, moving ignored, no range limit.
+    - A bug the tests found: a viewer's "never sent" time started at `Long.MIN_VALUE`, so "now minus last sent" overflowed and the first send never happened.
+    - A bug found in-game: borders were laid on the height map that leaves out leaves, which the server never sends to clients, so every border sat at the bottom of the world. They now use `MOTION_BLOCKING` (sent to clients) and step down through leaves; `BorderLinesTest` checks the height map is one clients have.
+  - **Stress:** borders added to the request benchmark: 16 µs per call (budget 1 ms). The unit budget still holds (docs/perf.md results).
 
 ### S-026 Lumberjack hut building
 - **Status:** planned | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-031, S-034
@@ -174,6 +173,44 @@ Story template:
 - **Parked ideas:** allied factions sum their presence at capture; player-set unit stances (hold vs pursue); a detection range separate from attack range (ranged mobs currently out-range units).
 
 ## Done
+
+### S-035 Nation interface: demolish
+- **Status:** done | **Branch:** feature/interface-demolish | **PR:** #45 | **Depends on:** S-032, S-038
+- **Goal:** a player can demolish their own buildings from the interface.
+- **Scope:**
+  - **Demolish** shows your settlement's buildings as outlines.
+  - Pick one by looking at it, confirm, and the server runs the demolition operation from S-038, so builders take it apart.
+  - Other factions' buildings can't be picked or demolished.
+- **Out of scope:** gold costs.
+- **Test:** GameTests for the request (own building demolished, another faction's refused). Manual: outlines and picking.
+- **Notes:**
+  - **What was built:**
+    - **Demolish** on the nation screen asks the server for the faction's buildings within 96 blocks (finished, being built or coming down; up to 64, nearest first) and outlines them all.
+    - **Picking:** the one the player looks at (up to 48 blocks) is highlighted in white. Ones already coming down are orange.
+    - **Stopping a demolition (owner's ask):** the same two right-clicks on an orange building stop its demolition (outline yellow, "Right-click again to stop demolishing the storage shed"), answered with "Stopped demolishing the storage shed". What's been taken down stays down; a site keeps its builders, and a finished building's go back to the pool.
+    - **Right-click twice:** the first right-click picks the building (outline red, "Right-click again to demolish the storage shed"). The second, within 3 seconds and still looking at it, orders the demolition.
+    - **Leaving:** Esc or Backspace leaves, and so does a successful order. Demolish and the building preview end each other.
+    - **The answer** shows on the action bar: "Demolishing the storage shed: 2 builders are taking it apart", "...: no builders are free: assign some when they are", or "Can't demolish that: ..." with the reason.
+  - **Decisions:**
+    - **Builders are assigned at once (owner's call):** ordering a demolition from the interface also assigns the settlement's idle builders, up to the building's `max_builders`. A finished building has no site block, so otherwise only a command could assign them. `BuilderOps.assignIdle` is a faction operation of its own, for AI factions too.
+    - **Same rules as the command:** the request checks the settlement with `NationRequests.settlementProblem` (its first user), then runs `BuildingOps.orderDemolition`, the same operation as `/kingdomrts building demolish`.
+    - **Two clicks** because what's taken down stays down, so a stray click shouldn't start a demolition (or stop one).
+    - **Stopping checks the owner:** `BuildingOps.stopDemolition` now takes the acting faction and refuses another faction's building, like `orderDemolition`, so AI factions can't stop each other's demolitions. `/kingdomrts building cancel` stays an admin command and acts for the building's owner.
+    - **Picking** is pure (`building/BuildingPicker`): the first box the line of sight meets, or the one the player stands in.
+    - **Cost:** outlines are a few lines per building each frame, so there's nothing to bake. The building list is rate limited like the sites, and refreshed every 5 seconds while picking.
+  - **Tests:**
+    - JUnit (`BuildingPickerTest`): the nearest box in the line of sight, nothing out of range or behind, and standing inside one picks it.
+    - GameTests (`NationDemolishGameTests`):
+      - a member is shown both sheds (finished and being built) with their boxes, but not twice in a row, nothing without a faction, and nothing from far away;
+      - demolishing your own shed orders it and puts two of three idle builders on it, and says so;
+      - refusals: another faction's member, no faction, no building there, already being demolished;
+      - stopping your own demolition leaves an ordinary built shed and frees its builder, and says so; refused for another faction (through the operation too), no faction, and a building that isn't being demolished.
+    - Sabotage checks, each caught:
+      - acting for the building's owner instead of the player;
+      - no ownership check when stopping a demolition;
+      - idle builders not assigned;
+      - no rate limit.
+  - **Stress:** not run. Nothing per-unit was added, and requests stay rare.
 
 ### S-047 Flaky demolition tests
 - **Status:** done | **Branch:** feature/demolish-flakes | **PR:** #44 | **Depends on:** S-038

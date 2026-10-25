@@ -59,11 +59,21 @@ public final class PerfPayloads {
         buf.writeDouble(stats.p95PreviewMs());
         buf.writeDouble(stats.worstPreviewMs());
         buf.writeDouble(stats.averagePreviewBlocks());
+        PerfReport.Borders borders = stats.borders();
+        buf.writeVarInt(borders.frames());
+        buf.writeDouble(borders.averageMs());
+        buf.writeDouble(borders.p95Ms());
+        buf.writeDouble(borders.worstMs());
+        buf.writeDouble(borders.averagePieces());
+        buf.writeVarInt(borders.ticks());
+        buf.writeDouble(borders.averageTickMs());
+        buf.writeDouble(borders.worstTickMs());
     }
 
     private static PerfReport.ClientStats read(FriendlyByteBuf buf) {
         return new PerfReport.ClientStats(buf.readVarInt(), buf.readDouble(), buf.readDouble(), buf.readDouble(), buf.readVarInt(), buf.readDouble(),
-                buf.readDouble(), buf.readDouble(), buf.readDouble());
+                buf.readDouble(), buf.readDouble(), buf.readDouble(), new PerfReport.Borders(buf.readVarInt(), buf.readDouble(), buf.readDouble(),
+                        buf.readDouble(), buf.readDouble(), buf.readVarInt(), buf.readDouble(), buf.readDouble()));
     }
 
     @SubscribeEvent

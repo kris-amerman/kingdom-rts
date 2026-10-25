@@ -72,6 +72,15 @@ public final class PerfReportFiles {
             stats.addProperty("p95_preview_ms", client.p95PreviewMs());
             stats.addProperty("worst_preview_ms", client.worstPreviewMs());
             stats.addProperty("average_preview_blocks", client.averagePreviewBlocks());
+            PerfReport.Borders borders = client.borders();
+            stats.addProperty("border_frames", borders.frames());
+            stats.addProperty("average_borders_ms", borders.averageMs());
+            stats.addProperty("p95_borders_ms", borders.p95Ms());
+            stats.addProperty("worst_borders_ms", borders.worstMs());
+            stats.addProperty("average_border_pieces", borders.averagePieces());
+            stats.addProperty("border_ticks", borders.ticks());
+            stats.addProperty("average_border_tick_ms", borders.averageTickMs());
+            stats.addProperty("worst_border_tick_ms", borders.worstTickMs());
             json.add("client", stats);
         }
         return json;

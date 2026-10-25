@@ -41,6 +41,9 @@ public class SettlementData extends SavedData {
     // Which settlement claims each chunk. Not saved: rebuilt from the settlements on load.
     // Answers "who owns this chunk?" with one map lookup instead of searching every settlement.
     private final Map<ClaimKey, UUID> claimIndex = new HashMap<>();
+    // Goes up whenever a claim appears, goes, changes owner or is renamed, so the borders view can tell when to
+    // resend (see BorderViewers) without comparing claims. Not saved.
+    private int claimsVersion;
 
     // A chunk in a particular dimension (chunk coordinates repeat across dimensions).
     private record ClaimKey(ResourceKey<Level> dimension, long chunk) {
@@ -82,6 +85,10 @@ public class SettlementData extends SavedData {
         return byId(claimIndex.get(ClaimKey.of(dimension, chunk)));
     }
 
+    public int claimsVersion() {
+        return claimsVersion;
+    }
+
     public Collection<Settlement> all() {
         return Collections.unmodifiableCollection(settlements.values());
     }
@@ -109,6 +116,7 @@ public class SettlementData extends SavedData {
         Settlement settlement = new Settlement(UUID.randomUUID(), name, owner, dimension, townHall, chunks);
         settlements.put(settlement.id(), settlement);
         index(settlement);
+        claimsVersion++;
         setDirty();
         return settlement;
     }
@@ -119,12 +127,14 @@ public class SettlementData extends SavedData {
         for (ChunkPos chunk : settlement.chunks()) {
             claimIndex.remove(ClaimKey.of(settlement.dimension(), chunk));
         }
+        claimsVersion++;
         setDirty();
     }
 
     // The settlement and its claimed chunks pass to the new owner together.
     void setOwner(Settlement settlement, UUID owner) {
         settlement.setOwner(owner);
+        claimsVersion++;
         setDirty();
     }
 
@@ -265,6 +275,7 @@ public class SettlementData extends SavedData {
 
     void rename(Settlement settlement, String name) {
         settlement.setName(name);
+        claimsVersion++; // the borders view shows names
         setDirty();
     }
 
