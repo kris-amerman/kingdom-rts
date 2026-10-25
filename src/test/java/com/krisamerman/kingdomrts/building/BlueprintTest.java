@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Optional;
+
 import org.junit.jupiter.api.Test;
 
 import com.google.gson.JsonParser;
@@ -81,5 +83,9 @@ class BlueprintTest {
         assertEquals(4, bigger.maxBuilders());
         assertTrue(BuildingType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(
                 "{ \"structure\": \"kingdomrts:buildings/barn\", \"name\": \"Barn\", \"max_builders\": 0 }")).isError(), "At least one");
+        assertTrue(type.core().isEmpty(), "A core is optional");
+        BuildingType hut = BuildingType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseString(
+                "{ \"structure\": \"kingdomrts:buildings/lumberjack_hut\", \"name\": \"Lumberjack hut\", \"core\": \"kingdomrts:lumberjack_hut\" }")).getOrThrow();
+        assertEquals(Optional.of(ResourceLocation.parse("kingdomrts:lumberjack_hut")), hut.core());
     }
 }

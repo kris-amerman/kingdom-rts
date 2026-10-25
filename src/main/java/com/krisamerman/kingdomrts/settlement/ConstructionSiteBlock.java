@@ -16,8 +16,9 @@ import net.minecraft.world.level.block.state.BlockState;
 // the site's materials are pooled. Breaking it (only its owners can) cancels the site. It has no
 // item: it only ever comes from commissioning. Protection rules: see SettlementContainerBlock.
 //
-// Buildings that do something (huts, the town hall, homes) will have a block of their own as their
-// lasting core; buildings that are only blocks (a shed) have nothing once they're built.
+// Buildings that do something (a hut) have a core block of their own: their site block stands on the
+// core's spot and becomes the core when they're finished (see BuildingOps#completeIfDone). Buildings
+// that are only blocks (a shed) have nothing once they're built.
 public class ConstructionSiteBlock extends SettlementContainerBlock {
     public static final MapCodec<ConstructionSiteBlock> CODEC = simpleCodec(ConstructionSiteBlock::new);
 

@@ -14,14 +14,19 @@ import com.krisamerman.kingdomrts.building.BuildingTemplates;
 import com.krisamerman.kingdomrts.building.BuildingType;
 import com.krisamerman.kingdomrts.faction.Faction;
 import com.krisamerman.kingdomrts.faction.FactionData;
+import com.krisamerman.kingdomrts.unit.Stock;
 
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 
 // Building operations, as actions of a faction (like WorkplaceOps): commissioning a building at a
@@ -83,9 +88,24 @@ public final class BuildingOps {
             return Plan.refused("The building " + typeId + " has no usable structure (" + type.get().structure() + ")");
         }
         List<Blueprint.Part> placed = BuildingRules.place(blueprint.get(), origin, rotation);
-        Optional<BlockPos> siteSpot = BuildingRules.siteSpot(placed);
-        if (siteSpot.isEmpty()) {
-            return Plan.refused("The building " + typeId + " has no clear spot inside for its construction site");
+        Optional<BlockPos> siteSpot;
+        if (type.get().core().isPresent()) {
+            // A building with a core has its site block on the core's spot, and the core takes its
+            // place when it's finished.
+            ResourceLocation coreId = type.get().core().get();
+            Block core = coreBlock(type.get());
+            if (core == null) {
+                return Plan.refused("The building " + typeId + "'s core, " + coreId + ", isn't a block");
+            }
+            siteSpot = BuildingRules.coreOf(placed, core).map(Blueprint.Part::pos);
+            if (siteSpot.isEmpty()) {
+                return Plan.refused("The building " + typeId + "'s template must have its core, " + coreId + ", exactly once");
+            }
+        } else {
+            siteSpot = BuildingRules.siteSpot(placed);
+            if (siteSpot.isEmpty()) {
+                return Plan.refused("The building " + typeId + " has no clear spot inside for its construction site");
+            }
         }
         BoundingBox footprint = BuildingRules.footprint(blueprint.get().size(), origin, rotation);
         if (level.isOutsideBuildHeight(footprint.minY()) || level.isOutsideBuildHeight(footprint.maxY())) {
@@ -172,10 +192,65 @@ public final class BuildingOps {
             if (result.remaining() == null || !result.remaining().isDone()) {
                 return false;
             }
+            Block core = coreBlock(level, current);
+            if (core != null && (current.site() == null || !level.isLoaded(current.site()))) {
+                return false;
+            }
             SettlementData.get(level).finishBuilding(settlement, current, level.getGameTime());
+            if (core != null) {
+                becomeCore(level, settlement, current);
+                return true;
+            }
         }
         closeIfEmpty(level, settlement, current);
         return true;
+    }
+
+    // A finished building with a core: its site closes at once, and its construction site block
+    // becomes the core, as the template has it, with what was left in the site's stock moved into
+    // the core's (a hut's starting stock, such as spare axes) rather than carried off to storage.
+    // Then the core starts its work: a hut becomes the settlement's workplace, and starts hiring.
+    private static void becomeCore(ServerLevel level, Settlement settlement, Building building) {
+        BlockPos pos = building.site();
+        List<Blueprint.Part> placed = placed(level, building);
+        BlockState state = placed == null ? null
+                : placed.stream().filter(part -> part.pos().equals(pos)).map(Blueprint.Part::state).findFirst().orElse(null);
+        if (state == null) {
+            return;
+        }
+        List<ItemStack> leftovers = new ArrayList<>();
+        if (level.getBlockEntity(pos) instanceof ConstructionSiteBlockEntity site) {
+            for (int i = 0; i < site.getContainerSize(); i++) {
+                ItemStack stack = site.removeItemNoUpdate(i);
+                if (!stack.isEmpty()) {
+                    leftovers.add(stack);
+                }
+            }
+        }
+        // The site is closed first, so taking its block away doesn't cancel the building (see
+        // ConstructionSiteBlock).
+        SettlementData.get(level).closeSite(settlement, building);
+        level.setBlockAndUpdate(pos, BuildingRules.placedState(state));
+        if (state.getBlock() instanceof SettlementContainerBlock container) {
+            container.register(level, pos);
+        }
+        for (ItemStack stack : leftovers) {
+            ItemStack left = level.getBlockEntity(pos) instanceof Container stock ? Stock.insert(stock, stack) : stack;
+            if (!left.isEmpty()) {
+                Block.popResource(level, pos, left);
+            }
+        }
+    }
+
+    // A building's core block, or null if it has none (or its type is gone).
+    @Nullable
+    public static Block coreBlock(ServerLevel level, Building building) {
+        return BuildingType.get(level, building.type()).map(BuildingOps::coreBlock).orElse(null);
+    }
+
+    @Nullable
+    private static Block coreBlock(BuildingType type) {
+        return type.core().filter(BuiltInRegistries.BLOCK::containsKey).map(BuiltInRegistries.BLOCK::get).orElse(null);
     }
 
     // Closes a built building's site once its stock is empty (or its block is gone): the settlement
