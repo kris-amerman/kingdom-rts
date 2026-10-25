@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-026 Lumberjack hut building
-- **Status:** in progress | **Branch:** feature/lumberjack-hut-building | **PR:** - | **Depends on:** S-031, S-034
+- **Status:** in review | **Branch:** feature/lumberjack-hut-building | **PR:** #47 | **Depends on:** S-031, S-034
 - **Goal:** a lumberjack hut is a real building, commissioned from a template, built by builders, and managed from its hut block.
 - **Scope:**
   - **Core blocks from data** (the general part, reused by later functional buildings): a building's data can name its core block, e.g. `"core": "kingdomrts:lumberjack_hut"`.
