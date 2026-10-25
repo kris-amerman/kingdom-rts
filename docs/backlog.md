@@ -23,7 +23,7 @@ Story template:
 ## Current: Units MVP
 
 ### S-048 Lumberjack slow to start in the reach test
-- **Status:** in progress | **Branch:** feature/lumberjack-reach-flake | **PR:** - | **Depends on:** S-029
+- **Status:** in review | **Branch:** feature/lumberjack-reach-flake | **PR:** #48 | **Depends on:** S-029
 - **Goal:** a lumberjack starts on a nearby tree promptly every time, and `reachesATree10BlocksAway` passes every run.
 - **Scope:**
   - Find why a lumberjack sometimes waits about 450 ticks before setting off for a tree 10 blocks away. Seen once in CI on PR #47: felling started after 616 ticks, over the test's 600, against about 165 in every other run. Per the log, it only started walking near the end.
